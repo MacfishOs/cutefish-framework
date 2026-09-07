@@ -4,9 +4,36 @@
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QProcess>
+#include <QProcessEnvironment>
 
 static const char *kService = "com.cutefish.AppRuntime";
 static const char *kPath = "/AppRuntime";
+
+namespace
+{
+// The environment an ordinary application must be started in.
+//
+// cutefish-shell runs on a privileged Wayland connection it inherited as
+// WAYLAND_SOCKET. That connection is the shell's proof of identity, so nothing
+// it launches may inherit it: an application that did would be handed the
+// private cutefish_shell_v1 and cutefish_window_management_v1 globals. The fd
+// itself is close-on-exec, but the variable naming it has to go as well, so
+// children fall back to the public WAYLAND_DISPLAY the session also set.
+QProcessEnvironment applicationEnvironment()
+{
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.remove(QStringLiteral("WAYLAND_SOCKET"));
+
+    // Only used when the caller was started without the public socket name.
+    if (!environment.contains(QStringLiteral("WAYLAND_DISPLAY"))) {
+        const QString display = qEnvironmentVariable("CUTEFISH_PUBLIC_WAYLAND_DISPLAY");
+        if (!display.isEmpty())
+            environment.insert(QStringLiteral("WAYLAND_DISPLAY"), display);
+    }
+
+    return environment;
+}
+}
 
 ApplicationRuntime *ApplicationRuntime::instance()
 {
@@ -76,7 +103,12 @@ bool ApplicationRuntime::launchCommand(const QStringList &command,
             return true;
     }
 
-    return QProcess::startDetached(command.first(), command.mid(1), workingDirectory);
+    QProcess process;
+    process.setProgram(command.first());
+    process.setArguments(command.mid(1));
+    process.setWorkingDirectory(workingDirectory);
+    process.setProcessEnvironment(applicationEnvironment());
+    return process.startDetached();
 }
 
 bool ApplicationRuntime::quitApplication(const QString &appId)
