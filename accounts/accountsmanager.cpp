@@ -36,8 +36,10 @@ namespace QtAccountsService {
 AccountsManagerPrivate::AccountsManagerPrivate(const QDBusConnection &bus)
 {
     interface =
-        new OrgFreedesktopAccountsInterface(QStringLiteral("org.freedesktop.Accounts"),
-                                            QStringLiteral("/org/freedesktop/Accounts"), bus);
+            new OrgFreedesktopAccountsInterface(QStringLiteral("org.freedesktop.Accounts"),
+                                                QStringLiteral("/org/freedesktop/Accounts"), bus);
+    interface->setInteractiveAuthorizationAllowed(true);
+    interface->setTimeout(120000);
 }
 
 AccountsManagerPrivate::~AccountsManagerPrivate()
@@ -353,28 +355,36 @@ UserAccount *AccountsManager::findUserByName(const QString &userName)
     Creates a new \a accountType type user account whose name is \a userName,
     real name is \a fullName.
 
-    This method is synchronous and may take some time.
+    Completion is reported through userCreated or userCreationFailed.
 
     \param userName The name of the new user to be created.
     \param fullName First name and last name.
     \param accountType The account type.
-    \return whether the user was created successfully.
 */
-bool AccountsManager::createUser(const QString &userName, const QString &fullName,
+void AccountsManager::createUser(const QString &userName, const QString &fullName,
                                  UserAccount::AccountType accountType)
 {
     Q_D(AccountsManager);
 
-    QDBusPendingReply<QDBusObjectPath> reply =
-        d->interface->CreateUser(userName, fullName, accountType);
-    if (reply.isError()) {
-        QDBusError error = reply.error();
-        qWarning("Couldn't create user %s: %s", userName.toUtf8().constData(),
-                 error.errorString(error.type()).toUtf8().constData());
-        return false;
-    }
+    auto *watcher = new QDBusPendingCallWatcher(
+            d->interface->CreateUser(userName, fullName, accountType), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, d, watcher]() {
+        QDBusPendingReply<QDBusObjectPath> reply = *watcher;
+        watcher->deleteLater();
+        if (reply.isError()) {
+            const QDBusError error = reply.error();
+            Q_EMIT userCreationFailed(error.name() + QStringLiteral(": ") + error.message());
+            return;
+        }
 
-    return true;
+        const QString path = reply.value().path();
+        UserAccount *account = d->usersCache.value(path, nullptr);
+        if (!account) {
+            account = new UserAccount(path, d->interface->connection());
+            d->usersCache.insert(path, account);
+        }
+        Q_EMIT userCreated(account);
+    });
 }
 
 /*!
@@ -414,6 +424,6 @@ bool AccountsManager::deleteUser(UserAccount *account, bool removeFiles)
 {
     return deleteUser(account->userId(), removeFiles);
 }
-}
+} // namespace QtAccountsService
 
 #include "moc_accountsmanager.cpp"

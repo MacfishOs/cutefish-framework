@@ -23,9 +23,9 @@
 #include "useraccount.h"
 #include "useraccount_p.h"
 
+#include <pwd.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <pwd.h>
 
 namespace QtAccountsService {
 
@@ -58,6 +58,8 @@ void UserAccountPrivate::initialize(const QDBusConnection &connection, const QSt
 
     user = new OrgFreedesktopAccountsUserInterface(QStringLiteral("org.freedesktop.Accounts"),
                                                    objectPath, bus, q);
+    user->setInteractiveAuthorizationAllowed(true);
+    user->setTimeout(120000);
     q->connect(user, &OrgFreedesktopAccountsUserInterface::Changed, q,
                &UserAccount::handleAccountChanged);
 
@@ -107,7 +109,7 @@ UserAccount::UserAccount(const QDBusConnection &bus, QObject *parent)
     Q_D(UserAccount);
 
     QString objectPath =
-        QStringLiteral("/org/freedesktop/Accounts/User") + QString::number(getuid());
+            QStringLiteral("/org/freedesktop/Accounts/User") + QString::number(getuid());
     d->initialize(bus, objectPath);
 }
 
@@ -675,6 +677,6 @@ void UserAccount::handleAccountChanged()
         Q_EMIT xsessionChanged();
     }
 }
-}
+} // namespace QtAccountsService
 
 #include "moc_useraccount.cpp"
