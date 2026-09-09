@@ -17,6 +17,7 @@ list(APPEND CMAKE_MODULE_PATH
 )
 
 include(GNUInstallDirs)
+include(CTest)
 include(GenerateExportHeader)
 include(CMakePackageConfigHelpers)
 

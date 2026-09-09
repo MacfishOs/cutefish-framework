@@ -19,9 +19,8 @@ public:
 
 // A Q_GADGET registered directly would become a QML value type, and those have
 // to be named in lowercase. Exposing it as a namespace keeps `Output.Left`.
-namespace OutputEnums
-{
+namespace OutputEnums {
 Q_NAMESPACE
 QML_FOREIGN_NAMESPACE(Output)
 QML_NAMED_ELEMENT(Output)
-}
+} // namespace OutputEnums

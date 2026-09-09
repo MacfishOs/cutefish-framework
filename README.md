@@ -33,7 +33,7 @@ The framework uses Qt 6, KDE Frameworks 6, and a C++20 compiler.
 ```shell
 sudo apt install cmake extra-cmake-modules pkg-config build-essential \
     qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-tools-dev-tools \
-    libkscreen-dev libkf6networkmanagerqt-dev libkf6bluezqt-dev \
+    libkf6networkmanagerqt-dev libkf6bluezqt-dev \
     libkf6modemmanagerqt-dev libcanberra-dev libpulse-dev \
     sound-theme-freedesktop
 ```
@@ -42,7 +42,7 @@ sudo apt install cmake extra-cmake-modules pkg-config build-essential \
 
 ```shell
 sudo pacman -S --needed base-devel cmake extra-cmake-modules pkgconf \
-    qt6-base qt6-declarative kscreen bluez-qt networkmanager-qt \
+    qt6-base qt6-declarative bluez-qt networkmanager-qt \
     modemmanager-qt libcanberra libpulse sound-theme-freedesktop
 ```
 

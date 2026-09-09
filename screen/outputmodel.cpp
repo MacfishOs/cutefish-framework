@@ -1,368 +1,495 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+// Upstream: chromium/src/ash/display/cros_display_config.cc
+// Revision: 7acd40ddefff49c9d36144999aafdbb674dbd07a
+//
+// Adapted for Cutefish: stable native display requests replace KScreen state.
+
 #include "outputmodel.h"
 
-#include <KScreen/Mode>
-#include <KScreen/Output>
-
 #include <algorithm>
-#include <limits>
+#include <climits>
 
-#include <QtMath>
+#include <QRect>
+#include <QSet>
 
-KScreenOutputModel::KScreenOutputModel(QObject *parent)
+using namespace cutefish::display;
+
+DisplayOutputModel::DisplayOutputModel(QObject *parent)
     : QAbstractListModel(parent)
 {
 }
 
-int KScreenOutputModel::rowCount(const QModelIndex &parent) const
+int DisplayOutputModel::rowCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : m_outputs.size();
+    return parent.isValid() ? 0 : m_entries.size();
 }
 
-KScreen::OutputPtr KScreenOutputModel::outputAt(int row) const
+const ipc::Mode *DisplayOutputModel::selectedMode(const Entry &e) const
 {
-    if (row < 0 || row >= m_outputs.size()) {
-        return {};
-    }
-
-    return m_outputs.at(row);
+    return e.modeIndex >= 0 && e.modeIndex < e.physical.modes.size()
+            ? &e.physical.modes.at(e.modeIndex)
+            : nullptr;
 }
 
-QList<KScreenOutputModel::ModeChoice> KScreenOutputModel::modesForOutput(const KScreen::OutputPtr &output) const
+QList<int> DisplayOutputModel::resolutionModes(const Entry &e) const
 {
-    QList<ModeChoice> modes;
-    if (!output) {
-        return modes;
-    }
-
-    const KScreen::ModeList outputModes = output->modes();
-    for (auto it = outputModes.cbegin(); it != outputModes.cend(); ++it) {
-        if (!it.value()) {
-            continue;
-        }
-
-        modes.append({it.key(), it.value()->size(), it.value()->refreshRate()});
-    }
-    return modes;
-}
-
-QList<QSize> KScreenOutputModel::resolutionsForOutput(const KScreen::OutputPtr &output) const
-{
-    QList<QSize> resolutions;
-    for (const ModeChoice &mode : modesForOutput(output)) {
-        if (mode.size.isValid() && !resolutions.contains(mode.size)) {
-            resolutions.append(mode.size);
+    QList<int> result;
+    QList<QSize> seen;
+    for (int i = 0; i < e.physical.modes.size(); ++i) {
+        const auto &m = e.physical.modes.at(i);
+        const QSize s(m.width, m.height);
+        if (!seen.contains(s)) {
+            seen.append(s);
+            result.append(i);
         }
     }
-    std::sort(resolutions.begin(), resolutions.end(), [](const QSize &first, const QSize &second) {
-        const qint64 firstArea = qint64(first.width()) * first.height();
-        const qint64 secondArea = qint64(second.width()) * second.height();
-        if (firstArea != secondArea) {
-            return firstArea > secondArea;
-        }
-        return first.width() > second.width();
+    std::sort(result.begin(), result.end(), [&e](int a, int b) {
+        const auto &x = e.physical.modes.at(a);
+        const auto &y = e.physical.modes.at(b);
+        return qint64(x.width) * x.height > qint64(y.width) * y.height;
     });
-    return resolutions;
+    return result;
 }
 
-QList<float> KScreenOutputModel::refreshRatesForOutput(const KScreen::OutputPtr &output,
-                                                       const QSize &size) const
+QList<int> DisplayOutputModel::refreshModes(const Entry &e) const
 {
-    QList<float> refreshRates;
-    for (const ModeChoice &mode : modesForOutput(output)) {
-        if (mode.size != size || mode.refreshRate <= 0) {
-            continue;
-        }
-
-        bool alreadyListed = false;
-        for (const float refreshRate : refreshRates) {
-            if (sameRefreshRate(refreshRate, mode.refreshRate)) {
-                alreadyListed = true;
-                break;
-            }
-        }
-        if (!alreadyListed) {
-            refreshRates.append(mode.refreshRate);
-        }
+    QList<int> result;
+    const auto *selected = selectedMode(e);
+    if (!selected)
+        return result;
+    for (int i = 0; i < e.physical.modes.size(); ++i) {
+        const auto &m = e.physical.modes.at(i);
+        if (m.width == selected->width && m.height == selected->height)
+            result.append(i);
     }
-    std::sort(refreshRates.begin(), refreshRates.end());
-    return refreshRates;
+    std::sort(result.begin(), result.end(), [&e](int a, int b) {
+        return e.physical.modes.at(a).refreshMilliHz < e.physical.modes.at(b).refreshMilliHz;
+    });
+    return result;
 }
 
-QString KScreenOutputModel::outputName(const KScreen::OutputPtr &output)
+QVariant DisplayOutputModel::data(const QModelIndex &index, int role) const
 {
-    if (!output) {
-        return QString();
-    }
-
-    if (!output->name().isEmpty()) {
-        return output->name();
-    }
-    if (!output->model().isEmpty()) {
-        return output->model();
-    }
-    if (!output->vendor().isEmpty()) {
-        return output->vendor();
-    }
-    return QStringLiteral("Display");
-}
-
-QString KScreenOutputModel::formatResolution(const QSize &size)
-{
-    return QStringLiteral("%1 × %2").arg(size.width()).arg(size.height());
-}
-
-QString KScreenOutputModel::formatRefreshRate(float refreshRate)
-{
-    const int roundedRefreshRate = qRound(refreshRate);
-    if (qAbs(refreshRate - roundedRefreshRate) < 0.01) {
-        return QString::number(roundedRefreshRate) + QStringLiteral(" Hz");
-    }
-    return QString::number(refreshRate, 'f', 2) + QStringLiteral(" Hz");
-}
-
-bool KScreenOutputModel::sameRefreshRate(float first, float second)
-{
-    return qAbs(first - second) < 0.01;
-}
-
-QVariant KScreenOutputModel::data(const QModelIndex &index, int role) const
-{
-    if (!index.isValid()) {
-        return QVariant();
-    }
-
-    const KScreen::OutputPtr output = outputAt(index.row());
-    if (!output) {
-        return QVariant();
-    }
-
-    const KScreen::ModePtr currentMode = output->currentMode();
-    const QSize currentModeSize = currentMode ? currentMode->size() : output->enforcedModeSize();
-    const QList<QSize> resolutions = resolutionsForOutput(output);
-    const QList<float> refreshRates = refreshRatesForOutput(output, currentModeSize);
-
+    if (!index.isValid() || index.row() >= m_entries.size())
+        return {};
+    const Entry &e = m_entries.at(index.row());
+    const auto *mode = selectedMode(e);
+    const auto resolutions = resolutionModes(e);
+    const auto refreshes = refreshModes(e);
     switch (role) {
     case Qt::DisplayRole:
-        return outputName(output);
+        return e.physical.connectorName.isEmpty() ? e.physical.model : e.physical.connectorName;
+    case IdRole:
+        return e.physical.sessionId;
     case EnabledRole:
-        return output->isEnabled();
+        return e.enabled;
     case InternalRole:
-        return output->type() == KScreen::Output::Panel
-            || outputName(output).startsWith(QStringLiteral("eDP"), Qt::CaseInsensitive)
-            || outputName(output).startsWith(QStringLiteral("LVDS"), Qt::CaseInsensitive);
+        return e.physical.connectionType == 1;
     case PrimaryRole:
-        return m_config && m_config->primaryOutput() == output;
+        return e.primary;
     case SizeRole:
-        return output->size();
+        return mode ? QSize(mode->width, mode->height) : QSize();
     case PositionRole:
     case NormalizedPositionRole:
-        return output->pos();
+        return e.position;
     case AutoRotateRole:
-        return output->autoRotatePolicy() != KScreen::Output::AutoRotatePolicy::Never;
     case AutoRotateOnlyInTabletModeRole:
-        return output->autoRotatePolicy() == KScreen::Output::AutoRotatePolicy::InTabletMode;
+        return false;
     case RotationRole:
-        return static_cast<int>(output->rotation());
+        return e.rotation == 0 ? 1 : e.rotation == 1 ? 2 : e.rotation == 2 ? 4 : 8;
     case ScaleRole:
-        return output->scale();
-    case ResolutionIndexRole: {
-        const int resolutionIndex = resolutions.indexOf(currentModeSize);
-        return resolutionIndex >= 0 ? resolutionIndex : 0;
-    }
-    case ResolutionsRole: {
-        QStringList result;
-        for (const QSize &resolution : resolutions) {
-            result.append(formatResolution(resolution));
-        }
-        return result;
-    }
-    case RefreshRateIndexRole: {
-        if (!currentMode) {
-            return 0;
-        }
-        for (int i = 0; i < refreshRates.size(); ++i) {
-            if (sameRefreshRate(refreshRates.at(i), currentMode->refreshRate())) {
+        return e.scale120 / 120.0;
+    case ResolutionIndexRole:
+        for (int i = 0; i < resolutions.size(); ++i) {
+            const auto &m = e.physical.modes.at(resolutions.at(i));
+            if (mode && m.width == mode->width && m.height == mode->height)
                 return i;
-            }
+        }
+        return 0;
+    case ResolutionsRole: {
+        QStringList v;
+        for (int i : resolutions) {
+            const auto &m = e.physical.modes.at(i);
+            v.append(QStringLiteral("%1 × %2").arg(m.width).arg(m.height));
+        }
+        return v;
+    }
+    case RefreshRateIndexRole:
+        return refreshes.indexOf(e.modeIndex);
+    case RefreshRatesRole: {
+        QStringList v;
+        for (int i : refreshes)
+            v.append(QStringLiteral("%1 Hz").arg(e.physical.modes.at(i).refreshMilliHz / 1000.0, 0,
+                                                 'f', 2));
+        return v;
+    }
+    case ReplicationSourceModelRole: {
+        QStringList v {QStringLiteral("Extend")};
+        for (const auto &o : m_entries)
+            if (o.physical.sessionId != e.physical.sessionId)
+                v.append(o.physical.connectorName);
+        return v;
+    }
+    case ReplicationSourceIndexRole: {
+        if (e.mirrorSource.isEmpty())
+            return 0;
+        int n = 1;
+        for (const auto &o : m_entries) {
+            if (o.physical.sessionId == e.physical.sessionId)
+                continue;
+            if (o.physical.sessionId == e.mirrorSource)
+                return n;
+            ++n;
         }
         return 0;
     }
-    case RefreshRatesRole: {
-        QStringList result;
-        for (const float refreshRate : refreshRates) {
-            result.append(formatRefreshRate(refreshRate));
-        }
-        return result;
-    }
-    case ReplicationSourceModelRole:
-        return QStringList();
-    case ReplicationSourceIndexRole:
-        return -1;
     case ReplicasModelRole:
         return QVariantList();
+    case CapabilitiesRole:
+        return e.physical.capabilities;
+    case SupportedScalesRole:
+        return QVariantList {1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0};
     default:
-        return QVariant();
+        return {};
     }
 }
 
-bool KScreenOutputModel::setData(const QModelIndex &index, const QVariant &value, int role)
+void DisplayOutputModel::markDirty(const QModelIndex &index, int role)
 {
-    if (!index.isValid()) {
-        return false;
+    QList<int> roles {role};
+    if (role == ResolutionIndexRole || role == RefreshRateIndexRole)
+        roles = {ResolutionIndexRole, RefreshRateIndexRole, RefreshRatesRole, SizeRole};
+    emit dataChanged(index, index, roles);
+    if (!m_dirty) {
+        m_dirty = true;
+        emit dirtyChanged();
     }
+}
 
-    const KScreen::OutputPtr output = outputAt(index.row());
-    if (!output) {
+bool DisplayOutputModel::setData(const QModelIndex &index, const QVariant &value, int role)
+{
+    if (!index.isValid() || index.model() != this || index.row() >= m_entries.size())
         return false;
-    }
-
-    bool changed = false;
+    Entry &e = m_entries[index.row()];
     switch (role) {
     case EnabledRole: {
-        const bool enabled = value.toBool();
-        if (!enabled) {
-            int enabledOutputs = 0;
-            for (const KScreen::OutputPtr &candidate : m_outputs) {
-                enabledOutputs += candidate && candidate->isEnabled() ? 1 : 0;
-            }
-            if (enabledOutputs <= 1) {
+        const bool v = value.toBool();
+        if (!v) {
+            int n = 0;
+            for (const auto &i : m_entries)
+                n += i.enabled;
+            if (n <= 1)
                 return false;
-            }
         }
-        if (output->isEnabled() != enabled) {
-            output->setEnabled(enabled);
-            changed = true;
-        }
+        if (e.enabled == v)
+            return false;
+        e.enabled = v;
         break;
     }
+    case PrimaryRole:
+        if (!value.toBool() || !e.enabled || e.primary)
+            return false;
+        for (auto &i : m_entries)
+            i.primary = false;
+        e.primary = true;
+        emit dataChanged(this->index(0), this->index(m_entries.size() - 1), {PrimaryRole});
+        break;
+    case PositionRole:
+    case NormalizedPositionRole:
+        if (e.position == value.toPoint())
+            return false;
+        e.position = value.toPoint();
+        break;
     case RotationRole: {
-        const auto rotation = static_cast<KScreen::Output::Rotation>(value.toInt());
-        if (rotation != KScreen::Output::None
-            && rotation != KScreen::Output::Left
-            && rotation != KScreen::Output::Inverted
-            && rotation != KScreen::Output::Right) {
+        const int raw = value.toInt();
+        const uint r = raw == 1 ? 0 : raw == 2 ? 1 : raw == 4 ? 2 : raw == 8 ? 3 : 99;
+        if (r > 3 || e.rotation == r)
             return false;
-        }
-        if (output->rotation() != rotation) {
-            output->setRotation(rotation);
-            changed = true;
-        }
-        break;
-    }
-    case ResolutionIndexRole: {
-        const QList<QSize> resolutions = resolutionsForOutput(output);
-        const int resolutionIndex = value.toInt();
-        if (resolutionIndex < 0 || resolutionIndex >= resolutions.size()) {
-            return false;
-        }
-
-        const QSize selectedSize = resolutions.at(resolutionIndex);
-        const KScreen::ModePtr currentMode = output->currentMode();
-        const float currentRefreshRate = currentMode ? currentMode->refreshRate() : 0;
-        QString selectedModeId;
-        float closestRefreshRateDifference = std::numeric_limits<float>::max();
-        for (const ModeChoice &mode : modesForOutput(output)) {
-            if (mode.size != selectedSize) {
-                continue;
-            }
-            const float difference = qAbs(mode.refreshRate - currentRefreshRate);
-            if (selectedModeId.isEmpty() || difference < closestRefreshRateDifference) {
-                selectedModeId = mode.id;
-                closestRefreshRateDifference = difference;
-            }
-        }
-        if (!selectedModeId.isEmpty() && selectedModeId != output->currentModeId()) {
-            output->setCurrentModeId(selectedModeId);
-            changed = true;
-        }
-        break;
-    }
-    case RefreshRateIndexRole: {
-        const KScreen::ModePtr currentMode = output->currentMode();
-        const QSize currentSize = currentMode ? currentMode->size() : output->enforcedModeSize();
-        const QList<float> refreshRates = refreshRatesForOutput(output, currentSize);
-        const int refreshRateIndex = value.toInt();
-        if (refreshRateIndex < 0 || refreshRateIndex >= refreshRates.size()) {
-            return false;
-        }
-
-        const float selectedRefreshRate = refreshRates.at(refreshRateIndex);
-        QString selectedModeId;
-        for (const ModeChoice &mode : modesForOutput(output)) {
-            if (mode.size == currentSize && sameRefreshRate(mode.refreshRate, selectedRefreshRate)) {
-                selectedModeId = mode.id;
-                break;
-            }
-        }
-        if (!selectedModeId.isEmpty() && selectedModeId != output->currentModeId()) {
-            output->setCurrentModeId(selectedModeId);
-            changed = true;
-        }
+        e.rotation = r;
         break;
     }
     case ScaleRole: {
-        const qreal scale = value.toReal();
-        if (scale <= 0 || qFuzzyCompare(output->scale(), scale)) {
+        const int s = qRound(value.toDouble() * 120);
+        if (s < 120 || s > 480 || e.scale120 == uint(s))
             return false;
+        e.scale120 = s;
+        break;
+    }
+    case ResolutionIndexRole: {
+        const auto choices = resolutionModes(e);
+        const int selected = value.toInt();
+        if (selected < 0 || selected >= choices.size())
+            return false;
+        const auto &t = e.physical.modes.at(choices.at(selected));
+        int best = choices.at(selected), difference = INT_MAX;
+        for (int i = 0; i < e.physical.modes.size(); ++i) {
+            const auto &c = e.physical.modes.at(i);
+            if (c.width == t.width && c.height == t.height) {
+                const int d = qAbs(c.refreshMilliHz
+                                   - (selectedMode(e) ? selectedMode(e)->refreshMilliHz : 0));
+                if (d < difference) {
+                    best = i;
+                    difference = d;
+                }
+            }
         }
-        output->setScale(scale);
-        changed = true;
+        if (e.modeIndex == best)
+            return false;
+        e.modeIndex = best;
+        break;
+    }
+    case RefreshRateIndexRole: {
+        const auto choices = refreshModes(e);
+        const int selected = value.toInt();
+        if (selected < 0 || selected >= choices.size() || e.modeIndex == choices.at(selected))
+            return false;
+        e.modeIndex = choices.at(selected);
+        break;
+    }
+    case ReplicationSourceIndexRole: {
+        const int selected = value.toInt();
+        QString source;
+        int n = 1;
+        for (const auto &o : m_entries) {
+            if (o.physical.sessionId == e.physical.sessionId)
+                continue;
+            if (n++ == selected) {
+                source = o.physical.sessionId;
+                break;
+            }
+        }
+        if (e.mirrorSource == source)
+            return false;
+        e.mirrorSource = source;
         break;
     }
     default:
         return false;
     }
-
-    if (changed) {
-        emit dataChanged(index, index, {role});
-    }
-    return changed;
-}
-
-Qt::ItemFlags KScreenOutputModel::flags(const QModelIndex &index) const
-{
-    if (!index.isValid()) {
-        return Qt::NoItemFlags;
-    }
-    return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable;
-}
-
-QHash<int, QByteArray> KScreenOutputModel::roleNames() const
-{
-    QHash<int, QByteArray> roles = QAbstractListModel::roleNames();
-    roles[Qt::DisplayRole] = "display";
-    roles[EnabledRole] = "enabled";
-    roles[InternalRole] = "internal";
-    roles[PrimaryRole] = "primary";
-    roles[SizeRole] = "size";
-    roles[PositionRole] = "position";
-    roles[NormalizedPositionRole] = "normalizedPosition";
-    roles[AutoRotateRole] = "autoRotate";
-    roles[AutoRotateOnlyInTabletModeRole] = "autoRotateOnlyInTabletMode";
-    roles[RotationRole] = "rotation";
-    roles[ScaleRole] = "scale";
-    roles[ResolutionIndexRole] = "resolutionIndex";
-    roles[ResolutionsRole] = "resolutions";
-    roles[RefreshRateIndexRole] = "refreshRateIndex";
-    roles[RefreshRatesRole] = "refreshRates";
-    roles[ReplicationSourceModelRole] = "replicationSourceModel";
-    roles[ReplicationSourceIndexRole] = "replicationSourceIndex";
-    roles[ReplicasModelRole] = "replicasModel";
-    return roles;
-}
-
-void KScreenOutputModel::setConfig(const KScreen::ConfigPtr &config)
-{
-    beginResetModel();
-    m_config = config;
-    m_outputs.clear();
-    if (m_config) {
-        const KScreen::OutputList outputs = m_config->outputs();
-        for (auto it = outputs.cbegin(); it != outputs.cend(); ++it) {
-            if (it.value() && it.value()->isConnected()) {
-                m_outputs.append(it.value());
+    m_layoutDirty |= role == PositionRole || role == NormalizedPositionRole || role == EnabledRole
+            || role == ReplicationSourceIndexRole;
+    if (role == EnabledRole && !e.enabled && e.primary) {
+        e.primary = false;
+        for (auto &candidate : m_entries) {
+            if (candidate.enabled && candidate.mirrorSource.isEmpty()) {
+                candidate.primary = true;
+                break;
             }
         }
+        emit dataChanged(this->index(0), this->index(m_entries.size() - 1), {PrimaryRole});
     }
-    endResetModel();
+    markDirty(index, role);
+    return true;
+}
+
+Qt::ItemFlags DisplayOutputModel::flags(const QModelIndex &i) const
+{
+    return i.isValid() ? Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable
+                       : Qt::NoItemFlags;
+}
+
+QHash<int, QByteArray> DisplayOutputModel::roleNames() const
+{
+    return {{Qt::DisplayRole, "display"},
+            {EnabledRole, "enabled"},
+            {InternalRole, "internal"},
+            {PrimaryRole, "primary"},
+            {SizeRole, "size"},
+            {PositionRole, "position"},
+            {NormalizedPositionRole, "normalizedPosition"},
+            {AutoRotateRole, "autoRotate"},
+            {AutoRotateOnlyInTabletModeRole, "autoRotateOnlyInTabletMode"},
+            {RotationRole, "rotation"},
+            {ScaleRole, "scale"},
+            {ResolutionIndexRole, "resolutionIndex"},
+            {ResolutionsRole, "resolutions"},
+            {RefreshRateIndexRole, "refreshRateIndex"},
+            {RefreshRatesRole, "refreshRates"},
+            {ReplicationSourceModelRole, "replicationSourceModel"},
+            {ReplicationSourceIndexRole, "replicationSourceIndex"},
+            {ReplicasModelRole, "replicasModel"},
+            {IdRole, "displayId"},
+            {CapabilitiesRole, "capabilities"},
+            {SupportedScalesRole, "supportedScales"}};
+}
+
+void DisplayOutputModel::setState(const DisplayClient::State &state)
+{
+    m_applied = state;
+    m_dirty = false;
+    m_layoutDirty = false;
+    QSet<QString> connected;
+    for (const auto &physical : state.physical)
+        connected.insert(physical.sessionId);
+    for (int row = m_entries.size() - 1; row >= 0; --row) {
+        if (!connected.contains(m_entries[row].physical.sessionId)) {
+            beginRemoveRows({}, row, row);
+            m_entries.removeAt(row);
+            endRemoveRows();
+        }
+    }
+    for (const auto &physical : state.physical) {
+        Entry entry;
+        for (const auto &previous : m_entries)
+            if (previous.physical.sessionId == physical.sessionId) {
+                entry = previous;
+                break;
+            }
+        entry.physical = physical;
+        entry.enabled = false;
+        entry.primary = false;
+        entry.mirrorSource.clear();
+        for (int i = 0; i < physical.modes.size(); ++i) {
+            if (physical.modes[i].current) {
+                entry.modeIndex = i;
+                break;
+            }
+        }
+        for (const auto &logical : state.logical) {
+            if (!logical.destinations.contains(physical.sessionId))
+                continue;
+            entry.enabled = true;
+            entry.primary = logical.primary && logical.destinations.first() == physical.sessionId;
+            entry.position = {logical.x, logical.y};
+            entry.scale120 = logical.scale120;
+            entry.rotation = logical.rotation;
+            if (logical.destinations.first() != physical.sessionId)
+                entry.mirrorSource = logical.destinations.first();
+            break;
+        }
+        int row = 0;
+        while (row < m_entries.size() && m_entries[row].physical.sessionId != physical.sessionId)
+            ++row;
+        if (row == m_entries.size()) {
+            beginInsertRows({}, row, row);
+            m_entries.append(entry);
+            endInsertRows();
+        } else {
+            m_entries[row] = entry;
+            emit dataChanged(index(row), index(row));
+        }
+    }
+    emit dirtyChanged();
+}
+
+void DisplayOutputModel::discard()
+{
+    setState(m_applied);
+}
+
+QList<ipc::DisplayRequest> DisplayOutputModel::requests() const
+{
+    QList<ipc::DisplayRequest> r;
+    for (const auto &e : m_entries) {
+        const auto *m = selectedMode(e);
+        if (!m)
+            continue;
+        r.append({e.physical.sessionId,
+                  e.enabled,
+                  {m->width, m->height, m->refreshMilliHz, m->pixelClockKHz, m->horizontalTotal,
+                   m->verticalTotal, m->flags, m->preferred, m->name},
+                  e.scale120,
+                  e.rotation});
+    }
+    return r;
+}
+
+QString DisplayOutputModel::primary() const
+{
+    for (const auto &e : m_entries)
+        if (e.primary)
+            return e.physical.sessionId;
+    return {};
+}
+
+QList<ipc::Placement> DisplayOutputModel::placements() const
+{
+    if (!m_layoutDirty)
+        return m_applied.placements;
+    QList<ipc::Placement> result;
+    const QString root = primary();
+    const Entry *parent = nullptr;
+    for (const auto &entry : m_entries)
+        if (entry.physical.sessionId == root)
+            parent = &entry;
+    if (!parent)
+        return result;
+    QList<const Entry *> placed {parent};
+    const auto logicalSize = [this](const Entry &entry) {
+        const auto *mode = selectedMode(entry);
+        if (!mode)
+            return QSize(1, 1);
+        QSize size(mode->width, mode->height);
+        if (entry.rotation % 2)
+            size.transpose();
+        return QSize((size.width() * 120 + entry.scale120 - 1) / entry.scale120,
+                     (size.height() * 120 + entry.scale120 - 1) / entry.scale120);
+    };
+    QHash<QString, QRect> resolved;
+    resolved.insert(parent->physical.sessionId, QRect(parent->position, logicalSize(*parent)));
+    for (const auto &entry : m_entries) {
+        if (!entry.enabled || entry.physical.sessionId == root || !entry.mirrorSource.isEmpty())
+            continue;
+        int bestDistance = INT_MAX;
+        ipc::Placement best;
+        QRect bestBounds;
+        const QSize childSize = logicalSize(entry);
+        for (const auto *candidate : placed) {
+            const QSize parentSize = logicalSize(*candidate);
+            const QPoint parentPosition = resolved.value(candidate->physical.sessionId).topLeft();
+            const QPoint delta = entry.position - parentPosition;
+            for (uint edge = 0; edge < 4; ++edge) {
+                const bool horizontal = edge % 2;
+                const int childExtent = horizontal ? childSize.height() : childSize.width();
+                const int parentExtent = horizontal ? parentSize.height() : parentSize.width();
+                const int overlap = qMin(32, qMin(childExtent, parentExtent));
+                const int cross = horizontal ? delta.y() : delta.x();
+                const int offset = qBound(-childExtent + overlap, cross, parentExtent - overlap);
+                const int normal = edge == 0 ? -childSize.height()
+                        : edge == 1          ? parentSize.width()
+                        : edge == 2          ? parentSize.height()
+                                             : -childSize.width();
+                const int distance =
+                        qAbs((horizontal ? delta.x() : delta.y()) - normal) + qAbs(cross - offset);
+                const QRect bounds(
+                        parentPosition
+                                + (horizontal ? QPoint(normal, offset) : QPoint(offset, normal)),
+                        childSize);
+                bool overlaps = false;
+                for (const auto &occupied : resolved)
+                    overlaps |= occupied.intersects(bounds);
+                if (overlaps)
+                    continue;
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = {entry.physical.sessionId, candidate->physical.sessionId, edge, offset};
+                    bestBounds = bounds;
+                }
+            }
+        }
+        result.append(best);
+        placed.append(&entry);
+        resolved.insert(entry.physical.sessionId, bestBounds);
+    }
+    return result;
+}
+
+ipc::MirrorGroups DisplayOutputModel::mirrorGroups() const
+{
+    ipc::MirrorGroups result;
+    for (const auto &entry : m_entries) {
+        if (!entry.enabled || entry.mirrorSource.isEmpty())
+            continue;
+        auto group = std::find_if(result.begin(), result.end(), [&](const auto &members) {
+            return members.first() == entry.mirrorSource;
+        });
+        if (group == result.end())
+            result.append({entry.mirrorSource, entry.physical.sessionId});
+        else
+            group->append(entry.physical.sessionId);
+    }
+    return result;
 }
