@@ -54,7 +54,8 @@ private slots:
         env.remove("QT_SCALE_FACTOR");
         env.remove("QT_SCREEN_SCALE_FACTORS");
         probe.setProcessEnvironment(env);
-        probe.start(QStringLiteral(SCREEN_PROBE_PATH));
+        const auto shellProbe = qEnvironmentVariable("CUTEFISH_TEST_SHELL_SCREEN_PROBE");
+        probe.start(shellProbe.isEmpty() ? QStringLiteral(SCREEN_PROBE_PATH) : shellProbe);
         QVERIFY(probe.waitForStarted());
         QJsonArray screens;
         const auto count = [&] {
@@ -64,6 +65,8 @@ private slots:
         };
         QTRY_COMPARE_WITH_TIMEOUT(count(), 3, 5000);
         const QPersistentModelIndex second(model->index(1));
+        const auto secondId = model->data(second, DisplayOutputModel::IdRole).toString();
+        QVERIFY(!secondId.isEmpty());
         QVERIFY(model->setData(second, 1.25, DisplayOutputModel::ScaleRole));
         QTRY_VERIFY_WITH_TIMEOUT(!screen.busy(), 5000);
         QVERIFY2(screen.error().isEmpty(), qPrintable(screen.error()));
@@ -76,7 +79,7 @@ private slots:
             return 0;
         };
         QTRY_COMPARE(width(), 1536);
-        QCOMPARE(model->data(second, DisplayOutputModel::IdRole).toString(), QString("display-2"));
+        QCOMPARE(model->data(second, DisplayOutputModel::IdRole).toString(), secondId);
         QVERIFY(model->setData(model->index(2), false, DisplayOutputModel::EnabledRole));
         QTRY_VERIFY_WITH_TIMEOUT(!screen.busy(), 5000);
         QVERIFY2(screen.error().isEmpty(), qPrintable(screen.error()));
@@ -102,6 +105,16 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!screen.busy(), 5000);
         QVERIFY2(screen.error().isEmpty(), qPrintable(screen.error()));
         QVERIFY(model->data(second, DisplayOutputModel::PrimaryRole).toBool());
+        if (!shellProbe.isEmpty()) {
+            const auto primaryName = [&] {
+                count();
+                for (const auto &value : screens)
+                    if (value.toObject().value("primary").toBool())
+                        return value.toObject().value("name").toString();
+                return QString();
+            };
+            QTRY_COMPARE(primaryName(), QStringLiteral("Cutefish-2"));
+        }
     }
 
     void clickAppliesAndPersistsWithoutConfirmation()
