@@ -45,7 +45,6 @@ set(CUTEFISH_NETWORK_SOURCES
 )
 
 find_package(KF6NetworkManagerQt REQUIRED)
-find_package(KF6ModemManagerQt REQUIRED)
 
 add_library(cutefish-framework-network SHARED ${CUTEFISH_NETWORK_SOURCES})
 generate_export_header(cutefish-framework-network EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/network_export.h BASE_NAME Cutefish_Network)
@@ -69,7 +68,6 @@ target_link_libraries(cutefish-framework-network PUBLIC
     Qt6::DBus
 
     KF6::NetworkManagerQt
-    KF6::ModemManagerQt
 )
 
 cutefish_install_qml_module(cutefish-framework-network)
