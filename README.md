@@ -31,19 +31,19 @@ The framework uses Qt 6, KDE Frameworks 6, and a C++20 compiler.
 ### Debian/Ubuntu
 
 ```shell
-sudo apt install cmake extra-cmake-modules pkg-config build-essential \
+sudo apt install cmake pkg-config build-essential \
     qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-tools-dev-tools \
     libkf6networkmanagerqt-dev bluez \
-    libkf6modemmanagerqt-dev libcanberra-dev libpulse-dev \
+    libcanberra-dev libpulse-dev \
     sound-theme-freedesktop
 ```
 
 ### Arch Linux
 
 ```shell
-sudo pacman -S --needed base-devel cmake extra-cmake-modules pkgconf \
+sudo pacman -S --needed base-devel cmake pkgconf \
     qt6-base qt6-declarative bluez networkmanager-qt \
-    modemmanager-qt libcanberra libpulse sound-theme-freedesktop
+    libcanberra libpulse sound-theme-freedesktop
 ```
 
 ## Build and Install
