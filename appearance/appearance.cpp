@@ -4,21 +4,19 @@
 #include <QDBusInterface>
 #include <QDBusServiceWatcher>
 
-namespace
-{
+namespace {
 constexpr auto Service = "com.cutefish.Services";
 constexpr auto ObjectPath = "/com/cutefish/Services/Appearance";
 constexpr auto Interface = "com.cutefish.Services.Appearance";
-}
+} // namespace
 
 Appearance::Appearance(QObject *parent)
     : QObject(parent)
     , m_interface(nullptr)
 {
-    auto *watcher = new QDBusServiceWatcher(QString::fromLatin1(Service),
-                                             QDBusConnection::sessionBus(),
-                                             QDBusServiceWatcher::WatchForRegistration,
-                                             this);
+    auto *watcher =
+            new QDBusServiceWatcher(QString::fromLatin1(Service), QDBusConnection::sessionBus(),
+                                    QDBusServiceWatcher::WatchForRegistration, this);
     connect(watcher, &QDBusServiceWatcher::serviceRegistered, this, &Appearance::init);
 
     init();
@@ -27,31 +25,31 @@ Appearance::Appearance(QObject *parent)
 void Appearance::init()
 {
     delete m_interface;
-    m_interface = new QDBusInterface(QString::fromLatin1(Service),
-                                     QString::fromLatin1(ObjectPath),
-                                     QString::fromLatin1(Interface),
-                                     QDBusConnection::sessionBus(),
-                                     this);
+    m_interface =
+            new QDBusInterface(QString::fromLatin1(Service), QString::fromLatin1(ObjectPath),
+                               QString::fromLatin1(Interface), QDBusConnection::sessionBus(), this);
 
     if (!m_interface->isValid())
         return;
 
     connect(m_interface, SIGNAL(darkModeChanged(bool)), this, SLOT(onDarkModeChanged(bool)));
-    connect(m_interface, SIGNAL(wallpaperChanged(QString)), this, SLOT(onWallpaperChanged(QString)));
+    connect(m_interface, SIGNAL(wallpaperChanged(QString)), this,
+            SLOT(onWallpaperChanged(QString)));
     connect(m_interface, SIGNAL(accentColorChanged(int)), this, SLOT(onAccentColorChanged(int)));
-    connect(m_interface, SIGNAL(darkModeDimsWallpaerChanged()), this, SLOT(onDarkModeDimsWallpaperChanged()));
-    connect(m_interface, SIGNAL(blurEnabledChanged()), this, SLOT(onBlurEnabledChanged()));
-    connect(m_interface, SIGNAL(systemFontPointSizeChanged()), this, SLOT(onFontPointSizeChanged()));
+    connect(m_interface, SIGNAL(darkModeDimsWallpaerChanged()), this,
+            SLOT(onDarkModeDimsWallpaperChanged()));
+    connect(m_interface, SIGNAL(systemFontPointSizeChanged()), this,
+            SLOT(onFontPointSizeChanged()));
     connect(m_interface, SIGNAL(systemFontChanged()), this, SLOT(onFontFamilyChanged()));
     connect(m_interface, SIGNAL(backgroundTypeChanged()), this, SLOT(onBackgroundTypeChanged()));
     connect(m_interface, SIGNAL(backgroundColorChanged()), this, SLOT(onBackgroundColorChanged()));
-    connect(m_interface, SIGNAL(backgroundVisibleChanged()), this, SLOT(onBackgroundVisibleChanged()));
+    connect(m_interface, SIGNAL(backgroundVisibleChanged()), this,
+            SLOT(onBackgroundVisibleChanged()));
 
     emit darkModeChanged();
     emit wallpaperChanged();
     emit accentColorIndexChanged();
     emit dimsWallpaperChanged();
-    emit blurEnabledChanged();
     emit fontPointSizeChanged();
     emit fontFamilyChanged();
     emit fixedFontFamilyChanged();
@@ -95,16 +93,6 @@ bool Appearance::dimsWallpaper() const
 void Appearance::setDimsWallpaper(bool value)
 {
     callService("setDarkModeDimsWallpaer", value);
-}
-
-bool Appearance::blurEnabled() const
-{
-    return serviceProperty("blurEnabled").toBool();
-}
-
-void Appearance::setBlurEnabled(bool value)
-{
-    callService("setBlurEnabled", value);
 }
 
 int Appearance::accentColorIndex() const
@@ -221,11 +209,6 @@ void Appearance::onAccentColorChanged(int accentColor)
 void Appearance::onDarkModeDimsWallpaperChanged()
 {
     emit dimsWallpaperChanged();
-}
-
-void Appearance::onBlurEnabledChanged()
-{
-    emit blurEnabledChanged();
 }
 
 void Appearance::onFontPointSizeChanged()

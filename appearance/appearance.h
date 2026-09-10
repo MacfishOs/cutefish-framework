@@ -11,15 +11,19 @@ class Appearance : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool darkMode READ darkMode NOTIFY darkModeChanged)
-    Q_PROPERTY(bool dimsWallpaper READ dimsWallpaper WRITE setDimsWallpaper NOTIFY dimsWallpaperChanged)
-    Q_PROPERTY(bool blurEnabled READ blurEnabled WRITE setBlurEnabled NOTIFY blurEnabledChanged)
+    Q_PROPERTY(bool dimsWallpaper READ dimsWallpaper WRITE setDimsWallpaper NOTIFY
+                       dimsWallpaperChanged)
     Q_PROPERTY(int accentColorIndex READ accentColorIndex NOTIFY accentColorIndexChanged)
-    Q_PROPERTY(qreal fontPointSize READ fontPointSize WRITE setFontPointSize NOTIFY fontPointSizeChanged)
+    Q_PROPERTY(qreal fontPointSize READ fontPointSize WRITE setFontPointSize NOTIFY
+                       fontPointSizeChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily WRITE setFontFamily NOTIFY fontFamilyChanged)
-    Q_PROPERTY(QString fixedFontFamily READ fixedFontFamily WRITE setFixedFontFamily NOTIFY fixedFontFamilyChanged)
+    Q_PROPERTY(QString fixedFontFamily READ fixedFontFamily WRITE setFixedFontFamily NOTIFY
+                       fixedFontFamilyChanged)
     Q_PROPERTY(QString wallpaper READ wallpaper WRITE setWallpaper NOTIFY wallpaperChanged)
-    Q_PROPERTY(int backgroundType READ backgroundType WRITE setBackgroundType NOTIFY backgroundTypeChanged)
-    Q_PROPERTY(QString backgroundColor READ backgroundColor WRITE setBackgroundColor NOTIFY backgroundColorChanged)
+    Q_PROPERTY(int backgroundType READ backgroundType WRITE setBackgroundType NOTIFY
+                       backgroundTypeChanged)
+    Q_PROPERTY(QString backgroundColor READ backgroundColor WRITE setBackgroundColor NOTIFY
+                       backgroundColorChanged)
     Q_PROPERTY(bool backgroundVisible READ backgroundVisible NOTIFY backgroundVisibleChanged)
 
 public:
@@ -30,9 +34,6 @@ public:
 
     bool dimsWallpaper() const;
     Q_INVOKABLE void setDimsWallpaper(bool value);
-
-    bool blurEnabled() const;
-    Q_INVOKABLE void setBlurEnabled(bool value);
 
     int accentColorIndex() const;
     Q_INVOKABLE void setAccentColor(int accentColor);
@@ -63,7 +64,6 @@ public:
 signals:
     void darkModeChanged();
     void dimsWallpaperChanged();
-    void blurEnabledChanged();
     void accentColorIndexChanged();
     void fontPointSizeChanged();
     void fontFamilyChanged();
@@ -79,7 +79,6 @@ private slots:
     void onWallpaperChanged(const QString &path);
     void onAccentColorChanged(int accentColor);
     void onDarkModeDimsWallpaperChanged();
-    void onBlurEnabledChanged();
     void onFontPointSizeChanged();
     void onFontFamilyChanged();
     void onBackgroundTypeChanged();
