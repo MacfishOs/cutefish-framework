@@ -34,8 +34,6 @@ set(CUTEFISH_AUDIO_SOURCES
     speakertest.cpp
     qml/listitemmenu.cpp
     qml/plugin.cpp
-    # qml/microphoneindicator.cpp
-    # qml/volumeosd.cpp
     qml/volumefeedback.cpp
 
     model/sortfiltermodel.cpp

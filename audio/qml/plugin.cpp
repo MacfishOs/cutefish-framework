@@ -19,11 +19,9 @@
 #include "volumemonitor.h"
 
 #include "listitemmenu.h"
-// #include "microphoneindicator.h"
+#include "model/sortfiltermodel.h"
 #include "speakertest.h"
 #include "volumefeedback.h"
-#include "model/sortfiltermodel.h"
-// #include "volumeosd.h"
 
 static QJSValue pulseaudio_singleton(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
@@ -31,8 +29,10 @@ static QJSValue pulseaudio_singleton(QQmlEngine *engine, QJSEngine *scriptEngine
 
     QJSValue object = scriptEngine->newObject();
     object.setProperty(QStringLiteral("NormalVolume"), (double)QPulseAudio::Context::NormalVolume);
-    object.setProperty(QStringLiteral("MinimalVolume"), (double)QPulseAudio::Context::MinimalVolume);
-    object.setProperty(QStringLiteral("MaximalVolume"), (double)QPulseAudio::Context::MaximalVolume);
+    object.setProperty(QStringLiteral("MinimalVolume"),
+                       (double)QPulseAudio::Context::MinimalVolume);
+    object.setProperty(QStringLiteral("MaximalVolume"),
+                       (double)QPulseAudio::Context::MaximalVolume);
     return object;
 }
 
@@ -55,15 +55,9 @@ void Plugin::registerTypes(const char *uri)
     qmlRegisterUncreatableType<QPulseAudio::Profile>(uri, 1, 0, "Profile", QString());
     qmlRegisterUncreatableType<QPulseAudio::Port>(uri, 1, 0, "Port", QString());
     qmlRegisterType<ListItemMenu>(uri, 1, 0, "ListItemMenu");
-    // qmlRegisterType<VolumeOSD>(uri, 1, 0, "VolumeOSD");
     qmlRegisterType<VolumeFeedback>(uri, 1, 0, "VolumeFeedback");
     qmlRegisterType<SpeakerTest>(uri, 1, 0, "SpeakerTest");
     qmlRegisterSingletonType(uri, 1, 0, "PulseAudio", pulseaudio_singleton);
-    // qmlRegisterSingletonType<MicrophoneIndicator>(uri, 1, 0, "MicrophoneIndicator", [](QQmlEngine *engine, QJSEngine *jsEngine) -> QObject * {
-    //     Q_UNUSED(engine);
-    //     Q_UNUSED(jsEngine);
-    //     return new MicrophoneIndicator();
-    // });
     qmlRegisterAnonymousType<QPulseAudio::Client>(uri, 1);
     qmlRegisterAnonymousType<QPulseAudio::Sink>(uri, 1);
     qmlRegisterAnonymousType<QPulseAudio::Source>(uri, 1);

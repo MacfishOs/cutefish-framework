@@ -26,7 +26,8 @@ The QML modules are `Cutefish.Accounts`, `Cutefish.Appearance`,
 
 ## Dependencies
 
-The framework uses Qt 6, KDE Frameworks 6, and a C++20 compiler.
+The framework uses Qt 6 and a C++20 compiler. NetworkManagerQt is the only
+KDE Frameworks dependency; it is used by the network module.
 
 ### Debian/Ubuntu
 
