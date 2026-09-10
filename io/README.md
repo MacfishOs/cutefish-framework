@@ -153,3 +153,16 @@ Tests cover metadata, recursive operations, conflicts, cancellation, permissions
 symlinks, large sparse files, trash, model refresh, task lifetime, and progress.
 File-manager integration tests additionally exercise FolderModel actions and
 operation-dialog presentation.
+
+`VolumeManager` discovers UDisks2 block devices asynchronously on the system
+D-Bus. `volumes()` includes whole disks and partitions; `Volume::filesystem`
+identifies mountable entries. Changes are reported through `volumeAdded`,
+`volumeChanged`, and `volumeRemoved`, including daemon restarts. The file manager
+shows filesystems and optical media in its sidebar.
+
+`mount()`, `unmount()`, and `eject()` report completion or failure through signals.
+Eject first unmounts mounted filesystems on the same drive, then calls UDisks2
+`Drive.Eject` (or `Drive.PowerOff` for devices that support safe removal).
+Authorization remains with UDisks2 and the session's polkit agent. An installed
+UDisks2 service is required; encrypted-volume unlocking and formatting are outside
+this API's scope. Tests use a private bus and fake service, without touching disks.

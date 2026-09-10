@@ -6,13 +6,13 @@ endif()
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(FATAL_ERROR "Cutefish IO requires Linux")
 endif()
-find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core DBus)
 set(IO_PUBLIC_HEADERS
-    error.h filepath.h filesystemurl.h fileitem.h fileenumerator.h
+    volumemanager.h error.h filepath.h filesystemurl.h fileitem.h fileenumerator.h
     operationcontext.h localfilesystem.h filesystem.h
     filewatcher.h directorylister.h directorymodel.h directory.h task.h taskprogress.h)
 add_library(cutefish-framework-io STATIC ${IO_PUBLIC_HEADERS}
-    error.cpp filepath.cpp filesystemurl.cpp fileitem.cpp fileenumerator.cpp
+    volumemanager.cpp error.cpp filepath.cpp filesystemurl.cpp fileitem.cpp fileenumerator.cpp
     operationcontext.cpp localfilesystem.cpp trash.cpp filewatcher.cpp
     directorylister.cpp directorymodel.cpp task.cpp async.h posix_p.h)
 add_library(Cutefish::IO ALIAS cutefish-framework-io)
@@ -22,7 +22,7 @@ target_compile_definitions(cutefish-framework-io PRIVATE _FILE_OFFSET_BITS=64)
 target_include_directories(cutefish-framework-io PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include/Cutefish/IO>)
-target_link_libraries(cutefish-framework-io PUBLIC Qt6::Core)
+target_link_libraries(cutefish-framework-io PUBLIC Qt6::Core Qt6::DBus)
 if(BUILD_TESTING OR FILEMANAGER_BUILD_TESTS)
     enable_testing()
     find_package(Qt6 REQUIRED COMPONENTS Test Gui)
@@ -30,6 +30,11 @@ if(BUILD_TESTING OR FILEMANAGER_BUILD_TESTS)
     set_target_properties(tst_cutefish_io PROPERTIES AUTOMOC ON)
     target_link_libraries(tst_cutefish_io PRIVATE Cutefish::IO Qt6::Test Qt6::Gui)
     add_test(NAME cutefish-io COMMAND tst_cutefish_io)
+    find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
+    add_executable(tst_volumemanager tests/tst_volumemanager.cpp)
+    set_target_properties(tst_volumemanager PROPERTIES AUTOMOC ON)
+    target_link_libraries(tst_volumemanager PRIVATE Cutefish::IO Qt6::Test)
+    add_test(NAME volumemanager COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_volumemanager>)
 endif()
 
 include(GNUInstallDirs)
