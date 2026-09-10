@@ -1,29 +1,27 @@
 find_package(Qt6 REQUIRED COMPONENTS Core DBus Qml)
 
 set(CUTEFISH_BLUETOOTH_SOURCES
-    declarativemanager.cpp
-    declarativeadapter.cpp
-    # declarativebattery.cpp
-    declarativedevice.cpp
-    declarativeinput.cpp
-    declarativemediaplayer.cpp
-    declarativedevicesmodel.cpp
-    bluezqtextensionplugin.cpp
-    applet/devicesproxymodel.cpp
-    applet/bluetoothagent.cpp
-    applet/bluetoothmanager.cpp
+    bluetoothmanager.cpp
+    bluetoothmanager.h
+    bluetoothobject.cpp
+    bluetoothobject.h
+    bluetoothdevicesmodel.cpp
+    bluetoothdevicesmodel.h
+    bluetoothagent.cpp
+    bluetoothagent.h
+    bluetoothrfkill.cpp
+    bluetoothrfkill.h
+    bluetoothdbustypes.cpp
+    bluetoothdbustypes.h
 )
 
 add_library(cutefish-framework-bluetooth SHARED ${CUTEFISH_BLUETOOTH_SOURCES})
-
-find_package(KF6BluezQt REQUIRED)
 
 qt_add_qml_module(cutefish-framework-bluetooth
     URI Cutefish.Bluetooth
     VERSION 1.0
     PLUGIN_TARGET cutefish-framework-bluetooth
-    CLASS_NAME BluezQtExtensionPlugin
-    NO_GENERATE_PLUGIN_SOURCE
+    CLASS_NAME BluetoothPlugin
     NO_PLUGIN_OPTIONAL
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Cutefish/Bluetooth"
     QML_FILES DevicesModel.qml
@@ -35,8 +33,11 @@ target_link_libraries(cutefish-framework-bluetooth PUBLIC
     Qt6::Core
     Qt6::Qml
     Qt6::DBus
-    KF6::BluezQt
 )
 
 cutefish_install_qml_module(cutefish-framework-bluetooth)
 install(FILES DevicesModel.qml DESTINATION ${INSTALL_QMLDIR}/Cutefish/Bluetooth)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
