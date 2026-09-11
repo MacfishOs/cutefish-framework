@@ -8,7 +8,7 @@
 
 class DisplayOutputModel;
 
-class KScreenScreen : public QObject
+class DisplayScreen : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(Screen)
@@ -22,7 +22,7 @@ class KScreenScreen : public QObject
     Q_PROPERTY(int confirmationSeconds READ confirmationSeconds NOTIFY stateChanged)
 
 public:
-    explicit KScreenScreen(QObject *parent = nullptr);
+    explicit DisplayScreen(QObject *parent = nullptr);
 
     DisplayOutputModel *outputModel() const { return m_outputModel; }
 

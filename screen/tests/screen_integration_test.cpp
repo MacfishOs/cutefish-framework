@@ -44,7 +44,7 @@ private slots:
             }
         } stop {compositor, probe};
 
-        KScreenScreen screen;
+        DisplayScreen screen;
         auto *model = screen.outputModel();
         QTRY_COMPARE_WITH_TIMEOUT(model->rowCount(), 3, 5000);
         auto env = QProcessEnvironment::systemEnvironment();
@@ -142,7 +142,7 @@ private slots:
             }
         } stop {compositor};
 
-        KScreenScreen screen;
+        DisplayScreen screen;
         QTRY_COMPARE_WITH_TIMEOUT(screen.outputModel()->rowCount(), 1, 5000);
         auto *model = screen.outputModel();
         QVERIFY(model->setData(model->index(0), 1.25, DisplayOutputModel::ScaleRole));

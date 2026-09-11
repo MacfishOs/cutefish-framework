@@ -4,16 +4,16 @@
 
 #include "outputmodel.h"
 
-KScreenScreen::KScreenScreen(QObject *parent)
+DisplayScreen::DisplayScreen(QObject *parent)
     : QObject(parent)
     , m_client(this)
     , m_outputModel(new DisplayOutputModel(this))
 {
     m_countdown.setInterval(250);
-    connect(&m_countdown, &QTimer::timeout, this, &KScreenScreen::stateChanged);
-    connect(&m_client, &DisplayClient::availabilityChanged, this, &KScreenScreen::stateChanged);
-    connect(&m_client, &DisplayClient::stateChanged, this, &KScreenScreen::updateState);
-    connect(m_outputModel, &DisplayOutputModel::dirtyChanged, this, &KScreenScreen::stateChanged);
+    connect(&m_countdown, &QTimer::timeout, this, &DisplayScreen::stateChanged);
+    connect(&m_client, &DisplayClient::availabilityChanged, this, &DisplayScreen::stateChanged);
+    connect(&m_client, &DisplayClient::stateChanged, this, &DisplayScreen::updateState);
+    connect(m_outputModel, &DisplayOutputModel::dirtyChanged, this, &DisplayScreen::stateChanged);
     connect(m_outputModel, &DisplayOutputModel::dirtyChanged, this, [this] {
         if (dirty())
             apply();
@@ -28,17 +28,17 @@ KScreenScreen::KScreenScreen(QObject *parent)
             });
 }
 
-bool KScreenScreen::dirty() const
+bool DisplayScreen::dirty() const
 {
     return m_outputModel->dirty();
 }
 
-bool KScreenScreen::canApply() const
+bool DisplayScreen::canApply() const
 {
     return available() && !m_busy && dirty() && !pendingConfirmation();
 }
 
-int KScreenScreen::confirmationSeconds() const
+int DisplayScreen::confirmationSeconds() const
 {
     if (!pendingConfirmation())
         return 0;
@@ -48,7 +48,7 @@ int KScreenScreen::confirmationSeconds() const
                     / 1000));
 }
 
-void KScreenScreen::updateState()
+void DisplayScreen::updateState()
 {
     const auto &state = m_client.state();
     if (!m_client.available()) {
@@ -68,7 +68,7 @@ void KScreenScreen::updateState()
     emit stateChanged();
 }
 
-void KScreenScreen::apply()
+void DisplayScreen::apply()
 {
     if (!canApply())
         return;
@@ -84,7 +84,7 @@ void KScreenScreen::apply()
     }
 }
 
-void KScreenScreen::discard()
+void DisplayScreen::discard()
 {
     if (!m_busy) {
         m_outputModel->discard();
@@ -93,19 +93,19 @@ void KScreenScreen::discard()
     }
 }
 
-void KScreenScreen::keep()
+void DisplayScreen::keep()
 {
     if (pendingConfirmation())
         m_client.confirm(m_client.state().previewToken);
 }
 
-void KScreenScreen::revert()
+void DisplayScreen::revert()
 {
     if (pendingConfirmation())
         m_client.revert(m_client.state().previewToken);
 }
 
-void KScreenScreen::identify()
+void DisplayScreen::identify()
 {
     QStringList ids;
     for (const auto &display : m_client.state().logical)
