@@ -37,8 +37,7 @@ public:
 
             QStringList files;
             QDirIterator iterator(rootPath, {QStringLiteral("*.desktop")},
-                                  QDir::Files | QDir::Readable,
-                                  QDirIterator::Subdirectories);
+                                  QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
             while (iterator.hasNext())
                 files.append(iterator.next());
             std::sort(files.begin(), files.end());
@@ -65,10 +64,13 @@ public:
         }
 
         QPointer<ApplicationRegistry> registry = m_registry;
-        QMetaObject::invokeMethod(m_registry, [registry, results]() {
-            if (registry)
-                registry->applyScan(results);
-        }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(
+                m_registry,
+                [registry, results]() {
+                    if (registry)
+                        registry->applyScan(results);
+                },
+                Qt::QueuedConnection);
     }
 
 private:
@@ -99,42 +101,55 @@ QVariant DesktopEntryModel::data(const QModelIndex &index, int role) const
 
     DesktopEntry *entry = m_entries.at(index.row());
     switch (role) {
-    case IdRole: return entry->id();
-    case NameRole: return entry->name();
-    case GenericNameRole: return entry->genericName();
-    case CommentRole: return entry->comment();
-    case IconRole: return entry->icon();
-    case PathRole: return entry->path();
-    case ExecRole: return entry->exec();
-    case CommandRole: return entry->command();
-    case StartupWMClassRole: return entry->startupWMClass();
-    case CategoriesRole: return entry->categories();
-    case KeywordsRole: return entry->keywords();
-    case MimeTypesRole: return entry->mimeTypes();
-    case TerminalRole: return entry->terminal();
-    case EntryRole: return QVariant::fromValue(entry);
-    default: return {};
+    case IdRole:
+        return entry->id();
+    case NameRole:
+        return entry->name();
+    case GenericNameRole:
+        return entry->genericName();
+    case CommentRole:
+        return entry->comment();
+    case IconRole:
+        return entry->icon();
+    case PathRole:
+        return entry->path();
+    case ExecRole:
+        return entry->exec();
+    case CommandRole:
+        return entry->command();
+    case StartupWMClassRole:
+        return entry->startupWMClass();
+    case CategoriesRole:
+        return entry->categories();
+    case KeywordsRole:
+        return entry->keywords();
+    case MimeTypesRole:
+        return entry->mimeTypes();
+    case TerminalRole:
+        return entry->terminal();
+    case EntryRole:
+        return QVariant::fromValue(entry);
+    default:
+        return {};
     }
 }
 
 QHash<int, QByteArray> DesktopEntryModel::roleNames() const
 {
-    return {
-        {IdRole, "id"},
-        {NameRole, "name"},
-        {GenericNameRole, "genericName"},
-        {CommentRole, "comment"},
-        {IconRole, "icon"},
-        {PathRole, "path"},
-        {ExecRole, "exec"},
-        {CommandRole, "command"},
-        {StartupWMClassRole, "startupWMClass"},
-        {CategoriesRole, "categories"},
-        {KeywordsRole, "keywords"},
-        {MimeTypesRole, "mimeTypes"},
-        {TerminalRole, "terminal"},
-        {EntryRole, "entry"}
-    };
+    return {{IdRole, "id"},
+            {NameRole, "name"},
+            {GenericNameRole, "genericName"},
+            {CommentRole, "comment"},
+            {IconRole, "icon"},
+            {PathRole, "path"},
+            {ExecRole, "exec"},
+            {CommandRole, "command"},
+            {StartupWMClassRole, "startupWMClass"},
+            {CategoriesRole, "categories"},
+            {KeywordsRole, "keywords"},
+            {MimeTypesRole, "mimeTypes"},
+            {TerminalRole, "terminal"},
+            {EntryRole, "entry"}};
 }
 
 void DesktopEntryModel::setEntries(const QList<DesktopEntry *> &entries)
@@ -173,12 +188,10 @@ ApplicationRegistry::ApplicationRegistry(QObject *parent)
 {
     m_debounceTimer.setSingleShot(true);
     m_debounceTimer.setInterval(100);
-    connect(m_watcher, &QFileSystemWatcher::directoryChanged,
-            this, &ApplicationRegistry::scheduleScan);
-    connect(m_watcher, &QFileSystemWatcher::fileChanged,
-            this, &ApplicationRegistry::scheduleScan);
-    connect(&m_debounceTimer, &QTimer::timeout,
-            this, &ApplicationRegistry::startScan);
+    connect(m_watcher, &QFileSystemWatcher::directoryChanged, this,
+            &ApplicationRegistry::scheduleScan);
+    connect(m_watcher, &QFileSystemWatcher::fileChanged, this, &ApplicationRegistry::scheduleScan);
+    connect(&m_debounceTimer, &QTimer::timeout, this, &ApplicationRegistry::startScan);
 
     monitorPaths();
     startScan();
@@ -214,8 +227,7 @@ DesktopEntry *ApplicationRegistry::byPath(const QString &path) const
     return m_entriesByPath.value(QFileInfo(path).absoluteFilePath());
 }
 
-DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId,
-                                                 const QString &windowClass,
+DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QString &windowClass,
                                                  const QString &executablePath,
                                                  const QString &executableName) const
 {
@@ -226,7 +238,11 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId,
     DesktopEntry *best = nullptr;
     int bestScore = 0;
 
-    for (DesktopEntry *entry : applicationEntries()) {
+    // Menu visibility does not determine whether an entry owns windows.
+    for (DesktopEntry *entry : m_entries) {
+        if (entry->hidden())
+            continue;
+
         const QString id = normalized(entry->id());
         const QString startupClass = normalized(entry->startupWMClass());
         const QString program = normalized(entry->command().value(0));
@@ -272,8 +288,7 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId,
             score = qMax(score, 55);
         if (!wantedClass.isEmpty() && name.startsWith(wantedClass))
             score = qMax(score, 50);
-        if (!wantedExecutable.isEmpty() && !program.isEmpty()
-            && wantedExecutable.contains(program))
+        if (!wantedExecutable.isEmpty() && !program.isEmpty() && wantedExecutable.contains(program))
             score = qMax(score, 45);
 
         if (score > bestScore) {
@@ -408,8 +423,7 @@ void ApplicationRegistry::monitorPaths()
         while (iterator.hasNext())
             m_watcher->addPath(iterator.next());
 
-        QDirIterator files(rootPath, {QStringLiteral("*.desktop")},
-                           QDir::Files | QDir::Readable,
+        QDirIterator files(rootPath, {QStringLiteral("*.desktop")}, QDir::Files | QDir::Readable,
                            QDirIterator::Subdirectories);
         while (files.hasNext())
             m_watcher->addPath(files.next());
@@ -423,17 +437,15 @@ void registerApplicationsQmlTypes()
         return;
     registered = true;
 
-    qmlRegisterSingletonType<ApplicationRegistry>(
-        "Cutefish.Applications", 1, 0, "DesktopEntries",
-        [](QQmlEngine *, QJSEngine *) -> QObject * {
-            return ApplicationRegistry::instance();
-        });
-    qmlRegisterSingletonType<ApplicationRuntime>(
-        "Cutefish.Applications", 1, 0, "AppRuntime",
-        [](QQmlEngine *, QJSEngine *) -> QObject * {
-            return ApplicationRuntime::instance();
-        });
+    qmlRegisterSingletonType<ApplicationRegistry>("Cutefish.Applications", 1, 0, "DesktopEntries",
+                                                  [](QQmlEngine *, QJSEngine *) -> QObject * {
+                                                      return ApplicationRegistry::instance();
+                                                  });
+    qmlRegisterSingletonType<ApplicationRuntime>("Cutefish.Applications", 1, 0, "AppRuntime",
+                                                 [](QQmlEngine *, QJSEngine *) -> QObject * {
+                                                     return ApplicationRuntime::instance();
+                                                 });
     qmlRegisterUncreatableType<DesktopEntry>(
-        "Cutefish.Applications", 1, 0, "DesktopEntry",
-        QStringLiteral("DesktopEntry objects are provided by DesktopEntries"));
+            "Cutefish.Applications", 1, 0, "DesktopEntry",
+            QStringLiteral("DesktopEntry objects are provided by DesktopEntries"));
 }

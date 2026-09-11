@@ -23,3 +23,10 @@ target_link_libraries(cutefish-framework-applications
         Qt6::Gui
         Qt6::Qml
 )
+
+if(BUILD_TESTING)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(tst_applicationregistry tests/tst_applicationregistry.cpp)
+    target_link_libraries(tst_applicationregistry PRIVATE Cutefish::Applications Qt6::Test)
+    add_test(NAME applicationregistry COMMAND tst_applicationregistry)
+endif()
