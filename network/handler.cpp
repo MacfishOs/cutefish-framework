@@ -35,11 +35,6 @@
 
 #include <libnm/nm-vpn-plugin-info.h>
 
-#if WITH_MODEMMANAGER_SUPPORT
-#include <ModemManagerQt/Manager>
-#include <ModemManagerQt/ModemDevice>
-#endif
-
 #include <QDBusError>
 #include <QDBusMetaType>
 #include <QDBusPendingReply>
@@ -106,40 +101,6 @@ void Handler::activateConnection(const QString &connection, const QString &devic
             qDebug() << "Checking VPN" << con->name() << "type:" << vpnSetting->serviceType();
         }
     }
-
-#if WITH_MODEMMANAGER_SUPPORT
-    if (con->settings()->connectionType() == NetworkManager::ConnectionSettings::Gsm) {
-        NetworkManager::ModemDevice::Ptr nmModemDevice =
-                NetworkManager::findNetworkInterface(device)
-                        .objectCast<NetworkManager::ModemDevice>();
-        if (nmModemDevice) {
-            ModemManager::ModemDevice::Ptr mmModemDevice =
-                    ModemManager::findModemDevice(nmModemDevice->udi());
-            if (mmModemDevice) {
-                ModemManager::Modem::Ptr modem =
-                        mmModemDevice->interface(ModemManager::ModemDevice::ModemInterface)
-                                .objectCast<ModemManager::Modem>();
-                NetworkManager::GsmSetting::Ptr gsmSetting =
-                        con->settings()
-                                ->setting(NetworkManager::Setting::Gsm)
-                                .staticCast<NetworkManager::GsmSetting>();
-                if (gsmSetting && gsmSetting->pinFlags() == NetworkManager::Setting::NotSaved
-                    && modem && modem->unlockRequired() > MM_MODEM_LOCK_NONE) {
-                    QDBusInterface managerIface(
-                            "org.kde.plasmanetworkmanagement", "/org/kde/plasmanetworkmanagement",
-                            "org.kde.plasmanetworkmanagement", QDBusConnection::sessionBus(), this);
-                    managerIface.call("unlockModem", mmModemDevice->uni());
-                    connect(modem.data(), &ModemManager::Modem::unlockRequiredChanged, this,
-                            &Handler::unlockRequiredChanged);
-                    m_tmpConnectionPath = connection;
-                    m_tmpDevicePath = device;
-                    m_tmpSpecificPath = specificObject;
-                    return;
-                }
-            }
-        }
-    }
-#endif
 
     QDBusPendingReply<QDBusObjectPath> reply =
             NetworkManager::activateConnection(connection, device, specificObject);
@@ -779,12 +740,3 @@ void Handler::primaryConnectionTypeChanged(NetworkManager::ConnectionSettings::C
     m_hotspotSupported = checkHotspotSupported();
     Q_EMIT hotspotSupportedChanged(m_hotspotSupported);
 }
-
-#if WITH_MODEMMANAGER_SUPPORT
-void Handler::unlockRequiredChanged(MMModemLock modemLock)
-{
-    if (modemLock == MM_MODEM_LOCK_NONE) {
-        activateConnection(m_tmpConnectionPath, m_tmpDevicePath, m_tmpSpecificPath);
-    }
-}
-#endif

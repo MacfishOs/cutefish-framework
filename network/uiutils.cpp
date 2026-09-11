@@ -20,21 +20,13 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <NetworkManagerQt/BluetoothDevice>
-#include <NetworkManagerQt/Manager>
-#include <NetworkManagerQt/Device>
 #include <NetworkManagerQt/AccessPoint>
+#include <NetworkManagerQt/BluetoothDevice>
+#include <NetworkManagerQt/Device>
+#include <NetworkManagerQt/Manager>
 #include <NetworkManagerQt/WiredDevice>
 #include <NetworkManagerQt/WirelessDevice>
 #include <NetworkManagerQt/WirelessSetting>
-
-#if WITH_MODEMMANAGER_SUPPORT
-#include <ModemManagerQt/manager.h>
-#include <ModemManagerQt/modem.h>
-#include <ModemManagerQt/modemdevice.h>
-#include <ModemManagerQt/modem3gpp.h>
-#include <ModemManagerQt/modemcdma.h>
-#endif
 
 #include <QHostAddress>
 #include <QSizeF>
@@ -45,75 +37,77 @@
 
 using namespace NetworkManager;
 
-UiUtils::SortedConnectionType UiUtils::connectionTypeToSortedType(NetworkManager::ConnectionSettings::ConnectionType type)
+UiUtils::SortedConnectionType
+UiUtils::connectionTypeToSortedType(NetworkManager::ConnectionSettings::ConnectionType type)
 {
     switch (type) {
-        case NetworkManager::ConnectionSettings::Unknown:
-            return UiUtils::Unknown;
-            break;
-        case NetworkManager::ConnectionSettings::Adsl:
-            return UiUtils::Adsl;
-            break;
-        case NetworkManager::ConnectionSettings::Bluetooth:
-            return UiUtils::Bluetooth;
-            break;
-        case NetworkManager::ConnectionSettings::Bond:
-            return UiUtils::Bond;
-            break;
-        case NetworkManager::ConnectionSettings::Bridge:
-            return UiUtils::Bridge;
-            break;
-        case NetworkManager::ConnectionSettings::Cdma:
-            return UiUtils::Cdma;
-            break;
-        case NetworkManager::ConnectionSettings::Gsm:
-            return UiUtils::Gsm;
-            break;
-        case NetworkManager::ConnectionSettings::Infiniband:
-            return UiUtils::Infiniband;
-            break;
-        case NetworkManager::ConnectionSettings::OLPCMesh:
-            return UiUtils::OLPCMesh;
-            break;
-        case NetworkManager::ConnectionSettings::Pppoe:
-            return UiUtils::Pppoe;
-            break;
-        case NetworkManager::ConnectionSettings::Team:
-            return UiUtils::Team;
-            break;
-        case NetworkManager::ConnectionSettings::Vlan:
-            return UiUtils::Vlan;
-            break;
-        case NetworkManager::ConnectionSettings::Vpn:
-            return UiUtils::Vpn;
-            break;
-        case NetworkManager::ConnectionSettings::Wired:
-            return UiUtils::Wired;
-            break;
-        case NetworkManager::ConnectionSettings::Wireless:
-            return UiUtils::Wireless;
-            break;
-        default:
-            return UiUtils::Unknown;
-            break;
+    case NetworkManager::ConnectionSettings::Unknown:
+        return UiUtils::Unknown;
+        break;
+    case NetworkManager::ConnectionSettings::Adsl:
+        return UiUtils::Adsl;
+        break;
+    case NetworkManager::ConnectionSettings::Bluetooth:
+        return UiUtils::Bluetooth;
+        break;
+    case NetworkManager::ConnectionSettings::Bond:
+        return UiUtils::Bond;
+        break;
+    case NetworkManager::ConnectionSettings::Bridge:
+        return UiUtils::Bridge;
+        break;
+    case NetworkManager::ConnectionSettings::Cdma:
+        return UiUtils::Cdma;
+        break;
+    case NetworkManager::ConnectionSettings::Gsm:
+        return UiUtils::Gsm;
+        break;
+    case NetworkManager::ConnectionSettings::Infiniband:
+        return UiUtils::Infiniband;
+        break;
+    case NetworkManager::ConnectionSettings::OLPCMesh:
+        return UiUtils::OLPCMesh;
+        break;
+    case NetworkManager::ConnectionSettings::Pppoe:
+        return UiUtils::Pppoe;
+        break;
+    case NetworkManager::ConnectionSettings::Team:
+        return UiUtils::Team;
+        break;
+    case NetworkManager::ConnectionSettings::Vlan:
+        return UiUtils::Vlan;
+        break;
+    case NetworkManager::ConnectionSettings::Vpn:
+        return UiUtils::Vpn;
+        break;
+    case NetworkManager::ConnectionSettings::Wired:
+        return UiUtils::Wired;
+        break;
+    case NetworkManager::ConnectionSettings::Wireless:
+        return UiUtils::Wireless;
+        break;
+    default:
+        return UiUtils::Unknown;
+        break;
     }
 }
 
 bool UiUtils::isConnectionTypeSupported(NetworkManager::ConnectionSettings::ConnectionType type)
 {
-    if (type == NetworkManager::ConnectionSettings::Generic || type == NetworkManager::ConnectionSettings::Tun) {
+    if (type == NetworkManager::ConnectionSettings::Generic
+        || type == NetworkManager::ConnectionSettings::Tun) {
         return false;
     }
 
     // TODO: Implement this setting
-    //bool manageVirtualConnections = Configuration::manageVirtualConnections();
+    // bool manageVirtualConnections = Configuration::manageVirtualConnections();
     bool manageVirtualConnections = false;
 
-    if (type == NetworkManager::ConnectionSettings::Bond ||
-        type == NetworkManager::ConnectionSettings::Bridge ||
-        type == NetworkManager::ConnectionSettings::Infiniband ||
-        type == NetworkManager::ConnectionSettings::Team ||
-        type == NetworkManager::ConnectionSettings::Vlan) {
+    if (type == NetworkManager::ConnectionSettings::Bond
+        || type == NetworkManager::ConnectionSettings::Bridge
+        || type == NetworkManager::ConnectionSettings::Infiniband
+        || type == NetworkManager::ConnectionSettings::Team
+        || type == NetworkManager::ConnectionSettings::Vlan) {
         return manageVirtualConnections;
     }
 
@@ -122,18 +116,19 @@ bool UiUtils::isConnectionTypeSupported(NetworkManager::ConnectionSettings::Conn
 
 bool UiUtils::isConnectionTypeVirtual(NetworkManager::ConnectionSettings::ConnectionType type)
 {
-    if (type == NetworkManager::ConnectionSettings::Bond ||
-        type == NetworkManager::ConnectionSettings::Bridge ||
-        type == NetworkManager::ConnectionSettings::Infiniband ||
-        type == NetworkManager::ConnectionSettings::Team ||
-        type == NetworkManager::ConnectionSettings::Vlan) {
+    if (type == NetworkManager::ConnectionSettings::Bond
+        || type == NetworkManager::ConnectionSettings::Bridge
+        || type == NetworkManager::ConnectionSettings::Infiniband
+        || type == NetworkManager::ConnectionSettings::Team
+        || type == NetworkManager::ConnectionSettings::Vlan) {
         return true;
     }
 
-   return false;
+    return false;
 }
 
-QString UiUtils::interfaceTypeLabel(const NetworkManager::Device::Type type, const NetworkManager::Device::Ptr iface)
+QString UiUtils::interfaceTypeLabel(const NetworkManager::Device::Type type,
+                                    const NetworkManager::Device::Ptr iface)
 {
     QString deviceText;
     switch (type) {
@@ -176,9 +171,10 @@ QString UiUtils::interfaceTypeLabel(const NetworkManager::Device::Type type, con
         break;
 #endif
     case NetworkManager::Device::Modem: {
-        const NetworkManager::ModemDevice::Ptr nmModemIface = iface.objectCast<NetworkManager::ModemDevice>();
+        const NetworkManager::ModemDevice::Ptr nmModemIface =
+                iface.objectCast<NetworkManager::ModemDevice>();
         if (nmModemIface) {
-            switch(modemSubType(nmModemIface->currentCapabilities())) {
+            switch (modemSubType(nmModemIface->currentCapabilities())) {
             case NetworkManager::ModemDevice::Pots:
                 /*: title of the interface widget in nm's popup */
                 deviceText = QObject::tr("Serial Modem");
@@ -190,14 +186,14 @@ QString UiUtils::interfaceTypeLabel(const NetworkManager::Device::Type type, con
                 deviceText = QObject::tr("Mobile Broadband");
                 break;
             case NetworkManager::ModemDevice::NoCapability:
-                qCWarning(gLcNm) << "Unhandled modem sub type: NetworkManager::ModemDevice::NoCapability";
+                qCWarning(gLcNm)
+                        << "Unhandled modem sub type: NetworkManager::ModemDevice::NoCapability";
                 break;
             default:
                 break;
             }
         }
-    }
-        break;
+    } break;
     case NetworkManager::Device::Ethernet:
     default:
         /*: title of the interface widget in nm's popup */
@@ -207,7 +203,8 @@ QString UiUtils::interfaceTypeLabel(const NetworkManager::Device::Type type, con
     return deviceText;
 }
 
-QString UiUtils::iconAndTitleForConnectionSettingsType(NetworkManager::ConnectionSettings::ConnectionType type, QString &title)
+QString UiUtils::iconAndTitleForConnectionSettingsType(
+        NetworkManager::ConnectionSettings::ConnectionType type, QString &title)
 {
     QString text;
     QString icon = QLatin1String("action/settings_ethernet");
@@ -272,7 +269,8 @@ QString UiUtils::iconAndTitleForConnectionSettingsType(NetworkManager::Connectio
     return icon;
 }
 
-QString UiUtils::prettyInterfaceName(NetworkManager::Device::Type type, const QString &interfaceName)
+QString UiUtils::prettyInterfaceName(NetworkManager::Device::Type type,
+                                     const QString &interfaceName)
 {
     QString ret;
     switch (type) {
@@ -303,7 +301,8 @@ QString UiUtils::prettyInterfaceName(NetworkManager::Device::Type type, const QS
     return ret;
 }
 
-QString UiUtils::connectionStateToString(NetworkManager::Device::State state, const QString &connectionName)
+QString UiUtils::connectionStateToString(NetworkManager::Device::State state,
+                                         const QString &connectionName)
 {
     QString stateString;
     switch (state) {
@@ -490,7 +489,6 @@ QStringList UiUtils::wpaFlagsToStringList(NetworkManager::AccessPoint::WpaFlags 
     return flagList;
 }
 
-
 QString UiUtils::connectionSpeed(double bitrate)
 {
     QString out;
@@ -499,10 +497,10 @@ QString UiUtils::connectionSpeed(double bitrate)
         out = QObject::tr("%1 Bit/s").arg(bitrate);
     } else if (bitrate < 1000000) {
         /*: connection speed */
-        out = QObject::tr("%1 MBit/s").arg(bitrate/1000);
+        out = QObject::tr("%1 MBit/s").arg(bitrate / 1000);
     } else {
         /*: connection speed */
-        out = QObject::tr("%1 GBit/s").arg(bitrate/1000000);
+        out = QObject::tr("%1 GBit/s").arg(bitrate / 1000000);
     }
     return out;
 }
@@ -526,158 +524,21 @@ QString UiUtils::wirelessBandToString(NetworkManager::WirelessSetting::Frequency
     return QString();
 }
 
-#if WITH_MODEMMANAGER_SUPPORT
-QString UiUtils::convertAllowedModeToString(ModemManager::Modem::ModemModes modes)
-{
-    if (modes.testFlag(MM_MODEM_MODE_4G)) {
-        /*: Gsm modes (2G/3G/any) */
-        return QObject::tr("LTE");
-    } else if (modes.testFlag(MM_MODEM_MODE_3G)) {
-        /*: Gsm modes (2G/3G/any) */
-        return QObject::tr("UMTS/HSxPA");
-    } else if (modes.testFlag(MM_MODEM_MODE_2G)) {
-        /*: Gsm modes (2G/3G/any) */
-        return QObject::tr("GPRS/EDGE");
-    } else if (modes.testFlag(MM_MODEM_MODE_CS)) {
-        /*: Gsm modes (2G/3G/any) */
-        return QObject::tr("GSM");
-    } else if (modes.testFlag(MM_MODEM_MODE_ANY)) {
-        /*: Gsm modes (2G/3G/any) */
-        return QObject::tr("Any");
-    }
-
-    /*: Gsm modes (2G/3G/any) */
-    return QObject::tr("Any");
-}
-
-QString UiUtils::convertAccessTechnologyToString(ModemManager::Modem::AccessTechnologies tech)
-{
-    if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_LTE)) {
-        /*: Cellular access technology */
-        return QObject::tr("LTE");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_EVDOB)) {
-        /*: Cellular access technology */
-        return QObject::tr("CDMA2000 EVDO revision B");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_EVDOA)) {
-        /*: Cellular access technology */
-        return QObject::tr("CDMA2000 EVDO revision A");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_EVDO0)) {
-        /*: Cellular access technology */
-        return QObject::tr("CDMA2000 EVDO revision 0");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_1XRTT)) {
-        /*: Cellular access technology */
-        return QObject::tr("CDMA2000 1xRTT");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_HSPA_PLUS)) {
-        /*: Cellular access technology */
-        return QObject::tr("HSPA+");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_HSPA)) {
-        /*: Cellular access technology */
-        return QObject::tr("HSPA");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_HSUPA)) {
-        /*: Cellular access technology */
-        return QObject::tr("HSUPA");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_HSDPA)) {
-        /*: Cellular access technology */
-        return QObject::tr("HSDPA");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_UMTS)) {
-        /*: Cellular access technology */
-        return QObject::tr("UMTS");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_EDGE)) {
-        /*: Cellular access technology */
-        return QObject::tr("EDGE");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_GPRS)) {
-        /*: Cellular access technology */
-        return QObject::tr("GPRS");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_GSM_COMPACT)) {
-        /*: Cellular access technology */
-        return QObject::tr("Compact GSM");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_GSM)) {
-        /*: Cellular access technology */
-        return QObject::tr("GSM");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_POTS)) {
-        /*: Analog wireline modem */
-        return QObject::tr("Analog");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN)) {
-        /*: Unknown cellular access technology */
-        return QObject::tr("Unknown");
-    } else if (tech.testFlag(MM_MODEM_ACCESS_TECHNOLOGY_ANY)) {
-        /*: Any cellular access technology */
-        return QObject::tr("Any");
-    }
-
-    /*: Unknown cellular access technology */
-    return QObject::tr("Unknown");
-}
-
-QString UiUtils::convertLockReasonToString(MMModemLock reason)
-{
-    switch (reason) {
-    case MM_MODEM_LOCK_NONE:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem is unlocked.");
-    case MM_MODEM_LOCK_SIM_PIN:
-        /*: possible SIM lock reason */
-        return QObject::tr("SIM requires the PIN code.");
-    case MM_MODEM_LOCK_SIM_PIN2:
-        /*: possible SIM lock reason */
-        return QObject::tr("SIM requires the PIN2 code.");
-    case MM_MODEM_LOCK_SIM_PUK:
-        /*: possible SIM lock reason */
-        return QObject::tr("SIM requires the PUK code.");
-    case MM_MODEM_LOCK_SIM_PUK2:
-        /*: possible SIM lock reason */
-        return QObject::tr("SIM requires the PUK2 code.");
-    case MM_MODEM_LOCK_PH_SP_PIN:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the service provider PIN code.");
-    case MM_MODEM_LOCK_PH_SP_PUK:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the service provider PUK code.");
-    case MM_MODEM_LOCK_PH_NET_PIN:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the network PIN code.");
-    case MM_MODEM_LOCK_PH_NET_PUK:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the network PUK code.");
-    case MM_MODEM_LOCK_PH_SIM_PIN:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the PIN code.");
-    case MM_MODEM_LOCK_PH_CORP_PIN:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the corporate PIN code.");
-    case MM_MODEM_LOCK_PH_CORP_PUK:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the corporate PUK code.");
-    case MM_MODEM_LOCK_PH_FSIM_PIN:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the PH-FSIM PIN code.");
-    case MM_MODEM_LOCK_PH_FSIM_PUK:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the PH-FSIM PUK code.");
-    case MM_MODEM_LOCK_PH_NETSUB_PIN:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the network subset PIN code.");
-    case MM_MODEM_LOCK_PH_NETSUB_PUK:
-        /*: possible SIM lock reason */
-        return QObject::tr("Modem requires the network subset PUK code.");
-    case MM_MODEM_LOCK_UNKNOWN:
-    default:
-        /*: possible SIM lock reason */
-        return QObject::tr("Lock reason unknown.");
-    }
-}
-#endif
-
 #if !NM_CHECK_VERSION(1, 2, 0)
 QString UiUtils::convertNspTypeToString(WimaxNsp::NetworkType type)
 {
     switch (type) {
     /*: unknown Wimax NSP type */
-    case WimaxNsp::Unknown: return QObject::tr("Unknown");
-    case WimaxNsp::Home: return QObject::tr("Home");
-    case WimaxNsp::Partner: return QObject::tr("Partner");
-    case WimaxNsp::RoamingPartner: return QObject::tr("Roaming partner");
-    default: break;
+    case WimaxNsp::Unknown:
+        return QObject::tr("Unknown");
+    case WimaxNsp::Home:
+        return QObject::tr("Home");
+    case WimaxNsp::Partner:
+        return QObject::tr("Partner");
+    case WimaxNsp::RoamingPartner:
+        return QObject::tr("Roaming partner");
+    default:
+        break;
     }
 
     /*: Unknown */
@@ -685,7 +546,8 @@ QString UiUtils::convertNspTypeToString(WimaxNsp::NetworkType type)
 }
 #endif
 
-NetworkManager::ModemDevice::Capability UiUtils::modemSubType(NetworkManager::ModemDevice::Capabilities modemCaps)
+NetworkManager::ModemDevice::Capability
+UiUtils::modemSubType(NetworkManager::ModemDevice::Capabilities modemCaps)
 {
     if (modemCaps & NetworkManager::ModemDevice::Lte) {
         return NetworkManager::ModemDevice::Lte;
@@ -744,20 +606,22 @@ QString UiUtils::labelFromWirelessSecurity(NetworkManager::WirelessSecurityType 
     return tip;
 }
 
-QString UiUtils::formatDateRelative(const QDateTime & lastUsed)
+QString UiUtils::formatDateRelative(const QDateTime &lastUsed)
 {
     QString lastUsedText;
     if (lastUsed.isValid()) {
         const QDateTime now = QDateTime::currentDateTime();
-        if (lastUsed.daysTo(now) == 0 ) {
+        if (lastUsed.daysTo(now) == 0) {
             const int secondsAgo = lastUsed.secsTo(now);
-            if (secondsAgo < (60 * 60 )) {
+            if (secondsAgo < (60 * 60)) {
                 const int minutesAgo = secondsAgo / 60;
-                /*: Label for last used time for a network connection used in the last hour, as the number of minutes since usage */
+                /*: Label for last used time for a network connection used in the last hour, as the
+                 * number of minutes since usage */
                 lastUsedText = QObject::tr("%n minute(s) ago", "", minutesAgo);
             } else {
                 const int hoursAgo = secondsAgo / (60 * 60);
-                /*: Label for last used time for a network connection used in the last day, as the number of hours since usage */
+                /*: Label for last used time for a network connection used in the last day, as the
+                 * number of hours since usage */
                 lastUsedText = QObject::tr("%n hour(s) ago", "", hoursAgo);
             }
         } else if (lastUsed.daysTo(now) == 1) {
@@ -768,36 +632,39 @@ QString UiUtils::formatDateRelative(const QDateTime & lastUsed)
         }
     } else {
         /*: Label for last used time for a network connection that has never been used */
-        lastUsedText =  QObject::tr("Never");
+        lastUsedText = QObject::tr("Never");
     }
     return lastUsedText;
 }
 
-QString UiUtils::formatLastUsedDateRelative(const QDateTime & lastUsed)
+QString UiUtils::formatLastUsedDateRelative(const QDateTime &lastUsed)
 {
     QString lastUsedText;
     if (lastUsed.isValid()) {
         const QDateTime now = QDateTime::currentDateTime();
-        if (lastUsed.daysTo(now) == 0 ) {
+        if (lastUsed.daysTo(now) == 0) {
             const int secondsAgo = lastUsed.secsTo(now);
-            if (secondsAgo < (60 * 60 )) {
+            if (secondsAgo < (60 * 60)) {
                 const int minutesAgo = secondsAgo / 60;
-                /*: Label for last used time for a network connection used in the last hour, as the number of minutes since usage */
+                /*: Label for last used time for a network connection used in the last hour, as the
+                 * number of minutes since usage */
                 lastUsedText = QObject::tr("Last used %n minute(s) ago", "", minutesAgo);
             } else {
                 const int hoursAgo = secondsAgo / (60 * 60);
-                /*: Label for last used time for a network connection used in the last day, as the number of hours since usage */
+                /*: Label for last used time for a network connection used in the last day, as the
+                 * number of hours since usage */
                 lastUsedText = QObject::tr("Last used %n hour(s) ago", "", hoursAgo);
             }
         } else if (lastUsed.daysTo(now) == 1) {
             /*: Label for last used time for a network connection used the previous day */
             lastUsedText = QObject::tr("Last used yesterday");
         } else {
-            lastUsedText = QObject::tr("Last used on %1").arg(QLocale().toString(lastUsed.date(), QLocale::ShortFormat));
+            lastUsedText = QObject::tr("Last used on %1")
+                                   .arg(QLocale().toString(lastUsed.date(), QLocale::ShortFormat));
         }
     } else {
         /*: Label for last used time for a network connection that has never been used */
-        lastUsedText =  QObject::tr("Never used");
+        lastUsedText = QObject::tr("Never used");
     }
     return lastUsedText;
 }

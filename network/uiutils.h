@@ -24,23 +24,18 @@
 
 #include <network_export.h>
 
+#include <NetworkManagerQt/AccessPoint>
+#include <NetworkManagerQt/BluetoothDevice>
 #include <NetworkManagerQt/Device>
 #include <NetworkManagerQt/ModemDevice>
-#include <NetworkManagerQt/WirelessDevice>
-#include <NetworkManagerQt/WirelessSetting>
-#include <NetworkManagerQt/AccessPoint>
-#include <NetworkManagerQt/WimaxNsp>
 #include <NetworkManagerQt/Utils>
-#include <NetworkManagerQt/BluetoothDevice>
-#include <NetworkManagerQt/WimaxDevice>
-#include <NetworkManagerQt/WiredDevice>
 #include <NetworkManagerQt/VpnConnection>
 #include <NetworkManagerQt/VpnSetting>
-
-#if WITH_MODEMMANAGER_SUPPORT
-#include <ModemManager/ModemManager.h>
-#include <ModemManagerQt/modem.h>
-#endif
+#include <NetworkManagerQt/WimaxDevice>
+#include <NetworkManagerQt/WimaxNsp>
+#include <NetworkManagerQt/WiredDevice>
+#include <NetworkManagerQt/WirelessDevice>
+#include <NetworkManagerQt/WirelessSetting>
 
 class CUTEFISH_NETWORK_EXPORT UiUtils
 {
@@ -66,7 +61,8 @@ public:
     /*
      * @return sorted connection type used to prioritize specific connection types
      */
-    static SortedConnectionType connectionTypeToSortedType(NetworkManager::ConnectionSettings::ConnectionType type);
+    static SortedConnectionType
+    connectionTypeToSortedType(NetworkManager::ConnectionSettings::ConnectionType type);
 
     /*
      * @return whether given connection type is supported
@@ -84,7 +80,8 @@ public:
      * @return a human-readable description for the network interface type for use as label
      * @param type the type of the network interface
      */
-    static QString interfaceTypeLabel(const NetworkManager::Device::Type type, const NetworkManager::Device::Ptr iface);
+    static QString interfaceTypeLabel(const NetworkManager::Device::Type type,
+                                      const NetworkManager::Device::Ptr iface);
 
     /**
      * @return a human-readable name for a given network interface according to the configured
@@ -92,18 +89,21 @@ public:
      * @param type type of the network interface
      * @param interfaceName name of the network interface (eg eth0)
      */
-    static QString prettyInterfaceName(NetworkManager::Device::Type type, const QString &interfaceName);
+    static QString prettyInterfaceName(NetworkManager::Device::Type type,
+                                       const QString &interfaceName);
 
     /**
      * @return a human-readable description of the connection state of a given network interface
      * @param state The connection state
      */
-    static QString connectionStateToString(NetworkManager::Device::State state, const QString &connectionName = QString());
+    static QString connectionStateToString(NetworkManager::Device::State state,
+                                           const QString &connectionName = QString());
 
     static QString vpnConnectionStateToString(NetworkManager::VpnConnection::State state);
 
-    static QString iconAndTitleForConnectionSettingsType(NetworkManager::ConnectionSettings::ConnectionType type,
-                                                         QString &title);
+    static QString
+    iconAndTitleForConnectionSettingsType(NetworkManager::ConnectionSettings::ConnectionType type,
+                                          QString &title);
     /**
      * @return a human-readable description of operation mode.
      * @param mode the operation mode
@@ -123,23 +123,20 @@ public:
     static QString connectionSpeed(double bitrate);
 
     /**
-     * @param band The band of a wireless network. The value corresponds to the type enum in Knm::WirelessSetting::EnumBand
+     * @param band The band of a wireless network. The value corresponds to the type enum in
+     * Knm::WirelessSetting::EnumBand
      * @return A string representation
      */
     static QString wirelessBandToString(NetworkManager::WirelessSetting::FrequencyBand band);
 
-#if WITH_MODEMMANAGER_SUPPORT
-    static QString convertAllowedModeToString(ModemManager::Modem::ModemModes mode);
-    static QString convertAccessTechnologyToString(ModemManager::Modem::AccessTechnologies tech);
-    static QString convertLockReasonToString(MMModemLock reason);
-#endif
-    static NetworkManager::ModemDevice::Capability modemSubType(NetworkManager::ModemDevice::Capabilities modemCaps);
+    static NetworkManager::ModemDevice::Capability
+    modemSubType(NetworkManager::ModemDevice::Capabilities modemCaps);
 #if !NM_CHECK_VERSION(1, 2, 0)
     static QString convertNspTypeToString(NetworkManager::WimaxNsp::NetworkType type);
 #endif
     static QString labelFromWirelessSecurity(NetworkManager::WirelessSecurityType type);
 
-    static QString formatDateRelative(const QDateTime & lastUsed);
-    static QString formatLastUsedDateRelative(const QDateTime & lastUsed);
+    static QString formatDateRelative(const QDateTime &lastUsed);
+    static QString formatLastUsedDateRelative(const QDateTime &lastUsed);
 };
 #endif // UIUTILS_H

@@ -30,13 +30,9 @@
 #include "networkitemslist.h"
 
 #include <NetworkManagerQt/Manager>
+#include <NetworkManagerQt/Utils>
 #include <NetworkManagerQt/VpnConnection>
 #include <NetworkManagerQt/WirelessDevice>
-#include <NetworkManagerQt/Utils>
-
-#if WITH_MODEMMANAGER_SUPPORT
-#include <ModemManagerQt/modem.h>
-#endif
 
 Q_DECLARE_LOGGING_CATEGORY(gLcNm)
 
@@ -140,7 +136,8 @@ private Q_SLOTS:
     void activeConnectionAdded(const QString &activeConnection);
     void activeConnectionRemoved(const QString &activeConnection);
     void activeConnectionStateChanged(NetworkManager::ActiveConnection::State state);
-    void activeVpnConnectionStateChanged(NetworkManager::VpnConnection::State state,NetworkManager::VpnConnection::StateChangeReason reason);
+    void activeVpnConnectionStateChanged(NetworkManager::VpnConnection::State state,
+                                         NetworkManager::VpnConnection::StateChangeReason reason);
     void availableConnectionAppeared(const QString &connection);
     void availableConnectionDisappeared(const QString &connection);
     void connectionAdded(const QString &connection);
@@ -148,12 +145,9 @@ private Q_SLOTS:
     void connectionUpdated();
     void deviceAdded(const QString &device);
     void deviceRemoved(const QString &device);
-    void deviceStateChanged(NetworkManager::Device::State state, NetworkManager::Device::State oldState, NetworkManager::Device::StateChangeReason reason);
-#if WITH_MODEMMANAGER_SUPPORT
-    void gsmNetworkAccessTechnologiesChanged(QFlags<MMModemAccessTechnology> accessTechnologies);
-    void gsmNetworkCurrentModesChanged();
-    void gsmNetworkSignalQualityChanged(const ModemManager::SignalQualityPair &signalQuality);
-#endif
+    void deviceStateChanged(NetworkManager::Device::State state,
+                            NetworkManager::Device::State oldState,
+                            NetworkManager::Device::StateChangeReason reason);
     void ipConfigChanged();
     void ipInterfaceChanged();
     void statusChanged(NetworkManager::Status status);
@@ -163,14 +157,17 @@ private Q_SLOTS:
     void wirelessNetworkReferenceApChanged(const QString &accessPoint);
 
     void initialize();
+
 private:
     NetworkItemsList m_list;
 
     void addActiveConnection(const NetworkManager::ActiveConnection::Ptr &activeConnection);
-    void addAvailableConnection(const QString &connection, const NetworkManager::Device::Ptr &device);
+    void addAvailableConnection(const QString &connection,
+                                const NetworkManager::Device::Ptr &device);
     void addConnection(const NetworkManager::Connection::Ptr &connection);
     void addDevice(const NetworkManager::Device::Ptr &device);
-    void addWirelessNetwork(const NetworkManager::WirelessNetwork::Ptr &network, const NetworkManager::WirelessDevice::Ptr &device);
+    void addWirelessNetwork(const NetworkManager::WirelessNetwork::Ptr &network,
+                            const NetworkManager::WirelessDevice::Ptr &device);
     void checkAndCreateDuplicate(const QString &connection, const QString &deviceUni);
     void initializeSignals();
     void initializeSignals(const NetworkManager::ActiveConnection::Ptr &activeConnection);
@@ -178,9 +175,12 @@ private:
     void initializeSignals(const NetworkManager::Device::Ptr &device);
     void initializeSignals(const NetworkManager::WirelessNetwork::Ptr &network);
     void updateItem(NetworkModelItem *item);
-    void updateFromWirelessNetwork(NetworkModelItem *item, const NetworkManager::WirelessNetwork::Ptr &network, const NetworkManager::WirelessDevice::Ptr &device);
+    void updateFromWirelessNetwork(NetworkModelItem *item,
+                                   const NetworkManager::WirelessNetwork::Ptr &network,
+                                   const NetworkManager::WirelessDevice::Ptr &device);
 
-    NetworkManager::WirelessSecurityType alternativeWirelessSecurity(const NetworkManager::WirelessSecurityType type);
+    NetworkManager::WirelessSecurityType
+    alternativeWirelessSecurity(const NetworkManager::WirelessSecurityType type);
 };
 
 #endif // NETWORKMODEL_H
