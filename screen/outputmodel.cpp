@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <climits>
 
+#include <QFileInfo>
 #include <QRect>
 #include <QSet>
 
@@ -152,6 +153,15 @@ QVariant DisplayOutputModel::data(const QModelIndex &index, int role) const
         return e.physical.capabilities;
     case SupportedScalesRole:
         return QVariantList {1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0};
+    case DrmConnectorRole: {
+        // Sysfs connector name, e.g. "card0-eDP-1".
+        const QFileInfo device(e.physical.devicePath);
+        if (!device.canonicalFilePath().startsWith(QLatin1String("/dev/dri/card"))
+            || e.physical.connectorName.isEmpty())
+            return QString();
+        return QFileInfo(device.canonicalFilePath()).fileName() + QLatin1Char('-')
+                + e.physical.connectorName;
+    }
     default:
         return {};
     }
@@ -313,7 +323,8 @@ QHash<int, QByteArray> DisplayOutputModel::roleNames() const
             {ReplicasModelRole, "replicasModel"},
             {IdRole, "displayId"},
             {CapabilitiesRole, "capabilities"},
-            {SupportedScalesRole, "supportedScales"}};
+            {SupportedScalesRole, "supportedScales"},
+            {DrmConnectorRole, "drmConnector"}};
 }
 
 void DisplayOutputModel::setState(const DisplayClient::State &state)

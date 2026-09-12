@@ -40,7 +40,8 @@ public:
         ReplicasModelRole,
         IdRole,
         CapabilitiesRole,
-        SupportedScalesRole
+        SupportedScalesRole,
+        DrmConnectorRole
     };
 
     explicit DisplayOutputModel(QObject *parent = nullptr);
