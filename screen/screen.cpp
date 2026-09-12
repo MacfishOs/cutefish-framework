@@ -51,7 +51,7 @@ int DisplayScreen::confirmationSeconds() const
 void DisplayScreen::updateState()
 {
     const auto &state = m_client.state();
-    if (!m_client.available()) {
+    if (m_client.loaded() && !m_client.available()) {
         m_busy = false;
         m_error = tr("The display service is unavailable.");
     }

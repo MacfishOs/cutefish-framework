@@ -56,6 +56,7 @@ void DisplayClient::connectInterface()
     ++m_refreshSerial;
     ++m_serviceEpoch;
     m_state = {};
+    m_loaded = false;
     emit stateChanged();
     if (m_applyPending || !m_operationToken.isEmpty() || m_completion)
         finishOperation(m_operationToken,
@@ -90,6 +91,7 @@ void DisplayClient::refresh()
     const auto serial = ++m_refreshSerial;
     if (!m_interface || !m_interface->isValid()) {
         m_state = {};
+        m_loaded = true;
         emit stateChanged();
         return;
     }
@@ -102,6 +104,7 @@ void DisplayClient::refresh()
         watcher->deleteLater();
         if (serial != m_refreshSerial)
             return;
+        m_loaded = true;
         if (reply.isError()) {
             m_state = {};
             emit stateChanged();

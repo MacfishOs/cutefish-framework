@@ -13,6 +13,7 @@ class DisplayScreen : public QObject
     Q_OBJECT
     QML_NAMED_ELEMENT(Screen)
     Q_PROPERTY(DisplayOutputModel *outputModel READ outputModel CONSTANT)
+    Q_PROPERTY(bool loaded READ loaded NOTIFY stateChanged)
     Q_PROPERTY(bool available READ available NOTIFY stateChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY stateChanged)
     Q_PROPERTY(bool dirty READ dirty NOTIFY stateChanged)
@@ -25,6 +26,8 @@ public:
     explicit DisplayScreen(QObject *parent = nullptr);
 
     DisplayOutputModel *outputModel() const { return m_outputModel; }
+
+    bool loaded() const { return m_client.loaded(); }
 
     bool available() const { return m_client.available(); }
 

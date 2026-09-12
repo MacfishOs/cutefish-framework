@@ -40,6 +40,9 @@ public:
     explicit DisplayClient(QObject *parent = nullptr);
     bool available() const;
 
+    // False until the first GetState reply after (re)connecting.
+    bool loaded() const { return m_loaded; }
+
     const State &state() const { return m_state; }
 
     void refresh();
@@ -77,6 +80,7 @@ private:
     QString m_serviceName;
     ComCutefishDisplayConfig1Interface *m_interface = nullptr;
     State m_state;
+    bool m_loaded = false;
     quint64 m_refreshSerial = 0;
     bool m_applyPending = false;
     QString m_operationToken;
