@@ -1,11 +1,13 @@
 #include "task.h"
 #include "async.h"
+#include "fileitem.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QLocale>
 #include <QMetaMethod>
 #include <QTimer>
+#include <cerrno>
 
 namespace Cutefish::IO {
 namespace {
@@ -45,6 +47,13 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
     };
     try {
         ctx.checkpoint();
+        if (request.operation == Operation::Move || request.operation == Operation::Rename
+            || request.operation == Operation::Trash || request.operation == Operation::Delete) {
+            for (const auto &url : request.sources) {
+                if (isStandardFolder(url))
+                    throw Failure(EPERM, url.toLocalFile());
+            }
+        }
         auto sources = request.sources;
         if (request.operation == Operation::EmptyTrash) {
             for (const auto &item : LocalFileSystem::enumerate(QUrl("trash:/")))
