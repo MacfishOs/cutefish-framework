@@ -122,7 +122,15 @@ void LanguageEnvironment::apply(QProcessEnvironment &environment, const QStringL
         environment.insert("LC_CTYPE", localeName);
     environment.insert("LANG", localeName);
     environment.insert("LC_MESSAGES", localeName);
-    environment.insert("LANGUAGE", languages.join(':'));
+
+    // Gettext has no English catalogs to stop at, so languages after English would replace the source strings.
+    QStringList messageLanguages;
+    for (const QString &language : languages) {
+        messageLanguages.append(language);
+        if (language == "en" || language.startsWith("en_") || language.startsWith("en@"))
+            break;
+    }
+    environment.insert("LANGUAGE", messageLanguages.join(':'));
 }
 
 void LanguageEnvironment::apply(QProcessEnvironment &environment)

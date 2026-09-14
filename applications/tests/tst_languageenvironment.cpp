@@ -36,6 +36,11 @@ private slots:
         settings.sync();
         LanguageEnvironment::apply(environment);
         QCOMPARE(environment.value("LANGUAGE"), "zh_TW:ja_JP:en_US");
+        settings.setValue("language", "en_US");
+        settings.setValue("preferredLanguages", QStringList{"en_US", "ja_JP"});
+        settings.sync();
+        LanguageEnvironment::apply(environment);
+        QCOMPARE(environment.value("LANGUAGE"), "en_US");
         qputenv("XDG_CONFIG_HOME", previous);
     }
 
@@ -113,6 +118,13 @@ private slots:
         QVERIFY(process.waitForFinished());
         QCOMPARE(process.exitCode(), 0);
         QCOMPARE(QString::fromUtf8(process.readAllStandardOutput()), QStringLiteral("语言测试"));
+
+        LanguageEnvironment::apply(environment, {"en_US", "zh_Hans_CN"});
+        process.setProcessEnvironment(environment);
+        process.start(QCoreApplication::applicationFilePath(), {"--gettext-probe", directory.path()});
+        QVERIFY(process.waitForFinished());
+        QCOMPARE(process.exitCode(), 0);
+        QCOMPARE(QString::fromUtf8(process.readAllStandardOutput()), QStringLiteral("Language test"));
     }
 };
 
