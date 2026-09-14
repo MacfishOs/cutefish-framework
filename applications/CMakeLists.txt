@@ -1,6 +1,8 @@
 find_package(Qt6 REQUIRED COMPONENTS Core DBus Gui Qml)
 
 set(CUTEFISH_APPLICATIONS_SRCS
+    languageenvironment.cpp
+    languageenvironment.h
     applicationlauncher.cpp
     applicationlauncher.h
     applicationruntime.cpp
@@ -26,6 +28,9 @@ target_link_libraries(cutefish-framework-applications
 
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(tst_languageenvironment tests/tst_languageenvironment.cpp)
+    target_link_libraries(tst_languageenvironment PRIVATE Cutefish::Applications Qt6::Test)
+    add_test(NAME languageenvironment COMMAND tst_languageenvironment)
     add_executable(tst_applicationregistry tests/tst_applicationregistry.cpp)
     target_link_libraries(tst_applicationregistry PRIVATE Cutefish::Applications Qt6::Test)
     add_test(NAME applicationregistry COMMAND tst_applicationregistry)

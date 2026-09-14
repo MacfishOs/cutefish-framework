@@ -1,4 +1,5 @@
 #include "applicationruntime.h"
+#include "languageenvironment.h"
 
 #include <QDBusConnection>
 #include <QDBusInterface>
@@ -23,6 +24,7 @@ QProcessEnvironment applicationEnvironment()
 {
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.remove(QStringLiteral("WAYLAND_SOCKET"));
+    LanguageEnvironment::apply(environment);
 
     // Only used when the caller was started without the public socket name.
     if (!environment.contains(QStringLiteral("WAYLAND_DISPLAY"))) {
