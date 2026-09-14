@@ -386,8 +386,7 @@ Task *emptyTrash()
 Task *paste(const QMimeData *data, const QUrl &destination)
 {
     const bool cut = data
-            && (data->hasFormat("application/x-cutefish-cutselection")
-                || data->data("application/x-kde-cutselection") == "1");
+            && data->hasFormat("application/x-cutefish-cutselection");
     return TaskController::instance()->submit({cut ? Operation::Move : Operation::Copy,
                                                data ? data->urls() : QList<QUrl>(), destination,
                                                ConflictPolicy::KeepBoth});
