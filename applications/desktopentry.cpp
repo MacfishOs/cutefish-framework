@@ -2,6 +2,7 @@
 
 #include "applicationlauncher.h"
 #include "applicationruntime.h"
+#include "languageenvironment.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -57,20 +58,32 @@ bool listContainsDesktop(const QStringList &list, const QStringList &desktops)
     return false;
 }
 
+// XDG locale matching order: lang_COUNTRY@MODIFIER, lang_COUNTRY, lang@MODIFIER, lang.
+QStringList localeCandidates(const QString &language)
+{
+    const int modifierStart = language.indexOf(QLatin1Char('@'));
+    const QString modifier = modifierStart < 0 ? QString() : language.mid(modifierStart);
+    const QString name = language.left(modifierStart < 0 ? language.size() : modifierStart);
+    const QString base = name.section(QLatin1Char('_'), 0, 0);
+
+    QStringList candidates = {
+        name + modifier,
+        name,
+        base + modifier,
+        base,
+        QLocale(name).bcp47Name()
+    };
+    candidates.removeAll(QString());
+    candidates.removeDuplicates();
+    return candidates;
+}
+
 QString localizedValue(const QMap<QString, QString> &values,
                        const QMap<QString, QString> &localized,
-                       const QString &key)
+                       const QString &key,
+                       const QStringList &candidates)
 {
-    const QLocale locale = QLocale::system();
-    const QStringList candidates = {
-        locale.name(),
-        locale.bcp47Name(),
-        locale.name().section(QLatin1Char('_'), 0, 0)
-    };
-
     for (const QString &candidate : candidates) {
-        if (candidate.isEmpty())
-            continue;
         const auto it = localized.constFind(key + QLatin1Char('[') + candidate
                                             + QLatin1Char(']'));
         if (it != localized.constEnd())
@@ -265,11 +278,23 @@ QStringList DesktopEntry::parseExec(const QString &exec)
     return entry.commandForArguments(QStringList());
 }
 
+QString DesktopEntry::displayLanguage()
+{
+    // The session language lives in settings; this process keeps the locale it started with.
+    const QStringList languages = LanguageEnvironment::translationLanguages(
+            LanguageEnvironment::preferredLanguages().mid(0, 1));
+    return languages.isEmpty() ? QLocale::system().name() : languages.first();
+}
+
 bool DesktopEntry::parse(const QString &id, const QString &path,
-                         const QByteArray &contents, DesktopEntryData *result)
+                         const QByteArray &contents, DesktopEntryData *result,
+                         const QString &language)
 {
     if (!result)
         return false;
+
+    const QStringList candidates = localeCandidates(language.isEmpty() ? displayLanguage()
+                                                                        : language);
 
     DesktopEntryData data;
     data.id = id;
@@ -283,9 +308,11 @@ bool DesktopEntry::parse(const QString &id, const QString &path,
     auto finishGroup = [&]() {
         if (group == QStringLiteral("Desktop Entry")) {
             data.type = values.value(QStringLiteral("Type"));
-            data.name = localizedValue(values, localized, QStringLiteral("Name"));
-            data.genericName = localizedValue(values, localized, QStringLiteral("GenericName"));
-            data.comment = localizedValue(values, localized, QStringLiteral("Comment"));
+            data.name = localizedValue(values, localized, QStringLiteral("Name"), candidates);
+            data.genericName = localizedValue(values, localized, QStringLiteral("GenericName"),
+                                              candidates);
+            data.comment = localizedValue(values, localized, QStringLiteral("Comment"),
+                                          candidates);
             data.icon = values.value(QStringLiteral("Icon"));
             data.exec = values.value(QStringLiteral("Exec"));
             data.tryExec = values.value(QStringLiteral("TryExec"));
@@ -306,7 +333,7 @@ bool DesktopEntry::parse(const QString &id, const QString &path,
             if (!action.isEmpty()) {
                 DesktopActionData item;
                 item.id = actionId;
-                item.name = action.value(QStringLiteral("Name"));
+                item.name = localizedValue(action, action, QStringLiteral("Name"), candidates);
                 item.icon = action.value(QStringLiteral("Icon"));
                 item.exec = action.value(QStringLiteral("Exec"));
                 data.actions.append(item);

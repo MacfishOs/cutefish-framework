@@ -79,6 +79,7 @@ public slots:
     void applyScan(const QList<DesktopEntryData> &results);
 
 private:
+    Q_SLOT void onLanguageChanged();
     void monitorPaths();
 
     DesktopEntryModel *m_model;
@@ -87,6 +88,7 @@ private:
     QHash<QString, DesktopEntry *> m_entriesById;
     QHash<QString, DesktopEntry *> m_entriesByPath;
     QList<DesktopEntry *> m_entries;
+    QString m_language;
     bool m_loading = false;
     bool m_scanInProgress = false;
     bool m_scanQueued = false;

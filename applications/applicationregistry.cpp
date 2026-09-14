@@ -1,6 +1,8 @@
 #include "applicationregistry.h"
 #include "applicationruntime.h"
 
+#include <QCollator>
+#include <QDBusConnection>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -19,8 +21,9 @@ namespace {
 class DesktopEntryScanner : public QRunnable
 {
 public:
-    explicit DesktopEntryScanner(ApplicationRegistry *registry)
+    DesktopEntryScanner(ApplicationRegistry *registry, const QString &language)
         : m_registry(registry)
+        , m_language(language)
     {
         setAutoDelete(true);
     }
@@ -56,7 +59,7 @@ public:
                     continue;
 
                 DesktopEntryData data;
-                if (DesktopEntry::parse(id, path, file.readAll(), &data)) {
+                if (DesktopEntry::parse(id, path, file.readAll(), &data, m_language)) {
                     selectedIds.insert(id);
                     results.append(std::move(data));
                 }
@@ -75,6 +78,7 @@ public:
 
 private:
     ApplicationRegistry *m_registry;
+    QString m_language;
 };
 
 QString normalized(const QString &value)
@@ -192,6 +196,11 @@ ApplicationRegistry::ApplicationRegistry(QObject *parent)
             &ApplicationRegistry::scheduleScan);
     connect(m_watcher, &QFileSystemWatcher::fileChanged, this, &ApplicationRegistry::scheduleScan);
     connect(&m_debounceTimer, &QTimer::timeout, this, &ApplicationRegistry::startScan);
+    QDBusConnection::sessionBus().connect(QStringLiteral("com.cutefish.Services"),
+                                          QStringLiteral("/com/cutefish/Services/Language"),
+                                          QStringLiteral("com.cutefish.Services.Language"),
+                                          QStringLiteral("languageChanged"), this,
+                                          SLOT(onLanguageChanged()));
 
     monitorPaths();
     startScan();
@@ -334,6 +343,12 @@ void ApplicationRegistry::scheduleScan()
     m_debounceTimer.start();
 }
 
+void ApplicationRegistry::onLanguageChanged()
+{
+    if (DesktopEntry::displayLanguage() != m_language)
+        scheduleScan();
+}
+
 void ApplicationRegistry::startScan()
 {
     if (m_scanInProgress) {
@@ -346,7 +361,8 @@ void ApplicationRegistry::startScan()
         m_loading = true;
         emit loadingChanged();
     }
-    QThreadPool::globalInstance()->start(new DesktopEntryScanner(this));
+    m_language = DesktopEntry::displayLanguage();
+    QThreadPool::globalInstance()->start(new DesktopEntryScanner(this, m_language));
 }
 
 void ApplicationRegistry::applyScan(const QList<DesktopEntryData> &results)
@@ -376,8 +392,10 @@ void ApplicationRegistry::applyScan(const QList<DesktopEntryData> &results)
             visibleEntries.append(entry);
     }
 
-    std::sort(visibleEntries.begin(), visibleEntries.end(), [](DesktopEntry *a, DesktopEntry *b) {
-        const int nameCompare = QString::localeAwareCompare(a->name(), b->name());
+    const QCollator collator{QLocale(m_language)};
+    std::sort(visibleEntries.begin(), visibleEntries.end(),
+              [&collator](DesktopEntry *a, DesktopEntry *b) {
+        const int nameCompare = collator.compare(a->name(), b->name());
         return nameCompare == 0 ? a->id() < b->id() : nameCompare < 0;
     });
 

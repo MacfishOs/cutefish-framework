@@ -52,6 +52,23 @@ private slots:
         QVERIFY(!registry.resolveWindow({}, {}, "/usr/bin/fcitx5-config-qt", "fcitx5-config-qt"));
         QCOMPARE(registry.resolveWindow(launcher.id, {}, {}, {}), registry.byId(launcher.id));
     }
+
+    void localizesByLanguage()
+    {
+        const QByteArray contents = "[Desktop Entry]\nType=Application\nName=Files\n"
+                                    "Name[zh_CN]=文件\nName[sr@latin]=Datoteke\nExec=files\n";
+        DesktopEntryData data;
+
+        QVERIFY(DesktopEntry::parse("files", "/applications/files.desktop", contents, &data,
+                                    "zh_CN"));
+        QCOMPARE(data.name, QStringLiteral("文件"));
+        QVERIFY(DesktopEntry::parse("files", "/applications/files.desktop", contents, &data,
+                                    "sr_RS@latin"));
+        QCOMPARE(data.name, QStringLiteral("Datoteke"));
+        QVERIFY(DesktopEntry::parse("files", "/applications/files.desktop", contents, &data,
+                                    "de_DE"));
+        QCOMPARE(data.name, QStringLiteral("Files"));
+    }
 };
 
 QTEST_GUILESS_MAIN(ApplicationRegistryTest)

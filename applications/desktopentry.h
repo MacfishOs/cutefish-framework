@@ -100,8 +100,13 @@ public:
 
     QStringList commandForArguments(const QStringList &arguments) const;
 
+    // Primary preferred language as a POSIX name, e.g. "zh_CN" or "sr_RS@latin".
+    static QString displayLanguage();
+
+    // An empty language uses displayLanguage().
     static bool parse(const QString &id, const QString &path,
-                      const QByteArray &contents, DesktopEntryData *result);
+                      const QByteArray &contents, DesktopEntryData *result,
+                      const QString &language = QString());
     static QStringList parseExec(const QString &exec);
 
     void update(const DesktopEntryData &data);
