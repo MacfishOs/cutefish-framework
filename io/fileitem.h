@@ -82,5 +82,6 @@ QString convertSize(quint64 size);
 // Empty unless path is the home directory or an XDG user directory.
 QString standardFolderIconName(const QString &path);
 bool isStandardFolder(const QUrl &url);
+bool canMoveStandardFolderTo(const QUrl &source, const QUrl &destination);
 } // namespace Cutefish::IO
 Q_DECLARE_METATYPE(Cutefish::IO::FileItem)

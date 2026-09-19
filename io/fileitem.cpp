@@ -82,4 +82,18 @@ bool isStandardFolder(const QUrl &url)
     return url.isLocalFile() && !standardFolderIconName(url.toLocalFile()).isEmpty();
 }
 
+bool canMoveStandardFolderTo(const QUrl &source, const QUrl &destination)
+{
+    if (!isStandardFolder(source))
+        return true;
+
+    const QString home = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    if (home.isEmpty() || !source.isLocalFile() || !destination.isLocalFile())
+        return false;
+
+    const QString cleanedHome = QDir::cleanPath(home);
+    return QDir::cleanPath(source.toLocalFile()) != cleanedHome
+            && QDir::cleanPath(destination.toLocalFile()) == cleanedHome;
+}
+
 } // namespace Cutefish::IO

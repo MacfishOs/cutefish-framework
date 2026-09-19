@@ -50,7 +50,9 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
         if (request.operation == Operation::Move || request.operation == Operation::Rename
             || request.operation == Operation::Trash || request.operation == Operation::Delete) {
             for (const auto &url : request.sources) {
-                if (isStandardFolder(url))
+                const bool allowedHomeMove = request.operation == Operation::Move
+                        && canMoveStandardFolderTo(url, request.destination);
+                if (isStandardFolder(url) && !allowedHomeMove)
                     throw Failure(EPERM, url.toLocalFile());
             }
         }
