@@ -26,17 +26,27 @@ QDateTime FileItem::time(FileTime type) const
 
 QMimeType FileItem::determineMimeType() const
 {
+    if (isNull())
+        return {};
+
     return m_mimeType.isValid() ? m_mimeType : QMimeDatabase().mimeTypeForFile(m_info);
 }
 
 void FileItem::prepareMetadata()
 {
+    if (isNull())
+        return;
+
     m_info.stat();
     m_mimeType = QMimeDatabase().mimeTypeForFile(m_info);
+    m_typeDescription = m_mimeType.comment();
+    m_iconName = iconName();
 }
 
 QString FileItem::iconName() const
 {
+    if (!m_iconName.isEmpty())
+        return m_iconName;
     if (!isDir())
         return determineMimeType().iconName();
     const QString standard = standardFolderIconName(localPath());

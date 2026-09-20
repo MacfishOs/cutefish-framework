@@ -440,6 +440,24 @@ private slots:
         QVERIFY(listed.size() >= 4);
     }
 
+    void watcherIgnoresUnrelatedSiblings()
+    {
+        QTemporaryDir directory;
+        const auto watched = directory.filePath("watched");
+        QVERIFY(QDir().mkpath(watched));
+
+        FileWatcher watcher;
+        QSignalSpy changed(&watcher, &FileWatcher::changed);
+        QVERIFY(watcher.watch(watched));
+
+        writeFile(directory.filePath("unrelated"));
+        QTest::qWait(80);
+        QCOMPARE(changed.count(), 0);
+
+        writeFile(watched + "/inside");
+        QTRY_COMPARE(changed.count(), 1);
+    }
+
     void watcherDirectoryRecreation()
     {
         QTemporaryDir dir;

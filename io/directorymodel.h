@@ -32,6 +32,7 @@ public:
     void setDirLister(DirectoryLister *lister);
 
     DirectoryLister *dirLister() const { return m_lister; }
+    const FileItemList &items() const { return m_items; }
 
     FileItem itemForIndex(const QModelIndex &index) const;
     QModelIndex indexForUrl(const QUrl &url) const;
@@ -65,5 +66,6 @@ private:
     void synchronize();
     DirectoryLister *m_lister = nullptr;
     FileItemList m_items;
+    QHash<QUrl, int> m_rowsByUrl;
 };
 } // namespace Cutefish::IO

@@ -10,11 +10,15 @@ void DirectoryModel::setDirLister(DirectoryLister *lister)
     beginResetModel();
     m_lister = lister;
     m_items = lister->items();
+    m_rowsByUrl.clear();
+    for (int row = 0; row < m_items.size(); ++row)
+        m_rowsByUrl.insert(m_items[row].url(), row);
     endResetModel();
     connect(lister, &DirectoryLister::itemsChanged, this, &DirectoryModel::synchronize);
     connect(lister, &DirectoryLister::directoryChanged, this, [this] {
         beginResetModel();
         m_items.clear();
+        m_rowsByUrl.clear();
         endResetModel();
     });
 }
@@ -26,10 +30,7 @@ FileItem DirectoryModel::itemForIndex(const QModelIndex &idx) const
 
 QModelIndex DirectoryModel::indexForUrl(const QUrl &url) const
 {
-    for (int row = 0; row < m_items.size(); ++row)
-        if (m_items[row].url() == url)
-            return index(row, 0);
-    return {};
+    return index(m_rowsByUrl.value(url, -1), 0);
 }
 
 QModelIndex DirectoryModel::index(int row, int column, const QModelIndex &parent) const
@@ -118,16 +119,26 @@ void DirectoryModel::synchronize()
     QSet<QUrl> urls;
     for (const auto &item : incoming)
         urls.insert(item.url());
-    for (int row = m_items.size() - 1; row >= 0; --row) {
-        if (!urls.contains(m_items[row].url())) {
-            beginRemoveRows({}, row, row);
-            m_items.removeAt(row);
-            endRemoveRows();
+    for (int last = m_items.size() - 1; last >= 0;) {
+        if (urls.contains(m_items[last].url())) {
+            --last;
+            continue;
         }
+
+        int first = last;
+
+        while (first > 0 && !urls.contains(m_items[first - 1].url()))
+            --first;
+
+        beginRemoveRows({}, first, last);
+        m_items.remove(first, last - first + 1);
+        endRemoveRows();
+        last = first - 1;
     }
     QHash<QUrl, int> existing;
     for (int row = 0; row < m_items.size(); ++row)
         existing.insert(m_items[row].url(), row);
+    m_rowsByUrl = existing;
     FileItemList added;
     for (const auto &item : incoming) {
         if (existing.contains(item.url())) {
@@ -143,6 +154,8 @@ void DirectoryModel::synchronize()
         const int first = m_items.size();
         beginInsertRows({}, first, first + added.size() - 1);
         m_items.append(added);
+        for (int row = first; row < m_items.size(); ++row)
+            m_rowsByUrl.insert(m_items[row].url(), row);
         endInsertRows();
     }
 }

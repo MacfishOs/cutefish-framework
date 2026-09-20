@@ -18,6 +18,8 @@ signals:
 private:
     int m_fd = -1;
     QList<int> m_watches;
+    int m_parentWatch = -1;
+    QByteArray m_parentEntry;
     QSocketNotifier *m_notifier = nullptr;
 };
 

@@ -25,7 +25,11 @@ public:
 
     QString name() const { return m_url.fileName(); }
 
-    QString text() const { return name(); }
+    QString text() const { return m_displayName.isEmpty() ? name() : m_displayName; }
+    void setDisplayName(const QString &name) { m_displayName = name; }
+    void setIconName(const QString &icon) { m_iconName = icon; }
+    QUrl targetUrl() const { return m_targetUrl; }
+    void setTargetUrl(const QUrl &url) { m_targetUrl = url; }
 
     bool isFile() const { return m_info.isFile(); }
 
@@ -50,6 +54,7 @@ public:
     void prepareMetadata();
 
     QString mimetype() const { return determineMimeType().name(); }
+    QString typeDescription() const { return m_typeDescription; }
 
     QMimeType currentMimeType() const { return determineMimeType(); }
 
@@ -59,6 +64,10 @@ private:
     QUrl m_url;
     QFileInfo m_info;
     QMimeType m_mimeType;
+    QString m_displayName;
+    QString m_iconName;
+    QString m_typeDescription;
+    QUrl m_targetUrl;
 };
 
 using FileItemList = QList<FileItem>;

@@ -16,14 +16,21 @@ public:
     ~DirectoryLister() override;
 
     QUrl url() const { return m_url; }
+    bool isListing() const { return m_future != nullptr; }
 
-    FileItem rootItem() const { return FileItem(m_url); }
+    FileItem rootItem() const { return m_rootItem; }
 
     const FileItemList &items() const { return m_items; }
 
     void setShowHiddenFiles(bool show) { m_hidden = show; }
 
     void setAutoUpdate(bool enabled) { m_autoUpdate = enabled; }
+
+    // The copied callback runs on a worker and must not access GUI objects.
+    void setItemPreparer(std::function<void(FileItem &)> preparer)
+    {
+        m_itemPreparer = std::move(preparer);
+    }
 
     void openUrl(const QUrl &url);
     void updateDirectory(const QUrl &url);
@@ -45,10 +52,13 @@ private:
 
     struct Listing {
         FileItemList items;
+        FileItem rootItem;
+        QUrl url;
         Error error;
     };
 
     QUrl m_url;
+    FileItem m_rootItem;
     FileItemList m_items;
     bool m_hidden = false;
     bool m_autoUpdate = true;
@@ -59,6 +69,7 @@ private:
     QTimer m_retry;
     QFutureWatcher<Listing> *m_future = nullptr;
     std::shared_ptr<OperationContext> m_context;
+    std::function<void(FileItem &)> m_itemPreparer;
 };
 
 } // namespace Cutefish::IO

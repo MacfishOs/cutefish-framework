@@ -3,6 +3,8 @@
 #include "fileenumerator.h"
 #include "filesystemurl.h"
 
+#include <QDir>
+
 namespace Cutefish::IO {
 DirectoryLister::DirectoryLister(QObject *parent)
     : QObject(parent)
@@ -47,6 +49,7 @@ void DirectoryLister::openUrl(const QUrl &url)
     cancelListing();
     m_debounce.stop();
     m_url = url;
+    m_rootItem = {};
     m_items.clear();
     m_watch.clear();
     m_retry.stop();
@@ -99,7 +102,24 @@ void DirectoryLister::refresh()
         watcher->deleteLater();
         m_future = nullptr;
         m_context.reset();
+
+        if (listing.url.isValid() && listing.url != m_url) {
+            m_url = listing.url;
+            m_watch.clear();
+
+            if (m_watch.watch(FileSystemUrl(m_url).localPath()))
+                m_retry.stop();
+            else
+                m_retry.start();
+
+            emit directoryChanged();
+
+            if (generation != m_generation)
+                return;
+        }
+
         m_items = listing.items;
+        m_rootItem = listing.rootItem;
         emit itemsChanged();
         if (generation != m_generation)
             return;
@@ -115,13 +135,28 @@ void DirectoryLister::refresh()
             refresh();
         }
     });
-    watcher->setFuture(Internal::runAsync([url = m_url, hidden = m_hidden, context] {
+    watcher->setFuture(Internal::runAsync([url = m_url, hidden = m_hidden, context,
+                                         preparer = m_itemPreparer] {
         Listing result;
         try {
-            result.items = FileEnumerator::list(url, hidden, context.get());
+            context->checkpoint();
+            result.url = url;
+
+            if (url.isLocalFile()) {
+                const QFileInfo target(url.toLocalFile());
+
+                if (target.isFile())
+                    result.url = QUrl::fromLocalFile(target.absolutePath());
+            }
+
+            result.items = FileEnumerator::list(result.url, hidden, context.get());
+            result.rootItem = FileItem(result.url);
+            result.rootItem.prepareMetadata();
             for (auto &item : result.items) {
                 context->checkpoint();
                 item.prepareMetadata();
+                if (preparer)
+                    preparer(item);
             }
         } catch (const Failure &failure) {
             result.error = failure.error;

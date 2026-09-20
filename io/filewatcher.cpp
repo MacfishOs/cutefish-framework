@@ -1,4 +1,5 @@
 #include "filewatcher.h"
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <cerrno>
@@ -26,7 +27,11 @@ FileWatcher::FileWatcher(QObject *parent)
                 const auto *event = reinterpret_cast<const inotify_event *>(buffer + offset);
                 if (event->mask & IN_Q_OVERFLOW)
                     emit error(tr("Filesystem watch queue overflow; refreshing directory"));
-                if (!(event->mask & IN_IGNORED))
+
+                const bool unrelatedSibling = event->wd == m_parentWatch && event->len > 0
+                        && QByteArray(event->name) != m_parentEntry;
+
+                if (!(event->mask & IN_IGNORED) && !unrelatedSibling)
                     dirty = true;
                 offset += sizeof(inotify_event) + event->len;
             }
@@ -48,6 +53,8 @@ void FileWatcher::clear()
     for (int wd : m_watches)
         ::inotify_rm_watch(m_fd, wd);
     m_watches.clear();
+    m_parentWatch = -1;
+    m_parentEntry.clear();
 }
 
 bool FileWatcher::watch(const QString &path)
@@ -64,8 +71,15 @@ bool FileWatcher::watch(const QString &path)
                                                    | IN_ATTRIB | IN_CLOSE_WRITE | IN_DELETE_SELF
                                                    | IN_MOVE_SELF | IN_ONLYDIR);
         if (wd >= 0) {
-            if (!m_watches.contains(wd))
+            if (!m_watches.contains(wd)) {
                 m_watches.append(wd);
+
+                if (entry != path) {
+                    m_parentWatch = wd;
+                    m_parentEntry = QFile::encodeName(QFileInfo(QDir::cleanPath(path)).fileName());
+                }
+            }
+
             if (entry == path)
                 watched = true;
         }
