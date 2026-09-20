@@ -171,8 +171,8 @@ void mergeStaged(int source, int target, const QString &path, OperationContext &
     });
 }
 
-QString publish(int parent, const QByteArray &temporary, const QString &destination,
-                ConflictPolicy policy, OperationContext &ctx)
+QString publish(int parent, const QByteArray &temporary, const QString &source,
+                const QString &destination, ConflictPolicy policy, OperationContext &ctx)
 {
     QByteArray name = native(QFileInfo(destination).fileName());
     int suffix = 1;
@@ -184,7 +184,7 @@ QString publish(int parent, const QByteArray &temporary, const QString &destinat
         if (errno != EEXIST)
             throw Failure(errno, destination);
         if (policy == ConflictPolicy::Ask) {
-            policy = ctx.conflict ? ctx.conflict(destination) : ConflictPolicy::Fail;
+            policy = ctx.conflict ? ctx.conflict(source, destination) : ConflictPolicy::Fail;
             ctx.checkpoint(destination);
         }
         if (policy == ConflictPolicy::Skip)
@@ -222,9 +222,12 @@ QString publish(int parent, const QByteArray &temporary, const QString &destinat
 QString LocalFileSystem::copy(const QString &source, const QString &destination,
                               ConflictPolicy policy, OperationContext &ctx)
 {
-    const bool duplicate = policy == ConflictPolicy::KeepBoth
-            && QDir::cleanPath(source) == QDir::cleanPath(destination);
-    if (!duplicate)
+    // Pasting an item back into its own folder always means "make a copy":
+    // there is nothing to replace, so never ask.
+    const bool duplicate = QDir::cleanPath(source) == QDir::cleanPath(destination);
+    if (duplicate && policy == ConflictPolicy::Ask)
+        policy = ConflictPolicy::KeepBoth;
+    if (!duplicate || policy != ConflictPolicy::KeepBoth)
         validateDestination(source, destination);
     ctx.checkpoint(source);
     Parent input(source), output(destination);
@@ -232,7 +235,7 @@ QString LocalFileSystem::copy(const QString &source, const QString &destination,
     try {
         copyAt(input.fd.value, input.name, output.fd.value, temporary, source, ctx);
         ctx.checkpoint(source);
-        auto result = publish(output.fd.value, temporary, destination, policy, ctx);
+        auto result = publish(output.fd.value, temporary, source, destination, policy, ctx);
         if (!result.isEmpty())
             return result;
     } catch (...) {
@@ -256,7 +259,7 @@ QString LocalFileSystem::link(const QString &source, const QString &destination,
     const QByteArray temporary = ".cutefish-link-" + QUuid::createUuid().toByteArray(QUuid::Id128);
     check(::symlinkat(native(source), output.fd.value, temporary), destination);
     try {
-        const auto result = publish(output.fd.value, temporary, destination, policy, ctx);
+        const auto result = publish(output.fd.value, temporary, source, destination, policy, ctx);
         if (result.isEmpty())
             ::unlinkat(output.fd.value, temporary, 0);
         return result;
@@ -278,7 +281,7 @@ QString LocalFileSystem::move(const QString &source, const QString &destination,
         return destination;
     const int code = errno;
     if (code == EEXIST && policy == ConflictPolicy::Ask) {
-        policy = ctx.conflict ? ctx.conflict(destination) : ConflictPolicy::Fail;
+        policy = ctx.conflict ? ctx.conflict(source, destination) : ConflictPolicy::Fail;
         ctx.checkpoint(destination);
     }
     if (code == EEXIST && policy == ConflictPolicy::Skip)

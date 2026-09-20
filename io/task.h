@@ -7,6 +7,7 @@
 #include <QPointer>
 #include <condition_variable>
 #include <mutex>
+#include <optional>
 
 namespace Cutefish::IO {
 enum class Operation {
@@ -58,7 +59,8 @@ public:
     ~Task() override;
     void start();
     Q_INVOKABLE void cancel();
-    Q_INVOKABLE void resolveConflict(int policy);
+    // applyToAll answers every later conflict of this task the same way.
+    Q_INVOKABLE void resolveConflict(int policy, bool applyToAll = false);
 
     State state() const { return m_state; }
 
@@ -93,7 +95,7 @@ public:
 signals:
     void progress(quint64 bytes, quint64 files);
     void progressInfoChanged();
-    void conflictRequested(const QString &destination);
+    void conflictRequested(const QString &source, const QString &destination);
     void stateChanged(State state);
     void result(Cutefish::IO::Task *task);
 
@@ -107,6 +109,7 @@ private:
     std::mutex m_conflictMutex;
     std::condition_variable m_conflictCondition;
     ConflictPolicy m_resolution = ConflictPolicy::Fail;
+    std::optional<ConflictPolicy> m_resolutionForAll;
     bool m_resolved = false;
 };
 

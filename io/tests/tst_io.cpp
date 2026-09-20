@@ -510,7 +510,12 @@ private slots:
         QVERIFY(QFileInfo::exists(dir.filePath("source")));
         mime.setData("application/x-cutefish-cutselection", "1");
         auto *moveTask = paste(&mime, local(dir.filePath("target")));
+        QSignalSpy asked(moveTask, &Task::conflictRequested);
         QSignalSpy moved(moveTask, &Task::result);
+        QTRY_COMPARE(asked.size(), 1);
+        QCOMPARE(asked.first().at(0).toString(), dir.filePath("source"));
+        QCOMPARE(asked.first().at(1).toString(), dir.filePath("target/source"));
+        moveTask->resolveConflict(int(ConflictPolicy::KeepBoth));
         QTRY_COMPARE(moved.size(), 1);
         QVERIFY(!QFileInfo::exists(dir.filePath("source")));
         QCOMPARE(readFile(dir.filePath("target/source (1)")), QByteArray("payload"));
@@ -527,6 +532,45 @@ private slots:
         remove.start();
         QTRY_COMPARE(removed.size(), 1);
         QVERIFY(!QFileInfo::exists(dir.filePath("target")));
+    }
+
+    void conflictResolutionAppliesToAll()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir().mkpath(dir.filePath("target")));
+        writeFile(dir.filePath("a"), "new a");
+        writeFile(dir.filePath("b"), "new b");
+        writeFile(dir.filePath("target/a"), "old a");
+        writeFile(dir.filePath("target/b"), "old b");
+        Task task({Operation::Copy,
+                   {local(dir.filePath("a")), local(dir.filePath("b"))},
+                   local(dir.filePath("target")),
+                   ConflictPolicy::Ask});
+        QSignalSpy conflict(&task, &Task::conflictRequested), finished(&task, &Task::result);
+        task.start();
+        QTRY_COMPARE(conflict.size(), 1);
+        task.resolveConflict(int(ConflictPolicy::Replace), true);
+        QTRY_COMPARE(finished.size(), 1);
+        QCOMPARE(conflict.size(), 1);
+        QCOMPARE(task.state(), Task::State::Succeeded);
+        QCOMPARE(readFile(dir.filePath("target/a")), QByteArray("new a"));
+        QCOMPARE(readFile(dir.filePath("target/b")), QByteArray("new b"));
+    }
+
+    void pasteIntoOwnFolderDuplicatesWithoutAsking()
+    {
+        QTemporaryDir dir;
+        writeFile(dir.filePath("source"), "payload");
+        Task task({Operation::Copy,
+                   {local(dir.filePath("source"))},
+                   local(dir.path()),
+                   ConflictPolicy::Ask});
+        QSignalSpy conflict(&task, &Task::conflictRequested), finished(&task, &Task::result);
+        task.start();
+        QTRY_COMPARE(finished.size(), 1);
+        QCOMPARE(conflict.size(), 0);
+        QCOMPARE(task.state(), Task::State::Succeeded);
+        QCOMPARE(readFile(dir.filePath("source (1)")), QByteArray("payload"));
     }
 
     void asynchronousConflictAndCancel()

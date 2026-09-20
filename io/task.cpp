@@ -27,9 +27,10 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
         info.elapsedMs = elapsed.isValid() ? elapsed.elapsed() - pausedMs : 0;
         report(info, force);
     };
-    ctx.conflict = [&](const QString &path) {
+    ctx.conflict = [&](const QString &source, const QString &destination) {
         const auto before = elapsed.isValid() ? elapsed.elapsed() : 0;
-        const auto policy = conflictResolver ? conflictResolver(path) : ConflictPolicy::Fail;
+        const auto policy = conflictResolver ? conflictResolver(source, destination)
+                                             : ConflictPolicy::Fail;
         if (elapsed.isValid())
             pausedMs += elapsed.elapsed() - before;
         return policy;
@@ -197,7 +198,7 @@ void Task::cancel()
     m_conflictCondition.notify_all();
 }
 
-void Task::resolveConflict(int policy)
+void Task::resolveConflict(int policy, bool applyToAll)
 {
     if (policy < int(ConflictPolicy::Fail) || policy >= int(ConflictPolicy::Ask))
         return;
@@ -205,6 +206,8 @@ void Task::resolveConflict(int policy)
         std::lock_guard lock(m_conflictMutex);
         m_resolution = ConflictPolicy(policy);
         m_resolved = true;
+        if (applyToAll)
+            m_resolutionForAll = m_resolution;
     }
     m_conflictCondition.notify_all();
 }
@@ -226,14 +229,16 @@ void Task::start()
                 },
                 Qt::QueuedConnection);
     };
-    m_context->conflict = [this](const QString &destination) {
+    m_context->conflict = [this](const QString &source, const QString &destination) {
         std::unique_lock lock(m_conflictMutex);
+        if (m_resolutionForAll)
+            return *m_resolutionForAll;
         m_resolved = false;
         QMetaObject::invokeMethod(
                 this,
-                [this, destination] {
+                [this, source, destination] {
                     if (isSignalConnected(QMetaMethod::fromSignal(&Task::conflictRequested)))
-                        emit conflictRequested(destination);
+                        emit conflictRequested(source, destination);
                     else
                         resolveConflict(int(ConflictPolicy::Fail));
                 },
@@ -391,7 +396,7 @@ Task *paste(const QMimeData *data, const QUrl &destination)
             && data->hasFormat("application/x-cutefish-cutselection");
     return TaskController::instance()->submit({cut ? Operation::Move : Operation::Copy,
                                                data ? data->urls() : QList<QUrl>(), destination,
-                                               ConflictPolicy::KeepBoth});
+                                               ConflictPolicy::Ask});
 }
 
 Task *drop(const QMimeData *data, const QUrl &destination, Qt::DropAction action)

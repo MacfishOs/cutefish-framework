@@ -19,7 +19,7 @@ struct OperationContext {
     quint64 bytes = 0;
     quint64 files = 0;
     std::function<void(quint64, quint64)> progress;
-    std::function<ConflictPolicy(const QString &)> conflict;
+    std::function<ConflictPolicy(const QString &source, const QString &destination)> conflict;
     void checkpoint(const QString &path = {}) const;
     void advance(quint64 amount);
 };
