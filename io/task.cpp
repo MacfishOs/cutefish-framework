@@ -321,11 +321,24 @@ TaskController::~TaskController()
 
 Task *TaskController::submit(const TaskRequest &request)
 {
+    return submit(request, false);
+}
+
+// A fresh operation forks the history: what was undone before it can no
+// longer be redone. Undo and redo themselves keep the other stack.
+Task *TaskController::submit(const TaskRequest &request, bool keepRedo)
+{
+    if (!keepRedo && !m_redo.isEmpty()) {
+        m_redo.clear();
+        emit historyChanged();
+    }
     auto *task = new Task(request, this);
     connect(task, &Task::result, this, [this, request](Task *task) {
         const auto &result = task->outcome();
-        if (request.operation == Operation::Trash && !result.outputs.isEmpty())
+        if (request.operation == Operation::Trash && !result.outputs.isEmpty()) {
             m_undo.append({Operation::Restore, result.outputs});
+            emit historyChanged();
+        }
         emit taskFinished(task);
         task->deleteLater();
     });
@@ -339,14 +352,41 @@ Task *TaskController::undo()
     if (m_undo.isEmpty())
         return nullptr;
     const auto request = m_undo.takeLast();
-    auto *task = submit(request);
+    emit historyChanged();
+    auto *task = submit(request, true);
+    connect(task, &Task::result, this, [this, request](Task *done) {
+        const auto &result = done->outcome();
+        if (!result.outputs.isEmpty())
+            m_redo.append({Operation::Trash, result.outputs});
+        if (done->error()) {
+            auto remaining = request;
+            for (const auto &source : result.completedSources)
+                remaining.sources.removeAll(source);
+            if (!remaining.sources.isEmpty())
+                m_undo.append(remaining);
+        }
+        emit historyChanged();
+    });
+    return task;
+}
+
+// Redoing a trash goes through the normal path, which records its undo again.
+Task *TaskController::redo()
+{
+    if (m_redo.isEmpty())
+        return nullptr;
+    const auto request = m_redo.takeLast();
+    emit historyChanged();
+    auto *task = submit(request, true);
     connect(task, &Task::result, this, [this, request](Task *done) {
         if (done->error()) {
             auto remaining = request;
             for (const auto &source : done->outcome().completedSources)
                 remaining.sources.removeAll(source);
-            if (!remaining.sources.isEmpty())
-                m_undo.append(remaining);
+            if (!remaining.sources.isEmpty()) {
+                m_redo.append(remaining);
+                emit historyChanged();
+            }
         }
     });
     return task;

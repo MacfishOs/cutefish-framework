@@ -127,14 +127,21 @@ public:
     Task *submit(const TaskRequest &request);
 
     bool isUndoAvailable() const { return !m_undo.isEmpty(); }
+    bool isRedoAvailable() const { return !m_redo.isEmpty(); }
 
     Task *undo();
+    Task *redo();
 signals:
     void taskAdded(Cutefish::IO::Task *task);
     void taskFinished(Cutefish::IO::Task *task);
+    //! isUndoAvailable() or isRedoAvailable() may have changed.
+    void historyChanged();
 
 private:
+    Task *submit(const TaskRequest &request, bool keepRedo);
+
     QList<TaskRequest> m_undo;
+    QList<TaskRequest> m_redo;
 };
 
 Task *copy(const QList<QUrl> &sources, const QUrl &destination);

@@ -615,6 +615,34 @@ private slots:
         QVERIFY(!controller.isUndoAvailable());
     }
 
+    void controllerTrashRedo()
+    {
+        QTemporaryDir dir;
+        writeFile(dir.filePath("file"));
+        TaskController controller;
+        QSignalSpy finished(&controller, &TaskController::taskFinished);
+        controller.submit({Operation::Trash, {local(dir.filePath("file"))}});
+        QTRY_COMPARE(finished.size(), 1);
+        QVERIFY(!controller.isRedoAvailable());
+        QVERIFY(controller.undo());
+        QTRY_COMPARE(finished.size(), 2);
+        QVERIFY(controller.isRedoAvailable());
+        QVERIFY(controller.redo());
+        QTRY_COMPARE(finished.size(), 3);
+        QVERIFY(!QFileInfo::exists(dir.filePath("file")));
+        QVERIFY(!controller.isRedoAvailable());
+        QVERIFY(controller.isUndoAvailable());
+
+        // A new operation after an undo forgets what could be redone.
+        QVERIFY(controller.undo());
+        QTRY_COMPARE(finished.size(), 4);
+        QVERIFY(controller.isRedoAvailable());
+        writeFile(dir.filePath("other"));
+        controller.submit({Operation::Trash, {local(dir.filePath("other"))}});
+        QTRY_COMPARE(finished.size(), 5);
+        QVERIFY(!controller.isRedoAvailable());
+    }
+
     void crossDeviceMove()
     {
         const auto root = qEnvironmentVariable("CUTEFISH_IO_CROSS_DEVICE_ROOT");
