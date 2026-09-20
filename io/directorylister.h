@@ -2,8 +2,10 @@
 #include "error.h"
 #include "fileitem.h"
 #include "filewatcher.h"
+#include "operationcontext.h"
 #include <QFutureWatcher>
 #include <QTimer>
+#include <memory>
 
 namespace Cutefish::IO {
 class DirectoryLister : public QObject
@@ -39,6 +41,7 @@ signals:
 
 private:
     void refresh();
+    void cancelListing();
 
     struct Listing {
         FileItemList items;
@@ -51,11 +54,11 @@ private:
     bool m_autoUpdate = true;
     bool m_pending = false;
     quint64 m_generation = 0;
-    quint64 m_runningGeneration = 0;
     FileWatcher m_watch;
     QTimer m_debounce;
     QTimer m_retry;
-    QFutureWatcher<Listing> m_future;
+    QFutureWatcher<Listing> *m_future = nullptr;
+    std::shared_ptr<OperationContext> m_context;
 };
 
 } // namespace Cutefish::IO

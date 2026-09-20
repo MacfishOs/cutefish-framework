@@ -20,33 +20,32 @@ DirectoryLister::DirectoryLister(QObject *parent)
         if (m_autoUpdate)
             refresh();
     });
-    connect(&m_future, &QFutureWatcher<Listing>::finished, this, [this] {
-        const auto listing = m_future.result();
-        if (m_runningGeneration == m_generation) {
-            m_items = listing.items;
-            emit itemsChanged();
-            if (listing.error) {
-                emit error(listing.error.message + ": " + listing.error.path);
-                emit canceled();
-            } else
-                emit completed();
-        }
-        if (m_pending) {
-            m_pending = false;
-            refresh();
-        }
-    });
 }
 
 DirectoryLister::~DirectoryLister()
 {
-    // The worker owns its inputs; closing a view must not wait for filesystem I/O.
-    m_future.cancel();
+    cancelListing();
+}
+
+void DirectoryLister::cancelListing()
+{
+    if (m_context)
+        m_context->canceled.store(true);
+    if (m_future) {
+        disconnect(m_future, nullptr, this, nullptr);
+        // Workers own their inputs and can outlive a view or navigation request.
+        m_future->deleteLater();
+        m_future = nullptr;
+    }
+    m_context.reset();
+    m_pending = false;
 }
 
 void DirectoryLister::openUrl(const QUrl &url)
 {
     ++m_generation;
+    cancelListing();
+    m_debounce.stop();
     m_url = url;
     m_items.clear();
     m_watch.clear();
@@ -64,7 +63,7 @@ void DirectoryLister::updateDirectory(const QUrl &url)
 void DirectoryLister::stop()
 {
     ++m_generation;
-    m_pending = false;
+    cancelListing();
     m_debounce.stop();
     m_retry.stop();
     m_watch.clear();
@@ -75,11 +74,10 @@ void DirectoryLister::refresh()
 {
     if (m_url.isEmpty())
         return;
-    if (m_future.isRunning()) {
+    if (m_future) {
         m_pending = true;
         return;
     }
-    m_runningGeneration = m_generation;
     try {
         if (m_watch.watch(FileSystemUrl(m_url).localPath()))
             m_retry.stop();
@@ -88,18 +86,49 @@ void DirectoryLister::refresh()
     } catch (const Failure &) {
         m_watch.clear();
     }
-    emit started();
-    m_future.setFuture(Internal::runAsync([url = m_url, hidden = m_hidden] {
+    const quint64 generation = m_generation;
+    auto context = std::make_shared<OperationContext>();
+    m_context = context;
+    auto *watcher = new QFutureWatcher<Listing>(this);
+    m_future = watcher;
+    connect(watcher, &QFutureWatcher<Listing>::finished, this,
+            [this, watcher, generation] {
+        if (generation != m_generation || watcher != m_future)
+            return;
+        const auto listing = watcher->result();
+        watcher->deleteLater();
+        m_future = nullptr;
+        m_context.reset();
+        m_items = listing.items;
+        emit itemsChanged();
+        if (generation != m_generation)
+            return;
+        if (listing.error) {
+            emit error(listing.error.message + ": " + listing.error.path);
+            if (generation == m_generation)
+                emit canceled();
+        } else {
+            emit completed();
+        }
+        if (generation == m_generation && m_pending) {
+            m_pending = false;
+            refresh();
+        }
+    });
+    watcher->setFuture(Internal::runAsync([url = m_url, hidden = m_hidden, context] {
         Listing result;
         try {
-            result.items = FileEnumerator::list(url, hidden);
-            for (auto &item : result.items)
+            result.items = FileEnumerator::list(url, hidden, context.get());
+            for (auto &item : result.items) {
+                context->checkpoint();
                 item.prepareMetadata();
+            }
         } catch (const Failure &failure) {
             result.error = failure.error;
         }
         return result;
     }));
+    emit started();
 }
 
 } // namespace Cutefish::IO

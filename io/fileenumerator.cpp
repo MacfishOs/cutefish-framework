@@ -29,8 +29,10 @@ quint64 sizeAt(int parent, const QByteArray &name, const QString &path, Operatio
 
 } // namespace
 
-FileItemList FileEnumerator::list(const QUrl &url, bool hidden)
+FileItemList FileEnumerator::list(const QUrl &url, bool hidden, OperationContext *context)
 {
+    if (context)
+        context->checkpoint();
     const auto path = FileSystemUrl(url).localPath();
     Fd fd(::open(native(path), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
     if (fd.value < 0 && errno == ENOENT && url.scheme() == "trash" && url.path() == "/")
@@ -38,6 +40,8 @@ FileItemList FileEnumerator::list(const QUrl &url, bool hidden)
     check(fd.value, path);
     FileItemList result;
     children(fd.value, path, [&](const QByteArray &name, const QString &) {
+        if (context)
+            context->checkpoint(path);
         if (!hidden && name.startsWith('.'))
             return;
         auto child = url;
