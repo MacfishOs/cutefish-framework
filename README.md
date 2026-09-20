@@ -18,7 +18,12 @@ The framework provides these CMake targets and C++ aliases:
 - `cutefish-framework-bluetooth` / `Cutefish::Bluetooth`
 - `cutefish-framework-media` / `Cutefish::Media`
 - `cutefish-framework-network` / `Cutefish::Network`
+- `cutefish-framework-privacy` / `Cutefish::Privacy`
 - `cutefish-framework-screen` / `Cutefish::Screen`
+
+`Cutefish::Privacy` holds `ScreenRecordingPermissions`, the per-application
+screen recording grants in `$XDG_CONFIG_HOME/cutefish/privacy.conf` that the
+portal backend writes and the Settings privacy page edits; both watch the file.
 
 The QML modules are `Cutefish.Accounts`, `Cutefish.Appearance`,
 `Cutefish.Audio`, `Cutefish.Bluetooth`, `Cutefish.Media`,
