@@ -1,65 +1,39 @@
-/*
-    SPDX-FileCopyrightText: 2014-2015 Harald Sitter <sitter@kde.org>
-
-    SPDX-License-Identifier: LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL
-*/
-
 #include "plugin.h"
+
+#include "audiomodel.h"
+#include "backend.h"
+#include "model/sortfiltermodel.h"
+#include "model/audiofiltermodel.h"
+#include "soundplayer.h"
+#include "volumemonitor.h"
 
 #include <QQmlEngine>
 
-#include "client.h"
-#include "context.h"
-#include "modulemanager.h"
-#include "port.h"
-#include "profile.h"
-#include "pulseaudio.h"
-#include "sink.h"
-#include "source.h"
-#include "volumemonitor.h"
-
-#include "listitemmenu.h"
-#include "model/sortfiltermodel.h"
-#include "speakertest.h"
-#include "volumefeedback.h"
-
-static QJSValue pulseaudio_singleton(QQmlEngine *engine, QJSEngine *scriptEngine)
-{
-    Q_UNUSED(engine)
-
-    QJSValue object = scriptEngine->newObject();
-    object.setProperty(QStringLiteral("NormalVolume"), (double)QPulseAudio::Context::NormalVolume);
-    object.setProperty(QStringLiteral("MinimalVolume"),
-                       (double)QPulseAudio::Context::MinimalVolume);
-    object.setProperty(QStringLiteral("MaximalVolume"),
-                       (double)QPulseAudio::Context::MaximalVolume);
-    return object;
-}
-
 void Plugin::registerTypes(const char *uri)
 {
-    QPulseAudio::Context::setApplicationId(QStringLiteral("Cutefish.Audio"));
+    using namespace CutefishAudio;
 
     qmlRegisterType<SortFilterModel>(uri, 1, 0, "SortFilterModel");
-
-    qmlRegisterType<QPulseAudio::CardModel>(uri, 1, 0, "CardModel");
-    qmlRegisterType<QPulseAudio::SinkModel>(uri, 1, 0, "SinkModel");
-    qmlRegisterType<QPulseAudio::SinkInputModel>(uri, 1, 0, "SinkInputModel");
-    qmlRegisterType<QPulseAudio::SourceModel>(uri, 1, 0, "SourceModel");
-    qmlRegisterType<QPulseAudio::ModuleManager>(uri, 1, 0, "ModuleManager");
-    qmlRegisterType<QPulseAudio::SourceOutputModel>(uri, 1, 0, "SourceOutputModel");
-    qmlRegisterType<QPulseAudio::StreamRestoreModel>(uri, 1, 0, "StreamRestoreModel");
-    qmlRegisterType<QPulseAudio::ModuleModel>(uri, 1, 0, "ModuleModel");
-    qmlRegisterType<QPulseAudio::VolumeMonitor>(uri, 0, 01, "VolumeMonitor");
-    qmlRegisterUncreatableType<QPulseAudio::PulseObject>(uri, 1, 0, "PulseObject", QString());
-    qmlRegisterUncreatableType<QPulseAudio::Profile>(uri, 1, 0, "Profile", QString());
-    qmlRegisterUncreatableType<QPulseAudio::Port>(uri, 1, 0, "Port", QString());
-    qmlRegisterType<ListItemMenu>(uri, 1, 0, "ListItemMenu");
+    qmlRegisterType<AudioFilterModel>(uri, 1, 0, "AudioObjectFilterModel");
+    qmlRegisterType<SinkModel>(uri, 1, 0, "SinkModel");
+    qmlRegisterType<SourceModel>(uri, 1, 0, "SourceModel");
+    qmlRegisterType<SinkInputModel>(uri, 1, 0, "SinkInputModel");
+    qmlRegisterType<SourceOutputModel>(uri, 1, 0, "SourceOutputModel");
+    qmlRegisterType<CardModel>(uri, 1, 0, "CardModel");
     qmlRegisterType<VolumeFeedback>(uri, 1, 0, "VolumeFeedback");
     qmlRegisterType<SpeakerTest>(uri, 1, 0, "SpeakerTest");
-    qmlRegisterSingletonType(uri, 1, 0, "PulseAudio", pulseaudio_singleton);
-    qmlRegisterAnonymousType<QPulseAudio::Client>(uri, 1);
-    qmlRegisterAnonymousType<QPulseAudio::Sink>(uri, 1);
-    qmlRegisterAnonymousType<QPulseAudio::Source>(uri, 1);
-    qmlRegisterAnonymousType<QPulseAudio::VolumeObject>(uri, 1);
+    qmlRegisterType<VolumeMonitor>(uri, 1, 0, "VolumeMonitor");
+    qmlRegisterUncreatableType<AudioObject>(uri, 1, 0, "AudioObject", QStringLiteral("Provided by audio models"));
+    qmlRegisterSingletonType<Backend>(uri, 1, 0, "AudioService", [](QQmlEngine *, QJSEngine *) {
+        Backend *backend = Backend::instance();
+        QQmlEngine::setObjectOwnership(backend, QQmlEngine::CppOwnership);
+        return backend;
+    });
+    qmlRegisterSingletonType(uri, 1, 0, "PipeWire", [](QQmlEngine *, QJSEngine *engine) {
+        QJSValue object = engine->newObject();
+        object.setProperty(QStringLiteral("NormalVolume"), AudioObject::NormalVolume);
+        object.setProperty(QStringLiteral("MinimalVolume"), 0.0);
+        object.setProperty(QStringLiteral("MaximalVolume"), AudioObject::MaximalVolume);
+        return object;
+    });
 }

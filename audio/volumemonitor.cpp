@@ -1,195 +1,127 @@
-/*
-    SPDX-FileCopyrightText: 2020 David Edmundson <davidedmundson@kde.org>
-
-    SPDX-License-Identifier: LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL
-*/
-
 #include "volumemonitor.h"
+#include "backend.h"
 
-#include <pulse/pulseaudio.h>
+#include <algorithm>
+#include <cmath>
+#include <cstring>
 
-#include "context.h"
-#include "debug.h"
-#include "sink.h"
-#include "sinkinput.h"
-#include "source.h"
-#include "sourceoutput.h"
-#include "volumeobject.h"
+#include <spa/param/audio/format-utils.h>
 
-#include <QtGlobal>
+namespace CutefishAudio {
 
-using namespace QPulseAudio;
+const pw_stream_events VolumeMonitor::streamEvents = [] {
+    pw_stream_events events {};
+    events.version = PW_VERSION_STREAM_EVENTS;
+    events.process = [](void *data) { static_cast<VolumeMonitor *>(data)->process(); };
+    events.state_changed = [](void *data, pw_stream_state, pw_stream_state state, const char *) {
+        auto *self = static_cast<VolumeMonitor *>(data);
+        const bool available = state == PW_STREAM_STATE_STREAMING;
+        if (self->m_available != available) {
+            self->m_available = available;
+            Q_EMIT self->availableChanged();
+        }
+        if (!available && self->m_volume != 0.0) {
+            self->m_volume = 0.0;
+            Q_EMIT self->volumeChanged();
+        }
+    };
+    return events;
+}();
 
 VolumeMonitor::VolumeMonitor(QObject *parent)
     : QObject(parent)
 {
-    Context::instance()->ref();
+    connect(Backend::instance(), &Backend::disconnecting, this, [this] { setTarget(nullptr); });
+    connect(Backend::instance(), &Backend::objectRemoved, this, [this](AudioObject *object) {
+        if (m_target == object)
+            setTarget(nullptr);
+    });
 }
 
 VolumeMonitor::~VolumeMonitor()
 {
-    setTarget(nullptr);
-    Context::instance()->unref();
+    stop();
 }
 
-bool VolumeMonitor::isAvailable() const
+void VolumeMonitor::setTarget(AudioObject *target)
 {
-    return m_stream != nullptr;
-}
-
-void VolumeMonitor::updateVolume(qreal volume)
-{
-    // qFuzzyCompare cannot compare against 0.
-    if (qFuzzyCompare(1 + m_volume, 1 + volume)) {
+    if (m_target == target)
         return;
-    }
-
-    m_volume = volume;
-    Q_EMIT volumeChanged();
-}
-
-QPulseAudio::VolumeObject *QPulseAudio::VolumeMonitor::target() const
-{
-    return m_target;
-}
-
-void QPulseAudio::VolumeMonitor::setTarget(QPulseAudio::VolumeObject *target)
-{
-    if (target == m_target) {
+    stop();
+    m_target = target;
+    Q_EMIT targetChanged();
+    Backend *backend = Backend::instance();
+    if (!target || !backend->isConnected() || backend->object(target->index()) != target
+        || target->kind() == AudioObject::Card)
         return;
-    }
+    const QByteArray serial = target->properties().value(PW_KEY_OBJECT_SERIAL).toString().toUtf8();
+    if (serial.isEmpty())
+        return;
+    auto *properties = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture",
+        PW_KEY_NODE_NAME, "cutefish.internal.monitor",
+        PW_KEY_MEDIA_ROLE, "DSP", PW_KEY_TARGET_OBJECT, serial.constData(),
+        "stream.capture.sink", target->kind() == AudioObject::Sink ? "true" : "false",
+        "node.passive", "true", "node.dont-fallback", "true", "node.linger", "true", nullptr);
+    m_stream = pw_stream_new(backend->core(), "Cutefish volume monitor", properties);
+    if (!m_stream)
+        return;
+    pw_stream_add_listener(m_stream, &m_listener, &streamEvents, this);
+    spa_audio_info_raw format {};
+    format.format = SPA_AUDIO_FORMAT_F32;
+    format.rate = 48000;
+    format.channels = 1;
+    format.position[0] = SPA_AUDIO_CHANNEL_MONO;
+    uint8_t buffer[512];
+    spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
+    const spa_pod *params[] = {spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &format)};
+    if (pw_stream_connect(m_stream, PW_DIRECTION_INPUT, PW_ID_ANY,
+            static_cast<pw_stream_flags>(PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS), params, 1) < 0)
+        stop();
+}
 
-    if (m_stream) {
-        pa_stream_set_read_callback(m_stream, nullptr, nullptr);
-        pa_stream_set_suspended_callback(m_stream, nullptr, nullptr);
-        if (pa_stream_get_state(m_stream) == PA_STREAM_CREATING) {
-            pa_stream_set_state_callback(
-                m_stream,
-                [](pa_stream *s, void *) {
-                    pa_stream_disconnect(s);
-                    pa_stream_set_state_callback(s, nullptr, nullptr);
-                },
-                nullptr);
-        } else {
-            pa_stream_disconnect(m_stream);
+void VolumeMonitor::process()
+{
+    double peak = 0.0;
+    pw_buffer *buffer;
+    while ((buffer = pw_stream_dequeue_buffer(m_stream))) {
+        const spa_buffer *spaBuffer = buffer->buffer;
+        if (spaBuffer->n_datas > 0) {
+            const spa_data &data = spaBuffer->datas[0];
+            if (data.data && data.chunk && data.chunk->offset <= data.maxsize) {
+                const quint32 size = std::min(data.chunk->size, data.maxsize - data.chunk->offset);
+                const auto *samples = static_cast<const uint8_t *>(data.data) + data.chunk->offset;
+                for (quint32 offset = 0; offset + sizeof(float) <= size; offset += sizeof(float)) {
+                    float value;
+                    std::memcpy(&value, samples + offset, sizeof(value));
+                    if (std::isfinite(value))
+                        peak = std::max(peak, double(std::abs(value)));
+                }
+            }
         }
-        pa_stream_unref(m_stream);
+        pw_stream_queue_buffer(m_stream, buffer);
+    }
+    const double volume = std::clamp(peak, 0.0, 1.0);
+    if (m_volume != volume) {
+        m_volume = volume;
+        Q_EMIT volumeChanged();
+    }
+}
+
+void VolumeMonitor::stop()
+{
+    if (m_stream) {
+        spa_hook_remove(&m_listener);
+        pw_stream_destroy(m_stream);
         m_stream = nullptr;
+    }
+    if (m_available) {
+        m_available = false;
         Q_EMIT availableChanged();
     }
-
-    m_target = target;
-
-    if (target) {
-        connect(target, &QObject::destroyed, this, [this] {
-            setTarget(nullptr);
-        });
-        createStream();
-    }
-
-    Q_EMIT targetChanged();
-}
-
-void VolumeMonitor::createStream()
-{
-    Q_ASSERT(!m_stream);
-
-    uint32_t sourceIdx = PA_INVALID_INDEX;
-    uint32_t streamIdx = PA_INVALID_INDEX;
-
-    if (auto *sinkInput = qobject_cast<SinkInput *>(m_target)) {
-        Sink *sink = Context::instance()->sinks().data().value(sinkInput->deviceIndex());
-        if (sink) {
-            sourceIdx = sink->monitorIndex();
-        }
-        streamIdx = sinkInput->index();
-    } else if (auto *sourceOutput = qobject_cast<SourceOutput *>(m_target)) {
-        sourceIdx = sourceOutput->deviceIndex();
-        streamIdx = sourceOutput->index();
-    } else if (auto *sink = qobject_cast<Sink *>(m_target)) {
-        sourceIdx = sink->monitorIndex();
-    } else if (auto *source = qobject_cast<Source *>(m_target)) {
-        sourceIdx = source->index();
-    } else {
-        Q_UNREACHABLE();
-    }
-
-    if (sourceIdx == PA_INVALID_INDEX) {
-        return;
-    }
-
-    char t[16];
-    pa_buffer_attr attr;
-    pa_sample_spec ss;
-    pa_stream_flags_t flags;
-
-    ss.channels = 1;
-    ss.format = PA_SAMPLE_FLOAT32;
-    ss.rate = 25;
-
-    memset(&attr, 0, sizeof(attr));
-    attr.fragsize = sizeof(float);
-    attr.maxlength = (uint32_t)-1;
-
-    snprintf(t, sizeof(t), "%u", sourceIdx);
-
-    if (!(m_stream = pa_stream_new(Context::instance()->context(), "PlasmaPA-VolumeMeter", &ss, nullptr))) {
-        qCWarning(PLASMAPA) << "Failed to create stream";
-        return;
-    }
-
-    if (streamIdx != PA_INVALID_INDEX) {
-        pa_stream_set_monitor_stream(m_stream, streamIdx);
-    }
-
-    pa_stream_set_read_callback(m_stream, read_callback, this);
-    pa_stream_set_suspended_callback(m_stream, suspended_callback, this);
-
-    flags = (pa_stream_flags_t)(PA_STREAM_DONT_MOVE | PA_STREAM_PEAK_DETECT | PA_STREAM_ADJUST_LATENCY);
-
-    if (pa_stream_connect_record(m_stream, t, &attr, flags) < 0) {
-        pa_stream_unref(m_stream);
-        m_stream = nullptr;
-        return;
-    }
-    Q_EMIT availableChanged();
-}
-
-void VolumeMonitor::suspended_callback(pa_stream *s, void *userdata)
-{
-    VolumeMonitor *w = static_cast<VolumeMonitor *>(userdata);
-    if (pa_stream_is_suspended(s)) {
-        w->updateVolume(-1);
+    if (m_volume != 0.0) {
+        m_volume = 0.0;
+        Q_EMIT volumeChanged();
     }
 }
 
-void VolumeMonitor::read_callback(pa_stream *s, size_t length, void *userdata)
-{
-    VolumeMonitor *w = static_cast<VolumeMonitor *>(userdata);
-    const void *data;
-    double volume;
-
-    if (pa_stream_peek(s, &data, &length) < 0) {
-        qCWarning(PLASMAPA) << "Failed to read data from stream";
-        return;
-    }
-
-    if (!data) {
-        /* nullptr data means either a hole or empty buffer.
-         * Only drop the stream when there is a hole (length > 0) */
-        if (length) {
-            pa_stream_drop(s);
-        }
-        return;
-    }
-
-    Q_ASSERT(length > 0);
-    Q_ASSERT(length % sizeof(float) == 0);
-
-    volume = ((const float *)data)[length / sizeof(float) - 1];
-
-    pa_stream_drop(s);
-
-    volume = qBound(0.0, volume, 1.0);
-    w->updateVolume(volume);
 }

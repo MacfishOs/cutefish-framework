@@ -5,9 +5,11 @@ Maintainer: CutefishOS <support@cutefishos.com>
 Build-Depends: cmake,
                debhelper (>= 9),
                libkf6networkmanagerqt-dev,
-               libcanberra-dev,
-               libpulse-dev,
-               sound-theme-freedesktop,
+               libpipewire-0.3-dev (>= 0.3.65),
+               libspa-0.2-dev,
+               pipewire-bin <!nocheck>,
+               wireplumber (>= 0.5) <!nocheck>,
+               dbus-daemon <!nocheck>,
                qt6-base-dev,
                qt6-declarative-dev,
                qt6-tools-dev,
@@ -19,6 +21,8 @@ Homepage: https://cutefishos.com
 Package: libcutefish
 Architecture: any
 Depends: bluez,
+         pipewire,
+         wireplumber,
          ${misc:Depends},
          ${shlibs:Depends}
 Description: CutefishOS Library

@@ -24,6 +24,9 @@ The QML modules are `Cutefish.Accounts`, `Cutefish.Appearance`,
 `Cutefish.Audio`, `Cutefish.Bluetooth`, `Cutefish.Media`,
 `Cutefish.Network`, and `Cutefish.Screen`.
 
+The audio module uses native PipeWire with WirePlumber session policy.
+See [audio integration and tests](audio/README.md) for details.
+
 ## Dependencies
 
 The framework uses Qt 6 and a C++20 compiler. NetworkManagerQt is the only
@@ -35,8 +38,7 @@ KDE Frameworks dependency; it is used by the network module.
 sudo apt install cmake pkg-config build-essential \
     qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-tools-dev-tools \
     libkf6networkmanagerqt-dev bluez \
-    libcanberra-dev libpulse-dev \
-    sound-theme-freedesktop
+    libpipewire-0.3-dev libspa-0.2-dev pipewire wireplumber
 ```
 
 ### Arch Linux
@@ -44,7 +46,7 @@ sudo apt install cmake pkg-config build-essential \
 ```shell
 sudo pacman -S --needed base-devel cmake pkgconf \
     qt6-base qt6-declarative bluez networkmanager-qt \
-    libcanberra libpulse sound-theme-freedesktop
+    pipewire wireplumber
 ```
 
 ## Build and Install
