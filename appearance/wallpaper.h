@@ -15,7 +15,8 @@ class Wallpaper : public Appearance
     Q_PROPERTY(int type READ type WRITE setType NOTIFY typeChanged)
     Q_PROPERTY(QString path READ path WRITE setPath NOTIFY pathChanged)
     Q_PROPERTY(QString color READ color WRITE setColor NOTIFY colorChanged)
-    Q_PROPERTY(QStringList backgrounds READ backgrounds CONSTANT)
+    Q_PROPERTY(QStringList backgrounds READ backgrounds NOTIFY userWallpapersChanged)
+    Q_PROPERTY(QStringList systemWallpapers READ systemWallpapers CONSTANT)
 
 public:
     explicit Wallpaper(QObject *parent = nullptr);
@@ -30,6 +31,7 @@ public:
     Q_INVOKABLE void setColor(const QString &color);
 
     QStringList backgrounds() const;
+    QStringList systemWallpapers() const;
 
 signals:
     void pathChanged();

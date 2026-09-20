@@ -4,6 +4,26 @@
 #include <QDirIterator>
 #include <QStandardPaths>
 
+namespace {
+QStringList wallpapersIn(const QStringList &directories)
+{
+    QStringList result;
+    for (const QString &directory : directories) {
+        QDirIterator iterator(directory,
+                              {QStringLiteral("*.jpg"), QStringLiteral("*.jpeg"),
+                               QStringLiteral("*.png"), QStringLiteral("*.webp")},
+                              QDir::Files,
+                              QDirIterator::Subdirectories);
+        while (iterator.hasNext())
+            result.append(iterator.next());
+    }
+
+    result.removeDuplicates();
+    result.sort();
+    return result;
+}
+} // namespace
+
 Wallpaper::Wallpaper(QObject *parent)
     : Appearance(parent)
 {
@@ -44,23 +64,29 @@ void Wallpaper::setColor(const QString &color)
 
 QStringList Wallpaper::backgrounds() const
 {
-    // Every XDG data directory, so a user's own wallpapers in
-    // ~/.local/share/backgrounds/cutefishos show up next to the shipped ones.
-    const QStringList dirs = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation,
-                                                       QStringLiteral("backgrounds/cutefishos"),
-                                                       QStandardPaths::LocateDirectory);
+    QStringList result = systemWallpapers();
+    result.append(userWallpapers());
+    result.removeDuplicates();
+    return result;
+}
 
-    QStringList result;
-    for (const QString &dir : dirs) {
-        QDirIterator iterator(dir,
-                              {QStringLiteral("*.jpg"), QStringLiteral("*.png")},
-                              QDir::Files,
-                              QDirIterator::Subdirectories);
-        while (iterator.hasNext())
-            result.append(iterator.next());
+QStringList Wallpaper::systemWallpapers() const
+{
+    QStringList directories;
+    const QString userDataPath = QDir::cleanPath(
+            QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation));
+    const QStringList dataPaths =
+            QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
+
+    for (const QString &dataPath : dataPaths) {
+        if (QDir::cleanPath(dataPath) == userDataPath)
+            continue;
+
+        const QString directory = QDir(dataPath).absoluteFilePath(
+                QStringLiteral("backgrounds/cutefishos"));
+        if (QDir(directory).exists())
+            directories.append(directory);
     }
 
-    result.removeDuplicates();
-    result.sort();
-    return result;
+    return wallpapersIn(directories);
 }

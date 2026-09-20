@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 
 class QDBusInterface;
@@ -20,6 +21,7 @@ class Appearance : public QObject
     Q_PROPERTY(QString fixedFontFamily READ fixedFontFamily WRITE setFixedFontFamily NOTIFY
                        fixedFontFamilyChanged)
     Q_PROPERTY(QString wallpaper READ wallpaper WRITE setWallpaper NOTIFY wallpaperChanged)
+    Q_PROPERTY(QStringList userWallpapers READ userWallpapers NOTIFY userWallpapersChanged)
     Q_PROPERTY(int backgroundType READ backgroundType WRITE setBackgroundType NOTIFY
                        backgroundTypeChanged)
     Q_PROPERTY(QString backgroundColor READ backgroundColor WRITE setBackgroundColor NOTIFY
@@ -49,6 +51,8 @@ public:
 
     QString wallpaper() const;
     Q_INVOKABLE void setWallpaper(const QString &path);
+    QStringList userWallpapers() const;
+    Q_INVOKABLE void removeUserWallpaper(const QString &path);
 
     int backgroundType() const;
     Q_INVOKABLE void setBackgroundType(int type);
@@ -69,6 +73,7 @@ signals:
     void fontFamilyChanged();
     void fixedFontFamilyChanged();
     void wallpaperChanged();
+    void userWallpapersChanged();
     void backgroundTypeChanged();
     void backgroundColorChanged();
     void backgroundVisibleChanged();

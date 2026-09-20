@@ -35,6 +35,7 @@ void Appearance::init()
     connect(m_interface, SIGNAL(darkModeChanged(bool)), this, SLOT(onDarkModeChanged(bool)));
     connect(m_interface, SIGNAL(wallpaperChanged(QString)), this,
             SLOT(onWallpaperChanged(QString)));
+    connect(m_interface, SIGNAL(userWallpapersChanged()), this, SIGNAL(userWallpapersChanged()));
     connect(m_interface, SIGNAL(accentColorChanged(int)), this, SLOT(onAccentColorChanged(int)));
     connect(m_interface, SIGNAL(darkModeDimsWallpaerChanged()), this,
             SLOT(onDarkModeDimsWallpaperChanged()));
@@ -48,6 +49,7 @@ void Appearance::init()
 
     emit darkModeChanged();
     emit wallpaperChanged();
+    emit userWallpapersChanged();
     emit accentColorIndexChanged();
     emit dimsWallpaperChanged();
     emit fontPointSizeChanged();
@@ -150,6 +152,17 @@ void Appearance::setWallpaper(const QString &path)
 {
     if (!path.isEmpty())
         callService("setWallpaper", path);
+}
+
+QStringList Appearance::userWallpapers() const
+{
+    return serviceProperty("userWallpapers").toStringList();
+}
+
+void Appearance::removeUserWallpaper(const QString &path)
+{
+    if (!path.isEmpty())
+        callService("removeUserWallpaper", path);
 }
 
 int Appearance::backgroundType() const
