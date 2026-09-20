@@ -26,7 +26,13 @@ QDateTime FileItem::time(FileTime type) const
 
 QMimeType FileItem::determineMimeType() const
 {
-    return QMimeDatabase().mimeTypeForFile(m_info);
+    return m_mimeType.isValid() ? m_mimeType : QMimeDatabase().mimeTypeForFile(m_info);
+}
+
+void FileItem::prepareMetadata()
+{
+    m_info.stat();
+    m_mimeType = QMimeDatabase().mimeTypeForFile(m_info);
 }
 
 QString FileItem::iconName() const

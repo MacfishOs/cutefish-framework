@@ -47,6 +47,7 @@ public:
 
     QDateTime time(FileTime type) const;
     QMimeType determineMimeType() const;
+    void prepareMetadata();
 
     QString mimetype() const { return determineMimeType().name(); }
 
@@ -57,6 +58,7 @@ public:
 private:
     QUrl m_url;
     QFileInfo m_info;
+    QMimeType m_mimeType;
 };
 
 using FileItemList = QList<FileItem>;

@@ -128,17 +128,22 @@ void DirectoryModel::synchronize()
     QHash<QUrl, int> existing;
     for (int row = 0; row < m_items.size(); ++row)
         existing.insert(m_items[row].url(), row);
+    FileItemList added;
     for (const auto &item : incoming) {
         if (existing.contains(item.url())) {
             const int row = existing.value(item.url());
             m_items[row] = item;
-            emit dataChanged(index(row, 0), index(row, ColumnCount - 1));
         } else {
-            const int row = m_items.size();
-            beginInsertRows({}, row, row);
-            m_items.append(item);
-            endInsertRows();
+            added.append(item);
         }
+    }
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0, 0), index(m_items.size() - 1, ColumnCount - 1));
+    if (!added.isEmpty()) {
+        const int first = m_items.size();
+        beginInsertRows({}, first, first + added.size() - 1);
+        m_items.append(added);
+        endInsertRows();
     }
 }
 } // namespace Cutefish::IO

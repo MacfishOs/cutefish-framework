@@ -40,7 +40,8 @@ DirectoryLister::DirectoryLister(QObject *parent)
 
 DirectoryLister::~DirectoryLister()
 {
-    m_future.waitForFinished();
+    // The worker owns its inputs; closing a view must not wait for filesystem I/O.
+    m_future.cancel();
 }
 
 void DirectoryLister::openUrl(const QUrl &url)
@@ -92,6 +93,8 @@ void DirectoryLister::refresh()
         Listing result;
         try {
             result.items = FileEnumerator::list(url, hidden);
+            for (auto &item : result.items)
+                item.prepareMetadata();
         } catch (const Failure &failure) {
             result.error = failure.error;
         }
