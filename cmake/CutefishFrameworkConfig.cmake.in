@@ -1,0 +1,30 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Qt6 COMPONENTS Core Gui DBus Qml QuickControls2)
+
+# Without COMPONENTS every installed library is imported.
+set(_cutefish_framework_components ${CutefishFramework_FIND_COMPONENTS})
+if(NOT _cutefish_framework_components)
+    set(_cutefish_framework_components Application Applications Appearance IO)
+endif()
+
+foreach(_component IN LISTS _cutefish_framework_components)
+    if(_component STREQUAL "IO")
+        # IO keeps its own package so it can still be built and used standalone.
+        find_dependency(CutefishIO)
+        set(CutefishFramework_IO_FOUND ${CutefishIO_FOUND})
+    else()
+        set(_targets "${CMAKE_CURRENT_LIST_DIR}/CutefishFramework${_component}Targets.cmake")
+        if(EXISTS "${_targets}")
+            include("${_targets}")
+            set(CutefishFramework_${_component}_FOUND TRUE)
+        else()
+            set(CutefishFramework_${_component}_FOUND FALSE)
+        endif()
+        unset(_targets)
+    endif()
+endforeach()
+
+unset(_cutefish_framework_components)
+check_required_components(CutefishFramework)

@@ -52,3 +52,20 @@ add_subdirectory(network)
 add_subdirectory(screen)
 add_subdirectory(appearance)
 add_subdirectory(audio)
+
+# One package for the libraries other Cutefish projects link against; each
+# library installs its own targets file next to it.
+set(CUTEFISH_FRAMEWORK_CMAKEDIR ${CMAKE_INSTALL_LIBDIR}/cmake/CutefishFramework)
+configure_package_config_file(cmake/CutefishFrameworkConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/CutefishFrameworkConfig.cmake
+    INSTALL_DESTINATION ${CUTEFISH_FRAMEWORK_CMAKEDIR}
+)
+write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/CutefishFrameworkConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/CutefishFrameworkConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/CutefishFrameworkConfigVersion.cmake
+    DESTINATION ${CUTEFISH_FRAMEWORK_CMAKEDIR}
+)

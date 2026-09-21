@@ -17,13 +17,33 @@ add_library(cutefish-framework-applications STATIC ${CUTEFISH_APPLICATIONS_SRCS}
 add_library(Cutefish::Applications ALIAS cutefish-framework-applications)
 set_target_properties(cutefish-framework-applications PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_include_directories(cutefish-framework-applications PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(cutefish-framework-applications PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/Cutefish/Applications>
+)
 target_link_libraries(cutefish-framework-applications
     PUBLIC
         Qt6::Core
         Qt6::DBus
         Qt6::Gui
         Qt6::Qml
+)
+
+set_target_properties(cutefish-framework-applications PROPERTIES EXPORT_NAME Applications)
+install(TARGETS cutefish-framework-applications EXPORT CutefishFrameworkApplicationsTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+install(FILES
+    languageenvironment.h
+    applicationlauncher.h
+    applicationruntime.h
+    applicationregistry.h
+    desktopentry.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Cutefish/Applications
+)
+install(EXPORT CutefishFrameworkApplicationsTargets
+    NAMESPACE Cutefish::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/CutefishFramework
 )
 
 if(BUILD_TESTING)
