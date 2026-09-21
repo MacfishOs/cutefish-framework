@@ -25,6 +25,7 @@ Appearance::Appearance(QObject *parent)
 void Appearance::init()
 {
     delete m_interface;
+    m_continuousCorners.reset();
     m_interface =
             new QDBusInterface(QString::fromLatin1(Service), QString::fromLatin1(ObjectPath),
                                QString::fromLatin1(Interface), QDBusConnection::sessionBus(), this);
@@ -103,8 +104,15 @@ void Appearance::setDimsWallpaper(bool value)
 // Without the service there is nothing to read, so the default applies.
 bool Appearance::continuousCorners() const
 {
+    if (m_continuousCorners.has_value())
+        return *m_continuousCorners;
+
     const QVariant value = serviceProperty("continuousCorners");
-    return value.isValid() ? value.toBool() : true;
+    if (!value.isValid())
+        return true;
+
+    m_continuousCorners = value.toBool();
+    return *m_continuousCorners;
 }
 
 void Appearance::setContinuousCorners(bool value)
@@ -236,7 +244,7 @@ void Appearance::onAccentColorChanged(int accentColor)
 
 void Appearance::onContinuousCornersChanged(bool continuousCorners)
 {
-    Q_UNUSED(continuousCorners);
+    m_continuousCorners = continuousCorners;
     emit continuousCornersChanged();
 }
 

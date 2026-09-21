@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QVariant>
 
+#include <optional>
+
 class QDBusInterface;
 
 class Appearance : public QObject
@@ -105,6 +107,10 @@ private:
     void callService(const char *method, const QVariant &value);
 
     QDBusInterface *m_interface;
+    // Every rounded item asks for this as it is built, and a D-Bus round trip
+    // per item is what made a menu slow to open. Read once, then kept current
+    // by the service's own signal.
+    mutable std::optional<bool> m_continuousCorners;
 };
 
 #endif // CUTEFISH_APPEARANCE_H
