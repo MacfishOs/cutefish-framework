@@ -39,6 +39,8 @@ void Appearance::init()
     connect(m_interface, SIGNAL(accentColorChanged(int)), this, SLOT(onAccentColorChanged(int)));
     connect(m_interface, SIGNAL(darkModeDimsWallpaerChanged()), this,
             SLOT(onDarkModeDimsWallpaperChanged()));
+    connect(m_interface, SIGNAL(continuousCornersChanged()), this,
+            SIGNAL(continuousCornersChanged()));
     connect(m_interface, SIGNAL(systemFontPointSizeChanged()), this,
             SLOT(onFontPointSizeChanged()));
     connect(m_interface, SIGNAL(systemFontChanged()), this, SLOT(onFontFamilyChanged()));
@@ -52,6 +54,7 @@ void Appearance::init()
     emit userWallpapersChanged();
     emit accentColorIndexChanged();
     emit dimsWallpaperChanged();
+    emit continuousCornersChanged();
     emit fontPointSizeChanged();
     emit fontFamilyChanged();
     emit fixedFontFamilyChanged();
@@ -95,6 +98,18 @@ bool Appearance::dimsWallpaper() const
 void Appearance::setDimsWallpaper(bool value)
 {
     callService("setDarkModeDimsWallpaer", value);
+}
+
+// Without the service there is nothing to read, so the default applies.
+bool Appearance::continuousCorners() const
+{
+    const QVariant value = serviceProperty("continuousCorners");
+    return value.isValid() ? value.toBool() : true;
+}
+
+void Appearance::setContinuousCorners(bool value)
+{
+    callService("setContinuousCorners", value);
 }
 
 int Appearance::accentColorIndex() const

@@ -14,6 +14,8 @@ class Appearance : public QObject
     Q_PROPERTY(bool darkMode READ darkMode NOTIFY darkModeChanged)
     Q_PROPERTY(bool dimsWallpaper READ dimsWallpaper WRITE setDimsWallpaper NOTIFY
                        dimsWallpaperChanged)
+    Q_PROPERTY(bool continuousCorners READ continuousCorners WRITE setContinuousCorners NOTIFY
+                       continuousCornersChanged)
     Q_PROPERTY(int accentColorIndex READ accentColorIndex NOTIFY accentColorIndexChanged)
     Q_PROPERTY(qreal fontPointSize READ fontPointSize WRITE setFontPointSize NOTIFY
                        fontPointSizeChanged)
@@ -36,6 +38,11 @@ public:
 
     bool dimsWallpaper() const;
     Q_INVOKABLE void setDimsWallpaper(bool value);
+
+    // Whether rounded corners are drawn as continuous curves, the same shape
+    // the compositor gives window silhouettes. On until turned off.
+    bool continuousCorners() const;
+    Q_INVOKABLE void setContinuousCorners(bool value);
 
     int accentColorIndex() const;
     Q_INVOKABLE void setAccentColor(int accentColor);
@@ -68,6 +75,7 @@ public:
 signals:
     void darkModeChanged();
     void dimsWallpaperChanged();
+    void continuousCornersChanged();
     void accentColorIndexChanged();
     void fontPointSizeChanged();
     void fontFamilyChanged();
