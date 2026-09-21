@@ -39,8 +39,8 @@ void Appearance::init()
     connect(m_interface, SIGNAL(accentColorChanged(int)), this, SLOT(onAccentColorChanged(int)));
     connect(m_interface, SIGNAL(darkModeDimsWallpaerChanged()), this,
             SLOT(onDarkModeDimsWallpaperChanged()));
-    connect(m_interface, SIGNAL(continuousCornersChanged()), this,
-            SIGNAL(continuousCornersChanged()));
+    connect(m_interface, SIGNAL(continuousCornersChanged(bool)), this,
+            SLOT(onContinuousCornersChanged(bool)));
     connect(m_interface, SIGNAL(systemFontPointSizeChanged()), this,
             SLOT(onFontPointSizeChanged()));
     connect(m_interface, SIGNAL(systemFontChanged()), this, SLOT(onFontFamilyChanged()));
@@ -232,6 +232,12 @@ void Appearance::onAccentColorChanged(int accentColor)
 {
     Q_UNUSED(accentColor);
     emit accentColorIndexChanged();
+}
+
+void Appearance::onContinuousCornersChanged(bool continuousCorners)
+{
+    Q_UNUSED(continuousCorners);
+    emit continuousCornersChanged();
 }
 
 void Appearance::onDarkModeDimsWallpaperChanged()

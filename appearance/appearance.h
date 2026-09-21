@@ -91,6 +91,7 @@ private slots:
     void onDarkModeChanged(bool darkMode);
     void onWallpaperChanged(const QString &path);
     void onAccentColorChanged(int accentColor);
+    void onContinuousCornersChanged(bool continuousCorners);
     void onDarkModeDimsWallpaperChanged();
     void onFontPointSizeChanged();
     void onFontFamilyChanged();
