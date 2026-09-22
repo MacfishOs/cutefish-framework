@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(CutefishFramework
     VERSION 1.0.0
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -44,7 +44,6 @@ include(CutefishFrameworkQml)
 
 add_subdirectory(io)
 add_subdirectory(application)
-add_subdirectory(applications)
 add_subdirectory(accounts)
 add_subdirectory(bluetooth)
 add_subdirectory(media)

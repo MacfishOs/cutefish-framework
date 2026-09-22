@@ -93,5 +93,3 @@ private:
     bool m_scanInProgress = false;
     bool m_scanQueued = false;
 };
-
-void registerApplicationsQmlTypes();

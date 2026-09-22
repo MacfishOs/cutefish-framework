@@ -1,5 +1,4 @@
 #include "applicationregistry.h"
-#include "applicationruntime.h"
 
 #include <QCollator>
 #include <QDBusConnection>
@@ -7,9 +6,7 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
-#include <QJSEngine>
 #include <QPointer>
-#include <QQmlEngine>
 #include <QSet>
 #include <QThreadPool>
 
@@ -448,22 +445,3 @@ void ApplicationRegistry::monitorPaths()
     }
 }
 
-void registerApplicationsQmlTypes()
-{
-    static bool registered = false;
-    if (registered)
-        return;
-    registered = true;
-
-    qmlRegisterSingletonType<ApplicationRegistry>("Cutefish.Applications", 1, 0, "DesktopEntries",
-                                                  [](QQmlEngine *, QJSEngine *) -> QObject * {
-                                                      return ApplicationRegistry::instance();
-                                                  });
-    qmlRegisterSingletonType<ApplicationRuntime>("Cutefish.Applications", 1, 0, "AppRuntime",
-                                                 [](QQmlEngine *, QJSEngine *) -> QObject * {
-                                                     return ApplicationRuntime::instance();
-                                                 });
-    qmlRegisterUncreatableType<DesktopEntry>(
-            "Cutefish.Applications", 1, 0, "DesktopEntry",
-            QStringLiteral("DesktopEntry objects are provided by DesktopEntries"));
-}

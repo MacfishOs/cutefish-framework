@@ -6,7 +6,7 @@ find_dependency(Qt6 COMPONENTS Core Gui DBus Qml)
 # Without COMPONENTS every installed library is imported.
 set(_cutefish_framework_components ${CutefishFramework_FIND_COMPONENTS})
 if(NOT _cutefish_framework_components)
-    set(_cutefish_framework_components Application Applications Appearance IO)
+    set(_cutefish_framework_components Application Appearance IO)
 endif()
 
 foreach(_component IN LISTS _cutefish_framework_components)

@@ -11,7 +11,7 @@ services.
 
 The framework provides these CMake targets and C++ aliases:
 
-- `cutefish-framework-applications` / `Cutefish::Applications`
+- `cutefish-framework-application` / `Cutefish::Application`
 - `cutefish-framework-accounts` / `Cutefish::Accounts`
 - `cutefish-framework-audio` / `Cutefish::Audio`
 - `cutefish-framework-appearance` / `Cutefish::Appearance`
@@ -20,7 +20,7 @@ The framework provides these CMake targets and C++ aliases:
 - `cutefish-framework-network` / `Cutefish::Network`
 - `cutefish-framework-screen` / `Cutefish::Screen`
 
-The QML modules are `Cutefish.Accounts`, `Cutefish.Appearance`,
+The QML modules are `Cutefish.Application`, `Cutefish.Accounts`, `Cutefish.Appearance`,
 `Cutefish.Audio`, `Cutefish.Bluetooth`, `Cutefish.Media`,
 `Cutefish.Network`, and `Cutefish.Screen`.
 
@@ -62,3 +62,16 @@ sudo make install
 ## License
 
 This project has been licensed by GPLv3.
+
+## Window presentation
+
+Set `WindowHints.skipTaskbar` to exclude a window from the dock, status bar
+application identity, and window switcher:
+
+```qml
+import Cutefish.Application
+
+Window {
+    WindowHints.skipTaskbar: true
+}
+```
