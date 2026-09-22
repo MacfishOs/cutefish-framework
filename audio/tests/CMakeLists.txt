@@ -17,5 +17,5 @@ target_compile_definitions(audio-test PRIVATE
 add_test(NAME audio-native-pipewire COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:audio-test>)
 set_tests_properties(audio-native-pipewire PROPERTIES
     TIMEOUT 120
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Fish"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
 )

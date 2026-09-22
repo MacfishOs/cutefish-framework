@@ -1,7 +1,7 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
-find_dependency(Qt6 COMPONENTS Core Gui DBus Qml QuickControls2)
+find_dependency(Qt6 COMPONENTS Core Gui DBus Qml)
 
 # Without COMPONENTS every installed library is imported.
 set(_cutefish_framework_components ${CutefishFramework_FIND_COMPONENTS})

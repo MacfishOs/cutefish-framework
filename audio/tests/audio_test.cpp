@@ -472,6 +472,7 @@ void AudioTest::qmlModelsAndControls()
     component.setData(R"(
         import QtQuick
         import QtQuick.Controls
+        import FishUI 1.0 as FishUI
         import Cutefish.Audio 1.0
         Item {
             width: 400
@@ -487,7 +488,7 @@ void AudioTest::qmlModelsAndControls()
                 sortOrder: Qt.DescendingOrder
                 filterOutInactiveDevices: true
             }
-            Slider {
+            FishUI.Slider {
                 id: slider
                 from: PipeWire.MinimalVolume
                 to: PipeWire.NormalVolume
@@ -527,7 +528,8 @@ void AudioTest::settingsMultipleDevices()
     host.setData(R"(
         import QtQuick
         import QtQuick.Controls
-        ApplicationWindow {
+        import FishUI 1.0 as FishUI
+        FishUI.ApplicationWindow {
             width: 820
             height: 780
             visible: true

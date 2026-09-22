@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Core QuickControls2)
+find_package(Qt6 REQUIRED COMPONENTS Core)
 
 add_library(cutefish-framework-application STATIC
     cutefishapplication.cpp
@@ -14,8 +14,6 @@ target_include_directories(cutefish-framework-application PUBLIC
 target_link_libraries(cutefish-framework-application
     PUBLIC
         Qt6::Core
-    PRIVATE
-        Qt6::QuickControls2
 )
 
 set_target_properties(cutefish-framework-application PROPERTIES EXPORT_NAME Application)
