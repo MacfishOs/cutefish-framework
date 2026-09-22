@@ -2,6 +2,7 @@
 
 #include <QDBusConnection>
 #include <QDBusInterface>
+#include <QDBusReply>
 #include <QDBusServiceWatcher>
 
 namespace {
@@ -37,6 +38,10 @@ void Appearance::init()
     connect(m_interface, SIGNAL(wallpaperChanged(QString)), this,
             SLOT(onWallpaperChanged(QString)));
     connect(m_interface, SIGNAL(userWallpapersChanged()), this, SIGNAL(userWallpapersChanged()));
+    connect(m_interface, SIGNAL(wallpaperFoldersChanged()), this,
+            SIGNAL(wallpaperFoldersChanged()));
+    connect(m_interface, SIGNAL(wallpaperFolderImagesChanged(QString)), this,
+            SIGNAL(wallpaperFolderImagesChanged(QString)));
     connect(m_interface, SIGNAL(accentColorChanged(int)), this, SLOT(onAccentColorChanged(int)));
     connect(m_interface, SIGNAL(darkModeDimsWallpaerChanged()), this,
             SLOT(onDarkModeDimsWallpaperChanged()));
@@ -53,6 +58,7 @@ void Appearance::init()
     emit darkModeChanged();
     emit wallpaperChanged();
     emit userWallpapersChanged();
+    emit wallpaperFoldersChanged();
     emit accentColorIndexChanged();
     emit dimsWallpaperChanged();
     emit continuousCornersChanged();
@@ -186,6 +192,34 @@ void Appearance::removeUserWallpaper(const QString &path)
 {
     if (!path.isEmpty())
         callService("removeUserWallpaper", path);
+}
+
+QStringList Appearance::wallpaperFolders() const
+{
+    return serviceProperty("wallpaperFolders").toStringList();
+}
+
+void Appearance::addWallpaperFolder(const QString &path)
+{
+    if (!path.isEmpty())
+        callService("addWallpaperFolder", path);
+}
+
+void Appearance::removeWallpaperFolder(const QString &path)
+{
+    if (!path.isEmpty())
+        callService("removeWallpaperFolder", path);
+}
+
+// The service owns the copies a wallpaper folder is made of, so the list is
+// asked for rather than scanned here.
+QStringList Appearance::wallpaperFolderImages(const QString &folder) const
+{
+    if (folder.isEmpty() || !m_interface || !m_interface->isValid())
+        return {};
+
+    const QDBusReply<QStringList> reply = m_interface->call("wallpaperFolderImages", folder);
+    return reply.isValid() ? reply.value() : QStringList();
 }
 
 int Appearance::backgroundType() const

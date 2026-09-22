@@ -26,6 +26,7 @@ class Appearance : public QObject
                        fixedFontFamilyChanged)
     Q_PROPERTY(QString wallpaper READ wallpaper WRITE setWallpaper NOTIFY wallpaperChanged)
     Q_PROPERTY(QStringList userWallpapers READ userWallpapers NOTIFY userWallpapersChanged)
+    Q_PROPERTY(QStringList wallpaperFolders READ wallpaperFolders NOTIFY wallpaperFoldersChanged)
     Q_PROPERTY(int backgroundType READ backgroundType WRITE setBackgroundType NOTIFY
                        backgroundTypeChanged)
     Q_PROPERTY(QString backgroundColor READ backgroundColor WRITE setBackgroundColor NOTIFY
@@ -63,6 +64,11 @@ public:
     QStringList userWallpapers() const;
     Q_INVOKABLE void removeUserWallpaper(const QString &path);
 
+    QStringList wallpaperFolders() const;
+    Q_INVOKABLE void addWallpaperFolder(const QString &path);
+    Q_INVOKABLE void removeWallpaperFolder(const QString &path);
+    QStringList wallpaperFolderImages(const QString &folder) const;
+
     int backgroundType() const;
     Q_INVOKABLE void setBackgroundType(int type);
 
@@ -84,6 +90,10 @@ signals:
     void fixedFontFamilyChanged();
     void wallpaperChanged();
     void userWallpapersChanged();
+    void wallpaperFoldersChanged();
+    // The service finished copying a folder's images; whoever shows them
+    // asks for the list again.
+    void wallpaperFolderImagesChanged(const QString &folder);
     void backgroundTypeChanged();
     void backgroundColorChanged();
     void backgroundVisibleChanged();

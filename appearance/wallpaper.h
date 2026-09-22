@@ -33,6 +33,9 @@ public:
     QStringList backgrounds() const;
     QStringList systemWallpapers() const;
 
+    // The copies the service keeps of a folder the user added.
+    Q_INVOKABLE QStringList wallpapersInFolder(const QString &folder) const;
+
 signals:
     void pathChanged();
     void typeChanged();
