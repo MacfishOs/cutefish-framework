@@ -297,7 +297,9 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
         if (!wantedExecutable.isEmpty() && !program.isEmpty() && wantedExecutable.contains(program))
             score = qMax(score, 45);
 
-        if (score > bestScore) {
+        // Shared executables can have NoDisplay helpers alongside their main application.
+        if (score > bestScore
+            || (score > 0 && score == bestScore && best->noDisplay() && !entry->noDisplay())) {
             best = entry;
             bestScore = score;
         }

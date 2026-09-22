@@ -53,6 +53,46 @@ private slots:
         QCOMPARE(registry.resolveWindow(launcher.id, {}, {}, {}), registry.byId(launcher.id));
     }
 
+    void prefersMainApplicationForSharedExecutable()
+    {
+        QTemporaryDir dataRoot;
+        QVERIFY(dataRoot.isValid());
+        qputenv("XDG_DATA_HOME", dataRoot.path().toUtf8());
+        qputenv("XDG_DATA_DIRS", dataRoot.path().toUtf8());
+
+        ApplicationRegistry registry;
+        QTRY_VERIFY(!registry.loading());
+
+        DesktopEntryData disks;
+        QVERIFY(DesktopEntry::parse(
+                "org.gnome.DiskUtility", "/applications/org.gnome.DiskUtility.desktop",
+                "[Desktop Entry]\nType=Application\nName=Disks\nExec=gnome-disks\n",
+                &disks));
+        DesktopEntryData writer;
+        QVERIFY(DesktopEntry::parse(
+                "gnome-disk-image-writer", "/applications/gnome-disk-image-writer.desktop",
+                "[Desktop Entry]\nType=Application\nName=Disk Image Writer\n"
+                "Exec=gnome-disks --restore-disk-image %U\nNoDisplay=true\n"
+                "StartupWMClass=DiskImageWriter\n",
+                &writer));
+
+        for (bool helperFirst : {true, false}) {
+            registry.applyScan(helperFirst ? QList<DesktopEntryData>{writer, disks}
+                                           : QList<DesktopEntryData>{disks, writer});
+
+            QCOMPARE(registry.applicationEntries().size(), 1);
+            QCOMPARE(registry.resolveWindow({}, {}, "/usr/bin/gnome-disks", "gnome-disks"),
+                     registry.byId(disks.id));
+            QCOMPARE(registry.resolveWindow({}, {}, "gnome-disks", "gnome-disks"),
+                     registry.byId(disks.id));
+            QCOMPARE(registry.resolveWindow(writer.id, {}, "/usr/bin/gnome-disks", "gnome-disks"),
+                     registry.byId(writer.id));
+            QCOMPARE(registry.resolveWindow({}, "DiskImageWriter", {}, "gnome-disks"),
+                     registry.byId(writer.id));
+            QVERIFY(!registry.resolveWindow({}, {}, {}, {}));
+        }
+    }
+
     void localizesByLanguage()
     {
         const QByteArray contents = "[Desktop Entry]\nType=Application\nName=Files\n"
