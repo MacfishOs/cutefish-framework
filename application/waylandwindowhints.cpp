@@ -68,4 +68,13 @@ void WaylandWindowHints::setSkipTaskbar(wl_surface *surface, bool skip)
     wl_display_flush(native->display());
 }
 
+void WaylandWindowHints::setAlwaysOnTop(wl_surface *surface, bool alwaysOnTop)
+{
+    if (!m_manager || !surface)
+        return;
+    cutefish_window_hints_v1_set_always_on_top(m_manager, surface, alwaysOnTop);
+    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+    wl_display_flush(native->display());
+}
+
 } // namespace Cutefish

@@ -44,6 +44,15 @@ void WindowHints::setSkipTaskbar(bool skip)
     Q_EMIT skipTaskbarChanged();
 }
 
+void WindowHints::setAlwaysOnTop(bool alwaysOnTop)
+{
+    if (m_alwaysOnTop == alwaysOnTop)
+        return;
+    m_alwaysOnTop = alwaysOnTop;
+    apply();
+    Q_EMIT alwaysOnTopChanged();
+}
+
 bool WindowHints::available() const
 {
     return m_window && WaylandWindowHints::instance()->available();
@@ -92,6 +101,7 @@ void WindowHints::apply()
     auto *surface = static_cast<wl_surface *>(
             native->nativeResourceForWindow(QByteArrayLiteral("surface"), m_window));
     WaylandWindowHints::instance()->setSkipTaskbar(surface, m_skipTaskbar);
+    WaylandWindowHints::instance()->setAlwaysOnTop(surface, m_alwaysOnTop);
 }
 
 } // namespace Cutefish

@@ -19,6 +19,7 @@ public:
     ~WaylandWindowHints() override;
     bool available() const { return m_manager != nullptr; }
     void setSkipTaskbar(wl_surface *surface, bool skip);
+    void setAlwaysOnTop(wl_surface *surface, bool alwaysOnTop);
 
 Q_SIGNALS:
     void availableChanged();

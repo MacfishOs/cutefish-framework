@@ -12,6 +12,7 @@ class WindowHints : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool skipTaskbar READ skipTaskbar WRITE setSkipTaskbar NOTIFY skipTaskbarChanged)
+    Q_PROPERTY(bool alwaysOnTop READ alwaysOnTop WRITE setAlwaysOnTop NOTIFY alwaysOnTopChanged)
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
 
 public:
@@ -21,10 +22,13 @@ public:
 
     bool skipTaskbar() const { return m_skipTaskbar; }
     void setSkipTaskbar(bool skip);
+    bool alwaysOnTop() const { return m_alwaysOnTop; }
+    void setAlwaysOnTop(bool alwaysOnTop);
     bool available() const;
 
 Q_SIGNALS:
     void skipTaskbarChanged();
+    void alwaysOnTopChanged();
     void availableChanged();
 
 protected:
@@ -38,6 +42,7 @@ private:
     QMetaObject::Connection m_createdConnection;
     QMetaObject::Connection m_destroyedConnection;
     bool m_skipTaskbar = false;
+    bool m_alwaysOnTop = false;
     bool m_surfaceDying = false;
 };
 

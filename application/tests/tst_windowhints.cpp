@@ -24,10 +24,16 @@ private slots:
         QCOMPARE(changed.count(), 1);
         if (qEnvironmentVariableIsSet("CUTEFISH_TEST_WINDOW_HINTS"))
             QVERIFY(hints->available());
+        QVERIFY(!hints->alwaysOnTop());
+        QSignalSpy onTopChanged(hints, &Cutefish::WindowHints::alwaysOnTopChanged);
+        hints->setAlwaysOnTop(true);
+        hints->setAlwaysOnTop(true);
+        QCOMPARE(onTopChanged.count(), 1);
         window.create();
         window.destroy();
         window.create();
         QVERIFY(hints->skipTaskbar());
+        QVERIFY(hints->alwaysOnTop());
     }
 
     void qmlAndCppShareHintsAcrossSurfaceRecreation()
@@ -42,7 +48,9 @@ private slots:
                 width: 100
                 height: 80
                 WindowHints.skipTaskbar: true
+                WindowHints.alwaysOnTop: true
                 property bool skipped: WindowHints.skipTaskbar
+                property bool onTop: WindowHints.alwaysOnTop
             }
         )", QUrl());
         QScopedPointer<QObject> object(component.create());
@@ -58,8 +66,11 @@ private slots:
         window->show();
         QVERIFY(QTest::qWaitForWindowExposed(window));
         QVERIFY(hints->skipTaskbar());
+        QVERIFY(hints->alwaysOnTop());
         hints->setSkipTaskbar(false);
         QCOMPARE(object->property("skipped").toBool(), false);
+        hints->setAlwaysOnTop(false);
+        QCOMPARE(object->property("onTop").toBool(), false);
     }
 };
 
