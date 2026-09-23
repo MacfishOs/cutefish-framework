@@ -4,13 +4,18 @@
 #include <QSize>
 #include <QString>
 
+struct Thumbnail
+{
+    QString path;
+    QImage image;
+};
+
 class ThumbnailCache
 {
 public:
     static ThumbnailCache *self();
 
-    QString requestThumbnail(const QString &filePath, const QSize &requestedSize);
-    QString generateThumbnail(const QString &source, const QString &target,
-                              const QSize &requestedSize);
+    Thumbnail requestThumbnail(const QString &filePath, const QSize &requestedSize);
+    QImage generateThumbnail(const QString &source, const QSize &requestedSize);
     QString writeCacheFile(const QString &path, const QImage &image);
 };

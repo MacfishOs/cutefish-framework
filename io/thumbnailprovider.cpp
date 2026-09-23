@@ -25,9 +25,9 @@ public:
     {
         thumbnailPool().start([this, id, requestedSize] {
             if (!m_cancelled.load() && requestedSize.isValid()) {
-                const QString path = ThumbnailCache::self()->requestThumbnail(id, requestedSize);
-                if (!m_cancelled.load() && !path.isEmpty())
-                    m_image = QImage(path);
+                Thumbnail thumbnail = ThumbnailCache::self()->requestThumbnail(id, requestedSize);
+                if (!m_cancelled.load())
+                    m_image = std::move(thumbnail.image);
             }
             // Qt keeps the response alive until finished, including cancelled requests.
             emit finished();
