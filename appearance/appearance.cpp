@@ -50,6 +50,7 @@ void Appearance::init()
     connect(m_interface, SIGNAL(systemFontPointSizeChanged()), this,
             SLOT(onFontPointSizeChanged()));
     connect(m_interface, SIGNAL(systemFontChanged()), this, SLOT(onFontFamilyChanged()));
+    connect(m_interface, SIGNAL(iconThemeChanged()), this, SIGNAL(iconThemeChanged()));
     connect(m_interface, SIGNAL(backgroundTypeChanged()), this, SLOT(onBackgroundTypeChanged()));
     connect(m_interface, SIGNAL(backgroundColorChanged()), this, SLOT(onBackgroundColorChanged()));
     connect(m_interface, SIGNAL(backgroundVisibleChanged()), this,
@@ -65,6 +66,7 @@ void Appearance::init()
     emit fontPointSizeChanged();
     emit fontFamilyChanged();
     emit fixedFontFamilyChanged();
+    emit iconThemeChanged();
     emit backgroundTypeChanged();
     emit backgroundColorChanged();
     emit backgroundVisibleChanged();
@@ -245,6 +247,17 @@ void Appearance::setBackgroundColor(const QString &color)
 bool Appearance::backgroundVisible() const
 {
     return serviceProperty("backgroundVisible").toBool();
+}
+
+QString Appearance::iconTheme() const
+{
+    return serviceProperty("iconTheme").toString();
+}
+
+void Appearance::setIconTheme(const QString &name)
+{
+    if (!name.isEmpty())
+        callService("setIconTheme", name);
 }
 
 void Appearance::setCursorTheme(const QString &theme)

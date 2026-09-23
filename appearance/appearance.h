@@ -22,6 +22,7 @@ class Appearance : public QObject
     Q_PROPERTY(qreal fontPointSize READ fontPointSize WRITE setFontPointSize NOTIFY
                        fontPointSizeChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily WRITE setFontFamily NOTIFY fontFamilyChanged)
+    Q_PROPERTY(QString iconTheme READ iconTheme WRITE setIconTheme NOTIFY iconThemeChanged)
     Q_PROPERTY(QString fixedFontFamily READ fixedFontFamily WRITE setFixedFontFamily NOTIFY
                        fixedFontFamilyChanged)
     Q_PROPERTY(QString wallpaper READ wallpaper WRITE setWallpaper NOTIFY wallpaperChanged)
@@ -59,6 +60,9 @@ public:
     QString fixedFontFamily() const;
     Q_INVOKABLE void setFixedFontFamily(const QString &name);
 
+    QString iconTheme() const;
+    Q_INVOKABLE void setIconTheme(const QString &name);
+
     QString wallpaper() const;
     Q_INVOKABLE void setWallpaper(const QString &path);
     QStringList userWallpapers() const;
@@ -88,6 +92,7 @@ signals:
     void fontPointSizeChanged();
     void fontFamilyChanged();
     void fixedFontFamilyChanged();
+    void iconThemeChanged();
     void wallpaperChanged();
     void userWallpapersChanged();
     void wallpaperFoldersChanged();
