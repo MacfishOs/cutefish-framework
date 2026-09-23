@@ -43,6 +43,7 @@ include(CutefishFrameworkQml)
 # -------------------------------------------
 
 add_subdirectory(io)
+add_subdirectory(protocols)
 add_subdirectory(application)
 add_subdirectory(accounts)
 add_subdirectory(bluetooth)

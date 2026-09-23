@@ -18,7 +18,13 @@ The framework provides these CMake targets and C++ aliases:
 - `cutefish-framework-bluetooth` / `Cutefish::Bluetooth`
 - `cutefish-framework-media` / `Cutefish::Media`
 - `cutefish-framework-network` / `Cutefish::Network`
+- `cutefish-framework-protocols` / `Cutefish::Protocols`
 - `cutefish-framework-screen` / `Cutefish::Screen`
+
+`Cutefish::Protocols` carries the client bindings for the compositor's private
+Wayland protocols (`protocols/*.xml`). That XML is kept byte-identical to
+`cutefish-compositor/protocols`; other projects link the target instead of
+keeping a copy.
 
 The QML modules are `Cutefish.Application`, `Cutefish.Accounts`, `Cutefish.Appearance`,
 `Cutefish.Audio`, `Cutefish.Bluetooth`, `Cutefish.Media`,
