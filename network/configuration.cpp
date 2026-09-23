@@ -41,16 +41,16 @@ Configuration &Configuration::self()
 
 bool Configuration::unlockModemOnDetection()
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
 
     return config.value("UnlockModemOnDetection", true).toBool();
 }
 
 void Configuration::setUnlockModemOnDetection(bool unlock)
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
     config.setValue(QLatin1String("UnlockModemOnDetection"), unlock);
 }
 
@@ -61,8 +61,8 @@ bool Configuration::manageVirtualConnections()
         return propManageVirtualConnections;
     }
 
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
 
     propManageVirtualConnections =
             config.value(QLatin1String("ManageVirtualConnections"), false).toBool();
@@ -73,8 +73,8 @@ bool Configuration::manageVirtualConnections()
 
 void Configuration::setManageVirtualConnections(bool manage)
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
 
     config.setValue(QLatin1String("ManageVirtualConnections"), manage);
     propManageVirtualConnections = manage;
@@ -89,8 +89,8 @@ bool Configuration::airplaneModeEnabled()
     const bool isWwanDisabled =
             !NetworkManager::isWwanEnabled() || !NetworkManager::isWwanHardwareEnabled();
 
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
 
     if (config.value(QLatin1String("AirplaneModeEnabled"), false).toBool()) {
         // We can assume that airplane mode is still activated after resume
@@ -106,15 +106,15 @@ bool Configuration::airplaneModeEnabled()
 
 void Configuration::setAirplaneModeEnabled(bool enabled)
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
     config.setValue(QLatin1String("AirplaneModeEnabled"), enabled);
 }
 
 QString Configuration::hotspotName()
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
 
     const QString defaultName = m_userName + QLatin1String("-hotspot");
 
@@ -123,43 +123,43 @@ QString Configuration::hotspotName()
 
 void Configuration::setHotspotName(const QString &name)
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
     config.setValue(QLatin1String("HotspotName"), name);
 }
 
 QString Configuration::hotspotPassword()
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
     return config.value(QLatin1String("HotspotPassword"), QString()).toString();
 }
 
 void Configuration::setHotspotPassword(const QString &password)
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
     config.setValue(QLatin1String("HotspotPassword"), password);
 }
 
 QString Configuration::hotspotConnectionPath()
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
     return config.value(QLatin1String("HotspotConnectionPath"), QString()).toString();
 }
 
 void Configuration::setHotspotConnectionPath(const QString &path)
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
     config.setValue(QLatin1String("HotspotConnectionPath"), path);
 }
 
 bool Configuration::showPasswordDialog()
 {
-    QSettings config(QSettings::UserScope, "cutefish", "nm");
-    config.beginGroup(QLatin1String("General"));
+    QSettings config(QSettings::UserScope, "cutefish", "network");
+    config.beginGroup(QLatin1String("NetworkManager"));
 
     return config.value(QLatin1String("ShowPasswordDialog"), true).toBool();
 }
