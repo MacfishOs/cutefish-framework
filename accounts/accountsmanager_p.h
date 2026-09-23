@@ -1,62 +1,37 @@
-/****************************************************************************
- * This file is part of Qt AccountsService.
- *
- * Copyright (C) 2018 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
- *
- * $BEGIN_LICENSE:LGPLv3+$
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * $END_LICENSE$
- ***************************************************************************/
+#ifndef CUTEFISH_ACCOUNTSMANAGER_P_H
+#define CUTEFISH_ACCOUNTSMANAGER_P_H
 
-#ifndef QTACCOUNTSSERVICE_ACCOUNTSMANAGER_P_H
-#define QTACCOUNTSSERVICE_ACCOUNTSMANAGER_P_H
-
+#include "accountsmanager.h"
 #include "accounts_interface.h"
 
-//
-//  W A R N I N G
-//  -------------
-//
-// This file is not part of the Qt AccountsService API.  It exists
-// purely as an implementation detail.  This header file may change from
-// version to version without notice, or even be removed.
-//
-// We mean it.
-//
-
-class OrgFreedesktopAccountsInterface;
+#include <QtCore/QHash>
+#include <QtCore/QPointer>
 
 namespace QtAccountsService {
 
-class AccountsManager;
-
 class AccountsManagerPrivate
 {
-    Q_DECLARE_PUBLIC(AccountsManager)
 public:
-    AccountsManagerPrivate(const QDBusConnection &bus);
-    ~AccountsManagerPrivate();
+    AccountsManagerPrivate(AccountsManager *owner, const QDBusConnection &bus);
 
-    AccountsManager *q_ptr;
-    OrgFreedesktopAccountsInterface *interface;
-    QMap<QString, UserAccount *> usersCache;
+    UserAccount *account(const QString &path, quint64 requestSerial,
+                         const QString &name = QString());
+    QString pathFor(UserAccount *user) const;
+    void remove(const QString &path);
+    void removedByService(const QString &path);
+    void addedByService(const QString &path);
+    quint64 nextRequest(const QString &name);
+    bool isLatestRequest(const QString &name, quint64 number) const;
 
-    void _q_userAdded(const QDBusObjectPath &path);
-    void _q_userDeleted(const QDBusObjectPath &path);
+    AccountsManager *owner;
+    OrgFreedesktopAccountsInterface *service;
+    QHash<QString, QPointer<UserAccount>> accounts;
+    QHash<QString, QString> names;
+    QHash<QString, quint64> deletionSerials;
+    QHash<QString, quint64> requests;
+    quint64 serial = 0;
 };
+
 }
 
-#endif // QTACCOUNTSSERVICE_ACCOUNTSMANAGER_P_H
+#endif

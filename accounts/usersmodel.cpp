@@ -1,237 +1,221 @@
-/****************************************************************************
- *
- * Copyright (C) 2018 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
- *
- * $BEGIN_LICENSE:LGPLv3+$
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * $END_LICENSE$
- ***************************************************************************/
-
-#include <QtGui/QPixmap>
-
 #include "usersmodel.h"
 #include "usersmodel_p.h"
 
+#include <QtGui/QPixmap>
+
 namespace QtAccountsService {
 
-/*
- * UsersModelPrivate
- */
-
-UsersModelPrivate::UsersModelPrivate(UsersModel *q)
-    : manager(new AccountsManager())
-    , q_ptr(q)
+UsersModelPrivate::UsersModelPrivate(UsersModel *model, const QDBusConnection &bus)
+    : owner(model)
+    , manager(new AccountsManager(bus, model))
 {
 }
 
-UsersModelPrivate::~UsersModelPrivate()
+UsersModel::UsersModel(QObject *parent)
+    : UsersModel(QDBusConnection::systemBus(), parent)
 {
-    delete manager;
 }
 
-void UsersModelPrivate::_q_userAdded(UserAccount *account)
+UsersModel::UsersModel(const QDBusConnection &bus, QObject *parent)
+    : QAbstractListModel(parent)
+    , d_ptr(new UsersModelPrivate(this, bus))
 {
-    Q_Q(UsersModel);
+    connect(d_ptr->manager, &AccountsManager::userAdded,
+            this, &UsersModel::_q_userAdded);
+    connect(d_ptr->manager, &AccountsManager::userDeleted,
+            this, &UsersModel::_q_userDeleted);
+    connect(d_ptr->manager, &AccountsManager::listCachedUsersFinished, this,
+            [this](const UserAccountList &users) {
+                for (UserAccount *user : users)
+                    _q_userAdded(user);
+            });
+    d_ptr->manager->listCachedUsers();
+}
 
-    q->connect(account, &UserAccount::accountChanged, q, [account, q, this]() {
-        auto index = q->index(list.indexOf(account));
-        if (index.isValid())
-            Q_EMIT q->dataChanged(index, index);
+void UsersModel::_q_userAdded(UserAccount *account)
+{
+    if (!account)
+        return;
+    for (const UserRow &row : d_ptr->rows) {
+        if (row.account == account)
+            return;
+    }
+
+    const qlonglong uid = account->userId();
+    const int position = d_ptr->rows.size();
+    beginInsertRows(QModelIndex(), position, position);
+    d_ptr->rows.append({account, uid});
+    endInsertRows();
+
+    connect(account, &UserAccount::accountChanged, this, [this, account]() {
+        for (int row = 0; row < d_ptr->rows.size(); ++row) {
+            if (d_ptr->rows.at(row).account == account) {
+                Q_EMIT dataChanged(index(row), index(row));
+                return;
+            }
+        }
     });
-
-    q->beginInsertRows(QModelIndex(), list.size(), list.size());
-    list.append(account);
-    q->endInsertRows();
+    connect(account, &QObject::destroyed, this, [this, uid]() {
+        for (int row = 0; row < d_ptr->rows.size(); ++row) {
+            const UserRow &entry = d_ptr->rows.at(row);
+            if (entry.uid == uid && entry.account.isNull()) {
+                beginRemoveRows(QModelIndex(), row, row);
+                d_ptr->rows.removeAt(row);
+                endRemoveRows();
+                return;
+            }
+        }
+    });
 }
 
-void UsersModelPrivate::_q_userDeleted(qlonglong uid)
+void UsersModel::_q_userDeleted(qlonglong uid)
 {
-    Q_Q(UsersModel);
-
-    for (int i = 0; i < list.size(); i++) {
-        UserAccount *curAccount = list.at(i);
-
-        if (curAccount->userId() == uid) {
-            q->beginRemoveRows(QModelIndex(), i, i);
-            list.removeOne(curAccount);
-            q->endRemoveRows();
-            break;
+    for (int row = d_ptr->rows.size() - 1; row >= 0; --row) {
+        if (d_ptr->rows.at(row).uid == uid) {
+            beginRemoveRows(QModelIndex(), row, row);
+            d_ptr->rows.removeAt(row);
+            endRemoveRows();
         }
     }
 }
 
-/*
- * UsersModel
- */
-
-UsersModel::UsersModel(QObject *parent)
-    : QAbstractListModel(parent)
-    , d_ptr(new UsersModelPrivate(this))
+UsersModel::~UsersModel()
 {
-    Q_D(UsersModel);
-
-    connect(d->manager, SIGNAL(userAdded(UserAccount *)), // clazy:exclude=old-style-connect
-            this, SLOT(_q_userAdded(UserAccount *)));
-    connect(d->manager, SIGNAL(userDeleted(qlonglong)), // clazy:exclude=old-style-connect
-            this, SLOT(_q_userDeleted(qlonglong)));
-
-    connect(d->manager, &AccountsManager::listCachedUsersFinished,
-            this, [d](const UserAccountList &list) {
-                for (auto account : list)
-                    d->_q_userAdded(account);
-            });
-    d->manager->listCachedUsers();
+    for (const UserRow &row : d_ptr->rows) {
+        if (row.account)
+            disconnect(row.account, nullptr, this, nullptr);
+    }
+    delete d_ptr;
 }
 
 QHash<int, QByteArray> UsersModel::roleNames() const
 {
     QHash<int, QByteArray> roles = QAbstractItemModel::roleNames();
-    roles[UserAccountRole] = "userAccount";
-    roles[UserIdRole] = "userId";
-    roles[AccountTypeRole] = "accountType";
-    roles[LockedRole] = "locked";
-    roles[AutomaticLoginRole] = "automaticLogin";
-    roles[LoginFrequencyRole] = "loginFrequency";
-    roles[LoginTimeRole] = "loginTime";
-    roles[PasswordModeRole] = "passwordMode";
-    roles[PasswordHintRole] = "passwordHint";
-    roles[LocalAccount] = "localAccount";
-    roles[SystemAccount] = "systemAccount";
-    roles[UserNameRole] = "userName";
-    roles[RealNameRole] = "realName";
-    roles[DisplayNameRole] = "displayNameRole";
-    roles[HomeDirectoryRole] = "homeDirectory";
-    roles[ShellRole] = "shell";
-    roles[IconFileNameRole] = "iconFileName";
-    roles[LanguageRole] = "language";
-    roles[EmailRole] = "email";
-    roles[LocationRole] = "location";
-    roles[XSessionRole] = "xsession";
+    const QHash<int, QByteArray> accountRoles = {
+        {UserAccountRole, "userAccount"},
+        {UserIdRole, "userId"},
+        {AccountTypeRole, "accountType"},
+        {LockedRole, "locked"},
+        {AutomaticLoginRole, "automaticLogin"},
+        {LoginFrequencyRole, "loginFrequency"},
+        {LoginTimeRole, "loginTime"},
+        {PasswordModeRole, "passwordMode"},
+        {PasswordHintRole, "passwordHint"},
+        {LocalAccount, "localAccount"},
+        {SystemAccount, "systemAccount"},
+        {UserNameRole, "userName"},
+        {RealNameRole, "realName"},
+        {DisplayNameRole, "displayNameRole"},
+        {HomeDirectoryRole, "homeDirectory"},
+        {ShellRole, "shell"},
+        {IconFileNameRole, "iconFileName"},
+        {EmailRole, "email"},
+        {LanguageRole, "language"},
+        {LocationRole, "location"},
+        {XSessionRole, "xsession"}
+    };
+    for (auto it = accountRoles.cbegin(); it != accountRoles.cend(); ++it)
+        roles.insert(it.key(), it.value());
     return roles;
 }
 
 int UsersModel::rowCount(const QModelIndex &parent) const
 {
-    Q_D(const UsersModel);
-
-    if (parent == QModelIndex())
-        return d->list.size();
-
-    return 0;
-}
-
-QVariant UsersModel::data(const QModelIndex &index, int role) const
-{
-    UserAccount *user = userAccount(index);
-    if (!user)
-        return QVariant();
-
-    switch (role) {
-    case Qt::DisplayRole:
-    case DisplayNameRole:
-        return user->displayName();
-    case Qt::DecorationRole:
-        return QPixmap(user->iconFileName());
-    case UserAccountRole:
-        return QVariant::fromValue(user);
-    case UserIdRole:
-        return user->userId();
-    case AccountTypeRole:
-        return user->accountType();
-    case LockedRole:
-        return user->isLocked();
-    case AutomaticLoginRole:
-        return user->automaticLogin();
-    case LoginFrequencyRole:
-        return user->loginFrequency();
-    case LoginTimeRole:
-        return user->loginTime();
-    case PasswordModeRole:
-        return user->passwordMode();
-    case PasswordHintRole:
-        return user->passwordHint();
-    case LocalAccount:
-        return user->isLocalAccount();
-    case SystemAccount:
-        return user->isSystemAccount();
-    case UserNameRole:
-        return user->userName();
-    case RealNameRole:
-        return user->realName();
-    case HomeDirectoryRole:
-        return user->homeDirectory();
-    case ShellRole:
-        return user->shell();
-    case IconFileNameRole:
-        return user->iconFileName();
-    case EmailRole:
-        return user->email();
-    case LanguageRole:
-        return user->language();
-    case LocationRole:
-        return user->location();
-    case XSessionRole:
-        return user->xsession();
-    default:
-        break;
-    }
-
-    return QVariant();
-}
-
-bool UsersModel::setData(const QModelIndex &index, const QVariant &value, int role)
-{
-    UserAccount *user = userAccount(index);
-    if (!user)
-        return false;
-
-    switch (role) {
-    case UsersModel::UserNameRole:
-        user->setUserName(value.toString());
-        break;
-    case UsersModel::RealNameRole:
-        user->setRealName(value.toString());
-        break;
-    case UsersModel::IconFileNameRole:
-        user->setIconFileName(value.toString());
-        break;
-    case UsersModel::AccountTypeRole:
-        user->setAccountType((UserAccount::AccountType)value.toInt());
-        break;
-    case UsersModel::LanguageRole:
-        user->setLanguage(value.toString());
-        break;
-    default:
-        return false;
-    }
-
-    return true;
+    return parent.isValid() ? 0 : d_ptr->rows.size();
 }
 
 UserAccount *UsersModel::userAccount(const QModelIndex &index) const
 {
-    Q_D(const UsersModel);
-
-    if (!index.isValid())
+    if (!index.isValid() || index.model() != this || index.column() != 0
+            || index.row() < 0 || index.row() >= d_ptr->rows.size())
         return nullptr;
-    if (index.row() >= d->list.size())
-        return nullptr;
-
-    return d->list[index.row()];
+    return d_ptr->rows.at(index.row()).account;
 }
+
+QVariant UsersModel::data(const QModelIndex &index, int role) const
+{
+    UserAccount *account = userAccount(index);
+    if (!account)
+        return {};
+
+    switch (role) {
+    case Qt::DisplayRole:
+    case DisplayNameRole:
+        return account->displayName();
+    case Qt::DecorationRole:
+        return QPixmap(account->iconFileName());
+    case UserAccountRole:
+        return QVariant::fromValue(account);
+    case UserIdRole:
+        return account->userId();
+    case AccountTypeRole:
+        return account->accountType();
+    case LockedRole:
+        return account->isLocked();
+    case AutomaticLoginRole:
+        return account->automaticLogin();
+    case LoginFrequencyRole:
+        return account->loginFrequency();
+    case LoginTimeRole:
+        return account->loginTime();
+    case PasswordModeRole:
+        return account->passwordMode();
+    case PasswordHintRole:
+        return account->passwordHint();
+    case LocalAccount:
+        return account->isLocalAccount();
+    case SystemAccount:
+        return account->isSystemAccount();
+    case UserNameRole:
+        return account->userName();
+    case RealNameRole:
+        return account->realName();
+    case HomeDirectoryRole:
+        return account->homeDirectory();
+    case ShellRole:
+        return account->shell();
+    case IconFileNameRole:
+        return account->iconFileName();
+    case EmailRole:
+        return account->email();
+    case LanguageRole:
+        return account->language();
+    case LocationRole:
+        return account->location();
+    case XSessionRole:
+        return account->xsession();
+    default:
+        return {};
+    }
+}
+
+bool UsersModel::setData(const QModelIndex &index, const QVariant &value, int role)
+{
+    UserAccount *account = userAccount(index);
+    if (!account)
+        return false;
+
+    switch (role) {
+    case UserNameRole:
+        account->setUserName(value.toString());
+        return true;
+    case RealNameRole:
+        account->setRealName(value.toString());
+        return true;
+    case IconFileNameRole:
+        account->setIconFileName(value.toString());
+        return true;
+    case AccountTypeRole:
+        account->setAccountType(static_cast<UserAccount::AccountType>(value.toInt()));
+        return true;
+    case LanguageRole:
+        account->setLanguage(value.toString());
+        return true;
+    default:
+        return false;
+    }
+}
+
 }
 
 #include "moc_usersmodel.cpp"

@@ -42,3 +42,7 @@ target_link_libraries(cutefish-framework-accounts PUBLIC
 )
 
 cutefish_install_qml_module(cutefish-framework-accounts)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
