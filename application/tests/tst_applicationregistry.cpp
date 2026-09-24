@@ -93,6 +93,46 @@ private slots:
         }
     }
 
+    void prefersEntryForCurrentDesktop()
+    {
+        QTemporaryDir dataRoot;
+        QVERIFY(dataRoot.isValid());
+        qputenv("XDG_DATA_HOME", dataRoot.path().toUtf8());
+        qputenv("XDG_DATA_DIRS", dataRoot.path().toUtf8());
+        qputenv("XDG_CURRENT_DESKTOP", "Cutefish");
+
+        ApplicationRegistry registry;
+        QTRY_VERIFY(!registry.loading());
+
+        DesktopEntryData monitor;
+        QVERIFY(DesktopEntry::parse(
+                "org.gnome.SystemMonitor", "/applications/org.gnome.SystemMonitor.desktop",
+                "[Desktop Entry]\nType=Application\nName=System Monitor\n"
+                "Exec=gnome-system-monitor\nStartupWMClass=gnome-system-monitor\n",
+                &monitor));
+        DesktopEntryData kdeMonitor;
+        QVERIFY(DesktopEntry::parse(
+                "gnome-system-monitor-kde", "/applications/gnome-system-monitor-kde.desktop",
+                "[Desktop Entry]\nType=Application\nName=GNOME System Monitor\n"
+                "Exec=gnome-system-monitor\nStartupWMClass=gnome-system-monitor\n"
+                "OnlyShowIn=KDE;\n",
+                &kdeMonitor));
+
+        for (bool otherDesktopFirst : {true, false}) {
+            registry.applyScan(otherDesktopFirst
+                                       ? QList<DesktopEntryData>{kdeMonitor, monitor}
+                                       : QList<DesktopEntryData>{monitor, kdeMonitor});
+
+            // Dialogs without a GtkApplication report the program name as app_id.
+            QCOMPARE(registry.resolveWindow("gnome-system-monitor", "gnome-system-monitor",
+                                            "/usr/bin/gnome-system-monitor",
+                                            "gnome-system-monitor"),
+                     registry.byId(monitor.id));
+            QCOMPARE(registry.resolveWindow(kdeMonitor.id, {}, {}, {}),
+                     registry.byId(kdeMonitor.id));
+        }
+    }
+
     void localizesByLanguage()
     {
         const QByteArray contents = "[Desktop Entry]\nType=Application\nName=Files\n"

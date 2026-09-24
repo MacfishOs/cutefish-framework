@@ -241,8 +241,17 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
     const QString wantedClass = normalized(windowClass);
     const QString wantedExecutable = normalized(executablePath);
     const QString wantedName = normalized(executableName);
+    const QStringList desktops = DesktopEntry::currentDesktops();
+    // On equal scores, an entry meant for this desktop beats one for another
+    // desktop sharing its window class, and either beats a NoDisplay helper.
+    const auto preference = [&desktops](DesktopEntry *entry) {
+        if (entry->shouldShow(desktops))
+            return 2;
+        return entry->noDisplay() ? 0 : 1;
+    };
     DesktopEntry *best = nullptr;
     int bestScore = 0;
+    int bestPreference = 0;
 
     // Menu visibility does not determine whether an entry owns windows.
     for (DesktopEntry *entry : m_entries) {
@@ -297,11 +306,14 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
         if (!wantedExecutable.isEmpty() && !program.isEmpty() && wantedExecutable.contains(program))
             score = qMax(score, 45);
 
-        // Shared executables can have NoDisplay helpers alongside their main application.
-        if (score > bestScore
-            || (score > 0 && score == bestScore && best->noDisplay() && !entry->noDisplay())) {
+        if (score == 0 || score < bestScore)
+            continue;
+
+        const int entryPreference = preference(entry);
+        if (score > bestScore || entryPreference > bestPreference) {
             best = entry;
             bestScore = score;
+            bestPreference = entryPreference;
         }
     }
 
