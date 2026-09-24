@@ -83,6 +83,20 @@ QString normalized(const QString &value)
     return value.trimmed().toLower();
 }
 
+// A bare prefix lets a short or unrelated id claim an entry ("code" and
+// "Code::Blocks"), so the prefix has to end where a word does.
+bool startsWithWord(const QString &value, const QString &prefix)
+{
+    if (prefix.isEmpty() || !value.startsWith(prefix))
+        return false;
+    if (value.size() == prefix.size())
+        return true;
+
+    const QChar next = value.at(prefix.size());
+    return next == QLatin1Char('-') || next == QLatin1Char('.') || next == QLatin1Char('_')
+            || next == QLatin1Char(' ');
+}
+
 } // namespace
 
 DesktopEntryModel::DesktopEntryModel(QObject *parent)
@@ -241,6 +255,7 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
     const QString wantedClass = normalized(windowClass);
     const QString wantedExecutable = normalized(executablePath);
     const QString wantedName = normalized(executableName);
+    const QStringList wantedPath = wantedExecutable.split(QLatin1Char('/'), Qt::SkipEmptyParts);
     const QStringList desktops = DesktopEntry::currentDesktops();
     // On equal scores, an entry meant for this desktop beats one for another
     // desktop sharing its window class, and either beats a NoDisplay helper.
@@ -265,6 +280,11 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
         const QString icon = normalized(entry->icon());
         const QString name = normalized(entry->name());
         const QString fileName = normalized(QFileInfo(entry->path()).completeBaseName());
+        // A terminal entry's window belongs to the terminal emulator, so a
+        // process match there is a GUI program or script sharing its name.
+        const bool matchProcess = !entry->terminal();
+        const QString executable = matchProcess ? wantedExecutable : QString();
+        const QString executableName = matchProcess ? wantedName : QString();
         int score = 0;
 
         if (!wantedAppId.isEmpty() && id == wantedAppId)
@@ -275,35 +295,35 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
             score = qMax(score, 95);
         if (!wantedAppId.isEmpty() && startupClass == wantedAppId)
             score = qMax(score, 95);
-        if (!wantedExecutable.isEmpty() && program == wantedExecutable)
+        if (!executable.isEmpty() && program == executable)
             score = qMax(score, 85);
-        if (!wantedName.isEmpty() && programName == wantedName)
+        if (!executableName.isEmpty() && programName == executableName)
             score = qMax(score, 80);
-        if (!wantedExecutable.isEmpty() && fileName == wantedExecutable)
+        if (!executable.isEmpty() && fileName == executable)
             score = qMax(score, 75);
-        if (!wantedName.isEmpty() && fileName == wantedName)
+        if (!executableName.isEmpty() && fileName == executableName)
             score = qMax(score, 75);
-        if (!wantedExecutable.isEmpty() && icon == wantedExecutable)
+        if (!executable.isEmpty() && icon == executable)
             score = qMax(score, 75);
-        if (!wantedName.isEmpty() && icon == wantedName)
+        if (!executableName.isEmpty() && icon == executableName)
             score = qMax(score, 75);
-        if (!wantedAppId.isEmpty() && !startupClass.isEmpty()
-            && startupClass.startsWith(wantedAppId))
+        if (startsWithWord(startupClass, wantedAppId))
             score = qMax(score, 70);
-        if (!wantedClass.isEmpty() && !startupClass.isEmpty()
-            && startupClass.startsWith(wantedClass))
+        if (startsWithWord(startupClass, wantedClass))
             score = qMax(score, 70);
-        if (!wantedClass.isEmpty() && id.startsWith(wantedClass))
+        if (startsWithWord(id, wantedClass))
             score = qMax(score, 60);
-        if (!wantedClass.isEmpty() && fileName.startsWith(wantedClass))
+        if (startsWithWord(fileName, wantedClass))
             score = qMax(score, 60);
-        if (!wantedClass.isEmpty() && program.startsWith(wantedClass))
+        if (startsWithWord(program, wantedClass))
             score = qMax(score, 55);
-        if (!wantedClass.isEmpty() && icon.startsWith(wantedClass))
+        if (startsWithWord(icon, wantedClass))
             score = qMax(score, 55);
-        if (!wantedClass.isEmpty() && name.startsWith(wantedClass))
+        if (startsWithWord(name, wantedClass))
             score = qMax(score, 50);
-        if (!wantedExecutable.isEmpty() && !program.isEmpty() && wantedExecutable.contains(program))
+        // A launcher script for a binary kept in a directory of its own name,
+        // such as /usr/lib/thunderbird/thunderbird-bin.
+        if (matchProcess && !programName.isEmpty() && wantedPath.contains(programName))
             score = qMax(score, 45);
 
         if (score == 0 || score < bestScore)

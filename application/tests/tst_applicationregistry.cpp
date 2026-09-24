@@ -133,6 +133,62 @@ private slots:
         }
     }
 
+    void rejectsLooseMatches()
+    {
+        QTemporaryDir dataRoot;
+        QVERIFY(dataRoot.isValid());
+        qputenv("XDG_DATA_HOME", dataRoot.path().toUtf8());
+        qputenv("XDG_DATA_DIRS", dataRoot.path().toUtf8());
+
+        ApplicationRegistry registry;
+        QTRY_VERIFY(!registry.loading());
+
+        DesktopEntryData vim;
+        QVERIFY(DesktopEntry::parse(
+                "vim", "/applications/vim.desktop",
+                "[Desktop Entry]\nType=Application\nName=Vim\nExec=vim %F\nTerminal=true\n",
+                &vim));
+        DesktopEntryData python;
+        QVERIFY(DesktopEntry::parse(
+                "python3.13", "/applications/python3.13.desktop",
+                "[Desktop Entry]\nType=Application\nName=Python (v3.13)\n"
+                "Exec=/usr/bin/python3.13\nTerminal=true\n",
+                &python));
+        DesktopEntryData obs;
+        QVERIFY(DesktopEntry::parse(
+                "com.obsproject.Studio", "/applications/com.obsproject.Studio.desktop",
+                "[Desktop Entry]\nType=Application\nName=OBS Studio\nExec=obs\n", &obs));
+        DesktopEntryData codeBlocks;
+        QVERIFY(DesktopEntry::parse(
+                "codeblocks", "/applications/codeblocks.desktop",
+                "[Desktop Entry]\nType=Application\nName=Code::Blocks IDE\nExec=codeblocks\n",
+                &codeBlocks));
+        DesktopEntryData thunderbird;
+        QVERIFY(DesktopEntry::parse(
+                "thunderbird", "/applications/thunderbird.desktop",
+                "[Desktop Entry]\nType=Application\nName=Thunderbird\nExec=thunderbird %u\n",
+                &thunderbird));
+        registry.applyScan({vim, python, obs, codeBlocks, thunderbird});
+
+        // Terminal entries own no windows through their process.
+        QVERIFY(!registry.resolveWindow("myscript", "myscript", "/usr/bin/python3.13",
+                                        "python3.13"));
+        QVERIFY(!registry.resolveWindow("nvim-qt", "nvim-qt", "/usr/bin/nvim-qt", "nvim-qt"));
+        QVERIFY(!registry.resolveWindow({}, {}, "/usr/bin/vim", "vim"));
+        QCOMPARE(registry.resolveWindow("vim", "vim", {}, {}), registry.byId(vim.id));
+
+        // Executable paths match whole components, and prefixes whole words.
+        QVERIFY(!registry.resolveWindow("jobsviewer", "jobsviewer", "/usr/libexec/jobsviewer",
+                                        "jobsviewer"));
+        QVERIFY(!registry.resolveWindow("code", "code", {}, {}));
+        QVERIFY(!registry.resolveWindow("c", "c", {}, {}));
+        QCOMPARE(registry.resolveWindow("unknown", "unknown", "/usr/lib/thunderbird/thunderbird-bin",
+                                        "thunderbird-bin"),
+                 registry.byId(thunderbird.id));
+        QCOMPARE(registry.resolveWindow("com.obsproject", "com.obsproject", {}, {}),
+                 registry.byId(obs.id));
+    }
+
     void localizesByLanguage()
     {
         const QByteArray contents = "[Desktop Entry]\nType=Application\nName=Files\n"
