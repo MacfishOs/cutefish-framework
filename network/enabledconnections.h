@@ -48,6 +48,14 @@ Q_PROPERTY(bool wwanEnabled READ isWwanEnabled NOTIFY wwanEnabled)
  * Indicates if the mobile broadband hardware is currently enabled, i.e. the state of the RF kill switch.
  */
 Q_PROPERTY(bool wwanHwEnabled READ isWwanHwEnabled NOTIFY wwanHwEnabled)
+/**
+ * Indicates if there is a managed Ethernet device
+ */
+Q_PROPERTY(bool wiredAvailable READ isWiredAvailable NOTIFY wiredChanged)
+/**
+ * Indicates if any managed Ethernet device may connect, i.e. it is active or allowed to autoconnect
+ */
+Q_PROPERTY(bool wiredEnabled READ isWiredEnabled NOTIFY wiredChanged)
 
 Q_OBJECT
 QML_ELEMENT
@@ -60,6 +68,8 @@ public:
     bool isWirelessHwEnabled() const;
     bool isWwanEnabled() const;
     bool isWwanHwEnabled() const;
+    bool isWiredAvailable() const;
+    bool isWiredEnabled() const;
 
 public Q_SLOTS:
     void onNetworkingEnabled(bool enabled);
@@ -74,13 +84,19 @@ Q_SIGNALS:
     void wirelessHwEnabled(bool enabled);
     void wwanEnabled(bool enabled);
     void wwanHwEnabled(bool enabled);
+    void wiredChanged();
 
 private:
+    void watchWiredDevice(const QString &uni);
+    void updateWired();
+
     bool m_networkingEnabled;
     bool m_wirelessEnabled;
     bool m_wirelessHwEnabled;
     bool m_wwanEnabled;
     bool m_wwanHwEnabled;
+    bool m_wiredAvailable = false;
+    bool m_wiredEnabled = false;
 };
 
 #endif // PLASMA_NM_ENABLED_CONNECTIONS_H

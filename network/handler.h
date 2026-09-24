@@ -110,6 +110,11 @@ public Q_SLOTS:
     void enableAirplaneMode(bool enable);
     void enableNetworking(bool enable);
     void enableWireless(bool enable);
+    /**
+     * Connects or disconnects every managed Ethernet device and keeps it that way,
+     * as NetworkManager has no global switch for wired networking
+     */
+    void enableWired(bool enable);
 
     void enableWwan(bool enable);
 

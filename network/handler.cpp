@@ -398,6 +398,35 @@ void Handler::enableWireless(bool enable)
     NetworkManager::setWirelessEnabled(enable);
 }
 
+void Handler::enableWired(bool enable)
+{
+    for (const NetworkManager::Device::Ptr &device : NetworkManager::networkInterfaces()) {
+        if (device->type() != NetworkManager::Device::Ethernet || !device->managed()) {
+            continue;
+        }
+
+        // Disconnecting clears the device's autoconnect flag and activating sets it again, so the
+        // flag is written only when neither applies; writing it next to either races the other.
+        const NetworkManager::Device::State state = device->state();
+        if (!enable && state >= NetworkManager::Device::Preparing && state <= NetworkManager::Device::Activated) {
+            device->disconnectInterface();
+        } else if (enable && state == NetworkManager::Device::Disconnected) {
+            // "/" lets NetworkManager pick the device's best connection, even one that doesn't autoconnect.
+            NetworkManager::activateConnection(QStringLiteral("/"), device->uni(), QStringLiteral("/"));
+        } else {
+            // Written asynchronously; the device's generated setter would block on the reply.
+            QDBusMessage message = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.NetworkManager"),
+                                                                  device->uni(),
+                                                                  QStringLiteral("org.freedesktop.DBus.Properties"),
+                                                                  QStringLiteral("Set"));
+            message << QStringLiteral("org.freedesktop.NetworkManager.Device")
+                    << QStringLiteral("Autoconnect")
+                    << QVariant::fromValue(QDBusVariant(enable));
+            QDBusConnection::systemBus().asyncCall(message);
+        }
+    }
+}
+
 void Handler::enableWwan(bool enable)
 {
     NetworkManager::setWwanEnabled(enable);

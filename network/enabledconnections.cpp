@@ -34,6 +34,17 @@ EnabledConnections::EnabledConnections(QObject* parent)
     connect(NetworkManager::notifier(), &NetworkManager::Notifier::wirelessHardwareEnabledChanged, this, &EnabledConnections::onWirelessHwEnabled);
     connect(NetworkManager::notifier(), &NetworkManager::Notifier::wwanEnabledChanged, this, &EnabledConnections::onWwanEnabled);
     connect(NetworkManager::notifier(), &NetworkManager::Notifier::wwanHardwareEnabledChanged, this, &EnabledConnections::onWwanHwEnabled);
+
+    connect(NetworkManager::notifier(), &NetworkManager::Notifier::deviceAdded, this, [this](const QString &uni) {
+        watchWiredDevice(uni);
+        updateWired();
+    });
+    connect(NetworkManager::notifier(), &NetworkManager::Notifier::deviceRemoved, this, &EnabledConnections::updateWired);
+
+    for (const NetworkManager::Device::Ptr &device : NetworkManager::networkInterfaces()) {
+        watchWiredDevice(device->uni());
+    }
+    updateWired();
 }
 
 EnabledConnections::~EnabledConnections()
@@ -65,6 +76,16 @@ bool EnabledConnections::isWwanHwEnabled() const
     return m_wwanHwEnabled;
 }
 
+bool EnabledConnections::isWiredAvailable() const
+{
+    return m_wiredAvailable;
+}
+
+bool EnabledConnections::isWiredEnabled() const
+{
+    return m_wiredEnabled;
+}
+
 void EnabledConnections::onNetworkingEnabled(bool enabled)
 {
     m_networkingEnabled = enabled;
@@ -93,4 +114,45 @@ void EnabledConnections::onWwanHwEnabled(bool enabled)
 {
     m_wwanHwEnabled = enabled;
     Q_EMIT wwanHwEnabled(enabled);
+}
+
+void EnabledConnections::watchWiredDevice(const QString &uni)
+{
+    NetworkManager::Device::Ptr device = NetworkManager::findNetworkInterface(uni);
+    if (!device || device->type() != NetworkManager::Device::Ethernet) {
+        return;
+    }
+
+    connect(device.data(), &NetworkManager::Device::autoconnectChanged, this, &EnabledConnections::updateWired);
+    connect(device.data(), &NetworkManager::Device::managedChanged, this, &EnabledConnections::updateWired);
+    connect(device.data(), &NetworkManager::Device::stateChanged, this, &EnabledConnections::updateWired);
+}
+
+void EnabledConnections::updateWired()
+{
+    bool available = false;
+    bool enabled = false;
+
+    for (const NetworkManager::Device::Ptr &device : NetworkManager::networkInterfaces()) {
+        if (device->type() != NetworkManager::Device::Ethernet || !device->managed()) {
+            continue;
+        }
+
+        available = true;
+
+        // Disconnecting a device clears its autoconnect flag, so this tracks the user's switch.
+        const NetworkManager::Device::State state = device->state();
+        if (device->autoconnect()
+            || (state >= NetworkManager::Device::Preparing && state <= NetworkManager::Device::Activated)) {
+            enabled = true;
+        }
+    }
+
+    if (available == m_wiredAvailable && enabled == m_wiredEnabled) {
+        return;
+    }
+
+    m_wiredAvailable = available;
+    m_wiredEnabled = enabled;
+    Q_EMIT wiredChanged();
 }
