@@ -5,6 +5,7 @@
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQuickImageProvider>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSignalSpy>
@@ -24,6 +25,51 @@ public:
     bool available() const { return true; }
 };
 
+// Stands in for the network models the sidebar watches for a wired device.
+class TestNetworkModel : public QAbstractListModel
+{
+    Q_OBJECT
+    Q_PROPERTY(int type MEMBER m_type)
+    Q_PROPERTY(QObject *sourceModel MEMBER m_sourceModel)
+public:
+    enum Type {
+        UnknownType,
+        WiredType,
+        WirelessType
+    };
+    Q_ENUM(Type)
+
+    explicit TestNetworkModel(QObject *parent = nullptr)
+        : QAbstractListModel(parent)
+    {
+    }
+
+    int rowCount(const QModelIndex & = {}) const override { return 0; }
+    QVariant data(const QModelIndex &, int) const override { return {}; }
+
+private:
+    int m_type = UnknownType;
+    QObject *m_sourceModel = nullptr;
+};
+
+class TestIconProvider : public QQuickImageProvider
+{
+public:
+    TestIconProvider()
+        : QQuickImageProvider(QQuickImageProvider::Image)
+    {
+    }
+
+    QImage requestImage(const QString &, QSize *size, const QSize &) override
+    {
+        QImage image(1, 1, QImage::Format_ARGB32);
+        image.fill(Qt::transparent);
+        if (size)
+            *size = image.size();
+        return image;
+    }
+};
+
 class BluetoothQmlTest : public QObject
 {
     Q_OBJECT
@@ -34,6 +80,13 @@ private slots:
         qmlRegisterType<TestHardware>("Cutefish.Settings", 1, 0, "Battery");
         qmlRegisterType<TestHardware>("Cutefish.Settings", 1, 0, "Touchpad");
         qmlRegisterType<TestHardware>("Cutefish.Network", 1, 0, "EnabledConnections");
+        qmlRegisterType<TestNetworkModel>("Cutefish.Network", 1, 0, "NetworkModel");
+        qmlRegisterType<TestNetworkModel>("Cutefish.Network", 1, 0, "AppletProxyModel");
+        qmlRegisterType<TestNetworkModel>("Cutefish.Settings", 1, 0, "NetworkMockModel");
+        // Registered from C++ by the settings application too.
+        qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(SETTINGS_BLUETOOTH_PAGE))
+                                         .resolved(QUrl(QStringLiteral("../Metrics.qml"))),
+                                 "Cutefish.Settings", 1, 0, "Metrics");
         qmlProtectModule("Cutefish.Settings", 1);
         qmlProtectModule("Cutefish.Network", 1);
     }
@@ -111,6 +164,7 @@ private slots:
         QVERIFY(bus.registerService(QStringLiteral("org.bluez")));
         QQmlEngine engine;
         engine.addImportPath(QStringLiteral(BLUETOOTH_IMPORT_PATH));
+        engine.addImageProvider(QStringLiteral("icontheme"), new TestIconProvider);
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
         QQmlComponent host(&engine);
         host.setData(R"(
