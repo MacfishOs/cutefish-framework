@@ -87,6 +87,70 @@ private slots:
         QTRY_COMPARE(model.rowCount(), 0);
     }
 
+    void modelUpdatesRowsInPlace()
+    {
+        BluetoothDevicesModel model;
+        model.setManager(manager.get());
+        QSignalSpy resets(&model, &QAbstractItemModel::modelAboutToBeReset);
+        QSignalSpy inserted(&model, &QAbstractItemModel::rowsInserted);
+        QSignalSpy moved(&model, &QAbstractItemModel::rowsMoved);
+        QSignalSpy removed(&model, &QAbstractItemModel::rowsRemoved);
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        auto nameAt = [&model](int row) {
+            return model.data(model.index(row), Qt::UserRole + 1).toString();
+        };
+        const QString second = adapter + QStringLiteral("/dev_11_11_11_11_11_11");
+        fake->add(second,
+                  {{deviceInterface,
+                    {{"Address", "11:11:11:11:11:11"},
+                     {"Alias", "Zebra"},
+                     {"Adapter", QVariant::fromValue(QDBusObjectPath(adapter))},
+                     {"Paired", false},
+                     {"Connected", false}}}});
+        QTRY_COMPARE(model.rowCount(), 2);
+        QCOMPARE(inserted.size(), 1);
+        QCOMPARE(nameAt(0), QStringLiteral("Headphones"));
+        QCOMPARE(nameAt(1), QStringLiteral("Zebra"));
+        fake->set(second, deviceInterface, QStringLiteral("Connected"), true);
+        QTRY_COMPARE(nameAt(0), QStringLiteral("Zebra"));
+        QCOMPARE(moved.size(), 1);
+        QVERIFY(!changed.isEmpty());
+        fake->remove(second, {deviceInterface});
+        QTRY_COMPARE(model.rowCount(), 1);
+        QCOMPARE(removed.size(), 1);
+        QCOMPARE(nameAt(0), QStringLiteral("Headphones"));
+        QCOMPARE(resets.size(), 0);
+    }
+
+    void modelFilters()
+    {
+        const QString unnamed = adapter + QStringLiteral("/dev_22_22_22_22_22_22");
+        fake->add(unnamed,
+                  {{deviceInterface,
+                    {{"Address", "22:22:22:22:22:22"},
+                     {"Alias", "22-22-22-22-22-22"},
+                     {"Adapter", QVariant::fromValue(QDBusObjectPath(adapter))},
+                     {"Paired", false},
+                     {"Connected", false}}}});
+        QTRY_COMPARE(manager->devices().size(), 2);
+        BluetoothDevicesModel paired;
+        paired.setFilter(BluetoothDevicesModel::PairedDevices);
+        paired.setManager(manager.get());
+        BluetoothDevicesModel other;
+        other.setFilter(BluetoothDevicesModel::UnpairedDevices);
+        other.setNamedOnly(true);
+        other.setManager(manager.get());
+        QCOMPARE(paired.rowCount(), 0);
+        QCOMPARE(other.rowCount(), 1);
+        QSignalSpy pairedCount(&paired, &BluetoothDevicesModel::countChanged);
+        fake->set(device, deviceInterface, QStringLiteral("Paired"), true);
+        QTRY_COMPARE(paired.rowCount(), 1);
+        QCOMPARE(other.rowCount(), 0);
+        QCOMPARE(pairedCount.size(), 1);
+        other.setNamedOnly(false);
+        QCOMPARE(other.rowCount(), 1);
+    }
+
     void discoveryOwnership()
     {
         fake->set(adapter, adapterInterface, QStringLiteral("Discovering"), true);
