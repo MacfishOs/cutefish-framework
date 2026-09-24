@@ -290,7 +290,8 @@ void BluetoothManager::propertiesChanged(const QString &interface, const QVarian
                  }
                  if (!refreshed.isEmpty())
                      guard->update(interface, refreshed);
-             });
+             },
+             Errors::Ignore);
     }
 }
 
@@ -365,12 +366,14 @@ void BluetoothManager::setEnabled(bool enabled)
 }
 
 void BluetoothManager::call(const QString &path, const QString &interface, const QString &method,
-                            const QVariantList &arguments, Completion completion, int timeout)
+                            const QVariantList &arguments, Completion completion, Errors errors,
+                            int timeout)
 {
     if (m_owner.isEmpty()) {
         const auto error = QDBusMessage::createError(QStringLiteral("org.bluez.Error.NotReady"),
                                                      tr("The Bluetooth service is unavailable."));
-        fail(error.errorMessage());
+        if (errors == Errors::Report)
+            fail(error.errorMessage());
         if (completion)
             completion(error);
         return;
@@ -380,12 +383,12 @@ void BluetoothManager::call(const QString &path, const QString &interface, const
     const auto generation = m_generation;
     auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(message, timeout), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, watcher, generation, method, completion] {
+            [this, watcher, generation, method, completion, errors] {
                 const QDBusMessage reply = watcher->reply();
                 watcher->deleteLater();
                 if (generation != m_generation)
                     return;
-                if (reply.type() == QDBusMessage::ErrorMessage)
+                if (reply.type() == QDBusMessage::ErrorMessage && errors == Errors::Report)
                     fail(tr("%1 failed: %2 (%3)")
                                  .arg(method, reply.errorMessage(), reply.errorName()));
                 if (completion)
@@ -455,7 +458,7 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
                              operate(guard, QStringLiteral("Connect"));
                      });
             },
-            method == QStringLiteral("Pair") ? 180000 : 60000);
+            Errors::Report, method == QStringLiteral("Pair") ? 180000 : 60000);
 }
 
 void BluetoothManager::setDiscoveryRequested(bool requested)

@@ -268,6 +268,24 @@ private slots:
         QCOMPARE(manager->object(device)->name(), QStringLiteral("New alias"));
     }
 
+    void refreshOfRemovedObjectIsNotAnError()
+    {
+        fake->holdGetAll = true;
+        auto signal = QDBusMessage::createSignal(device,
+                                                 QStringLiteral("org.freedesktop.DBus.Properties"),
+                                                 QStringLiteral("PropertiesChanged"));
+        signal << deviceInterface << QVariantMap {} << QStringList {QStringLiteral("RSSI")};
+        server->send(signal);
+        QTRY_VERIFY(fake->pendingGetAll.type() == QDBusMessage::MethodCallMessage);
+        fake->remove(device, {deviceInterface});
+        QTRY_COMPARE(manager->devices().size(), 0);
+        server->send(fake->pendingGetAll.createErrorReply(
+                QStringLiteral("org.freedesktop.DBus.Error.UnknownObject"),
+                QStringLiteral("Method \"GetAll\" doesn't exist")));
+        QTest::qWait(30);
+        QVERIFY(manager->errorText().isEmpty());
+    }
+
     void failedDiscoveryCanBeRetried()
     {
         fake->failMethod = QStringLiteral("StartDiscovery");

@@ -83,8 +83,11 @@ public:
     void mediaCommand(BluetoothObject *device, const QString &command);
     void fail(const QString &message);
     using Completion = std::function<void(const QDBusMessage &)>;
+    // Background refreshes race object removal; their failures are not the user's concern.
+    enum class Errors { Report, Ignore };
     void call(const QString &path, const QString &interface, const QString &method,
-              const QVariantList &arguments = {}, Completion completion = {}, int timeout = 30000);
+              const QVariantList &arguments = {}, Completion completion = {},
+              Errors errors = Errors::Report, int timeout = 30000);
 signals:
     void changed();
     void enabledChanged();
