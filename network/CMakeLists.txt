@@ -28,6 +28,12 @@ set(CUTEFISH_NETWORK_SOURCES
     handler.cpp
     handler.h
 
+    secretagent.cpp
+    secretagent.h
+
+    secretstore.cpp
+    secretstore.h
+
     configuration.cpp
     configuration.h
 
@@ -71,3 +77,7 @@ target_link_libraries(cutefish-framework-network PUBLIC
 )
 
 cutefish_install_qml_module(cutefish-framework-network)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

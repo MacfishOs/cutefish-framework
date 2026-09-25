@@ -75,6 +75,10 @@ public Q_SLOTS:
      *
      * Works automatically for wireless connections with WEP/WPA security, for wireless connections
      * with WPA/WPA it will open the connection editor for advanced configuration.
+     *
+     * Without a password, a network that needs one has it asked for by the session's
+     * secret agent before anything is added, and a new connection that never gets to
+     * connect is removed again.
      * */
     void addAndActivateConnection(const QString &device, const QString &specificParameter,
                                   const QString &password = QString());
@@ -134,6 +138,11 @@ public Q_SLOTS:
 
     void createHotspot();
     void stopHotspot();
+
+private:
+    void addAndActivateWireless(const QString &device, const QString &specificObject,
+                                const QString &password, bool askForPassword);
+    void forgetUnlessActivated(const QString &connectionPath, const QString &activePath);
 
 private Q_SLOTS:
     void secretAgentError(const QString &connectionPath, const QString &message);

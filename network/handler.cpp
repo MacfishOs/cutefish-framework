@@ -40,12 +40,19 @@
 #include <QDBusPendingReply>
 #include <QIcon>
 
+#include <memory>
+
 #include <pwd.h>
 #include <sys/types.h>
 
 #define AGENT_SERVICE "org.kde.kded5"
 #define AGENT_PATH "/modules/networkmanagement"
 #define AGENT_IFACE "org.kde.plasmanetworkmanagement"
+
+// The shell's secret agent, which asks for a new network's password up front.
+#define PROMPT_SERVICE "com.cutefish.SecretAgent"
+#define PROMPT_PATH "/SecretAgent"
+#define PROMPT_IFACE "com.cutefish.SecretAgent"
 
 // 10 seconds
 #define NM_REQUESTSCAN_LIMIT_RATE 10000
@@ -169,6 +176,12 @@ QString Handler::wifiCode(const QString &connectionPath, const QString &ssid,
 void Handler::addAndActivateConnection(const QString &device, const QString &specificObject,
                                        const QString &password)
 {
+    addAndActivateWireless(device, specificObject, password, true);
+}
+
+void Handler::addAndActivateWireless(const QString &device, const QString &specificObject,
+                                     const QString &password, bool askForPassword)
+{
     NetworkManager::AccessPoint::Ptr ap;
     NetworkManager::WirelessDevice::Ptr wifiDev;
     for (const NetworkManager::Device::Ptr &dev : NetworkManager::networkInterfaces()) {
@@ -211,18 +224,46 @@ void Handler::addAndActivateConnection(const QString &device, const QString &spe
             (ap->mode() == NetworkManager::AccessPoint::Adhoc), ap->capabilities(), ap->wpaFlags(),
             ap->rsnFlags());
 
+    // Asked for before anything is added: activating first would save the network
+    // and show it connecting while the user is still typing, or has cancelled.
+    const bool staticSecret = securityType == NetworkManager::StaticWep
+            || securityType == NetworkManager::WpaPsk || securityType == NetworkManager::Wpa2Psk
+            || securityType == NetworkManager::SAE;
+    if (askForPassword && password.isEmpty() && staticSecret) {
+        auto message = QDBusMessage::createMethodCall(
+                QStringLiteral(PROMPT_SERVICE), QStringLiteral(PROMPT_PATH),
+                QStringLiteral(PROMPT_IFACE), QStringLiteral("ConnectWireless"));
+        message << device << specificObject << ap->ssid()
+                << (securityType == NetworkManager::StaticWep);
+
+        auto *watcher = new QDBusPendingCallWatcher(
+                QDBusConnection::sessionBus().asyncCall(message), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [this, device, specificObject](QDBusPendingCallWatcher *watcher) {
+                    watcher->deleteLater();
+                    // Without the shell there is no one to ask first; NetworkManager
+                    // asks whichever agent there is once activation needs the secret.
+                    if (watcher->isError())
+                        addAndActivateWireless(device, specificObject, QString(), false);
+                });
+        return;
+    }
+
     if (securityType != NetworkManager::NoneSecurity) {
         wifiSecurity->setInitialized(true);
         wifiSetting->setSecurity("802-11-wireless-security");
     }
 
     if (securityType == NetworkManager::Leap || securityType == NetworkManager::DynamicWep
-        || securityType == NetworkManager::Wpa2Eap || securityType == NetworkManager::WpaEap) {
+        || securityType == NetworkManager::Wpa2Eap || securityType == NetworkManager::WpaEap
+        || securityType == NetworkManager::Wpa3SuiteB192) {
         if (securityType == NetworkManager::DynamicWep || securityType == NetworkManager::Leap) {
             wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::Ieee8021x);
             if (securityType == NetworkManager::Leap) {
                 wifiSecurity->setAuthAlg(NetworkManager::WirelessSecuritySetting::Leap);
             }
+        } else if (securityType == NetworkManager::Wpa3SuiteB192) {
+            wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::WpaEapSuiteB192);
         } else {
             wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::WpaEap);
         }
@@ -231,26 +272,58 @@ void Handler::addAndActivateConnection(const QString &device, const QString &spe
         m_tmpSpecificPath = specificObject;
 
     } else {
+        // The connection is this user's alone, so its password goes to the
+        // user's keyring through the session's secret agent.
         if (securityType == NetworkManager::StaticWep) {
             wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::Wep);
             wifiSecurity->setWepKey0(password);
+            wifiSecurity->setWepKeyFlags(NetworkManager::Setting::AgentOwned);
+        } else if (securityType == NetworkManager::OWE) {
+            wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::OWE);
         } else {
             if (ap->mode() == NetworkManager::AccessPoint::Adhoc) {
                 wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::WpaNone);
+            } else if (securityType == NetworkManager::SAE) {
+                wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::SAE);
             } else {
                 wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::WpaPsk);
             }
             wifiSecurity->setPsk(password);
+            wifiSecurity->setPskFlags(NetworkManager::Setting::AgentOwned);
         }
-        QDBusPendingReply<QDBusObjectPath> reply =
+        QDBusPendingReply<QDBusObjectPath, QDBusObjectPath> reply =
                 NetworkManager::addAndActivateConnection(settings->toMap(), device, specificObject);
         QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(reply, this);
         watcher->setProperty("action", Handler::AddAndActivateConnection);
         watcher->setProperty("connection", settings->name());
-        connect(watcher, &QDBusPendingCallWatcher::finished, this, &Handler::replyFinished);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [this](QDBusPendingCallWatcher *watcher) {
+                    watcher->deleteLater();
+                    QDBusPendingReply<QDBusObjectPath, QDBusObjectPath> reply = *watcher;
+                    if (!reply.isError())
+                        forgetUnlessActivated(reply.argumentAt<0>().path(),
+                                              reply.argumentAt<1>().path());
+                });
     }
 
     settings.clear();
+}
+
+void Handler::forgetUnlessActivated(const QString &connectionPath, const QString &activePath)
+{
+    // A wrong password the user then gave up on would otherwise stay behind as a
+    // known network.
+    NetworkManager::ActiveConnection::Ptr active(new NetworkManager::ActiveConnection(activePath));
+    auto watch = std::make_shared<QMetaObject::Connection>();
+    *watch = connect(active.data(), &NetworkManager::ActiveConnection::stateChanged, this,
+                     [this, active, watch, connectionPath](NetworkManager::ActiveConnection::State state) {
+                         if (state == NetworkManager::ActiveConnection::Deactivated)
+                             removeConnection(connectionPath);
+                         else if (state != NetworkManager::ActiveConnection::Activated)
+                             return;
+                         // Breaks the cycle the lambda holds on the active connection.
+                         QObject::disconnect(*watch);
+                     });
 }
 
 void Handler::addConnection(const NMVariantMapMap &map)

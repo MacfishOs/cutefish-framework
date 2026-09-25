@@ -73,7 +73,9 @@ public:
         WpaEap,
         Wpa2Psk,
         Wpa2Eap,
-        SAE
+        SAE,
+        Wpa3SuiteB192,
+        OWE
     };
 };
 
