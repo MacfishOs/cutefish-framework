@@ -28,6 +28,25 @@ int DisplayOutputModel::rowCount(const QModelIndex &parent) const
     return parent.isValid() ? 0 : m_entries.size();
 }
 
+QString DisplayOutputModel::name(const Entry &e) const
+{
+    const auto plainName = [this](const Entry &entry) {
+        if (entry.physical.connectionType == 1)
+            return tr("Built-in Display");
+        // The compositor falls back to the connector when the EDID has no name.
+        return entry.physical.model.isEmpty() ? entry.physical.connectorName
+                                              : entry.physical.model;
+    };
+    const QString plain = plainName(e);
+    for (const auto &other : m_entries) {
+        // Two of the same monitor are told apart by where they are plugged in.
+        if (other.physical.sessionId != e.physical.sessionId && plainName(other) == plain
+            && !e.physical.connectorName.isEmpty() && plain != e.physical.connectorName)
+            return QStringLiteral("%1 (%2)").arg(plain, e.physical.connectorName);
+    }
+    return plain;
+}
+
 const ipc::Mode *DisplayOutputModel::selectedMode(const Entry &e) const
 {
     return e.modeIndex >= 0 && e.modeIndex < e.physical.modes.size()
@@ -82,7 +101,7 @@ QVariant DisplayOutputModel::data(const QModelIndex &index, int role) const
     const auto refreshes = refreshModes(e);
     switch (role) {
     case Qt::DisplayRole:
-        return e.physical.connectorName.isEmpty() ? e.physical.model : e.physical.connectorName;
+        return name(e);
     case IdRole:
         return e.physical.sessionId;
     case EnabledRole:
@@ -131,7 +150,7 @@ QVariant DisplayOutputModel::data(const QModelIndex &index, int role) const
         QStringList v {QStringLiteral("Extend")};
         for (const auto &o : m_entries)
             if (o.physical.sessionId != e.physical.sessionId)
-                v.append(o.physical.connectorName);
+                v.append(name(o));
         return v;
     }
     case ReplicationSourceIndexRole: {

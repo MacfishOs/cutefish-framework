@@ -74,6 +74,7 @@ private:
         QString mirrorSource;
     };
 
+    QString name(const Entry &entry) const;
     const cutefish::display::ipc::Mode *selectedMode(const Entry &entry) const;
     QList<int> resolutionModes(const Entry &entry) const;
     QList<int> refreshModes(const Entry &entry) const;

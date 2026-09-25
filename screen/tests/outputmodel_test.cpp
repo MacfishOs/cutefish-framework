@@ -91,6 +91,39 @@ private slots:
         model.setState({});
         QVERIFY(!edit);
     }
+
+    void screensAreNamedForPeople()
+    {
+        DisplayClient::State state;
+        const auto add = [&](const QString &connector, const QString &monitor, uint type) {
+            cutefish::display::ipc::PhysicalDisplay physical;
+            physical.sessionId = connector;
+            physical.connectorName = connector;
+            physical.model = monitor;
+            physical.connectionType = type;
+            state.physical.append(physical);
+            cutefish::display::ipc::LogicalDisplay logical;
+            logical.id = connector;
+            logical.destinations = {connector};
+            state.logical.append(logical);
+        };
+        add("eDP-1", "eDP-1", 1);
+        add("DP-1", "DELL U2720Q", 2);
+        add("DP-2", "DELL U2720Q", 2);
+        add("HDMI-A-1", "HDMI-A-1", 2);
+
+        DisplayOutputModel model;
+        model.setState(state);
+        QStringList names;
+        for (int row = 0; row < model.rowCount(); ++row)
+            names.append(model.data(model.index(row), Qt::DisplayRole).toString());
+        QCOMPARE(names, QStringList({"Built-in Display", "DELL U2720Q (DP-1)",
+                                     "DELL U2720Q (DP-2)", "HDMI-A-1"}));
+        QCOMPARE(model.data(model.index(3), DisplayOutputModel::ReplicationSourceModelRole)
+                         .toStringList(),
+                 QStringList({"Extend", "Built-in Display", "DELL U2720Q (DP-1)",
+                              "DELL U2720Q (DP-2)"}));
+    }
 };
 
 QTEST_GUILESS_MAIN(OutputModelTest)
