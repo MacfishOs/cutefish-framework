@@ -77,15 +77,13 @@ void ActiveConnection::updateWirelessIconForSignalStrength(int strength)
 
     if (strength == 0)
         iconStrength = 0;
-    else if (strength <= 25)
-        iconStrength = 25;
-    else if (strength <= 50)
-        iconStrength = 50;
-    else if (strength <= 75)
-        iconStrength = 75;
-    else if (strength <= 100)
+    else if (strength <= 33)
+        iconStrength = 33;
+    else if (strength <= 66)
+        iconStrength = 66;
+    else
         iconStrength = 100;
 
-    m_wirelessIcon = QString("network-wireless-connected-%1").arg(iconStrength);
+    m_wirelessIcon = QString("network-wireless-connected-%1").arg(iconStrength, 2, 10, QLatin1Char('0'));
     emit wirelessIconChanged();
 }

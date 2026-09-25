@@ -245,12 +245,10 @@ QString NetworkModelItem::computeIcon() const
             return (m_securityType <= NetworkManager::NoneSecurity)
                     ? QStringLiteral("network-wireless-connected-100")
                     : QStringLiteral("network-wireless-connected-100");
-        } else if (m_signal <= 25) {
-            return QStringLiteral("network-wireless-connected-25");
-        } else if (m_signal <= 50) {
-            return QStringLiteral("network-wireless-connected-50");
-        } else if (m_signal <= 75) {
-            return QStringLiteral("network-wireless-connected-75");
+        } else if (m_signal <= 33) {
+            return QStringLiteral("network-wireless-connected-33");
+        } else if (m_signal <= 66) {
+            return QStringLiteral("network-wireless-connected-66");
         } else {
             return QStringLiteral("network-wireless-connected-100");
         }
