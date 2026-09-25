@@ -7,6 +7,10 @@ add_library(cutefish-framework-application SHARED
     cutefishapplication.h
     languageenvironment.cpp
     languageenvironment.h
+    keyfile.cpp
+    keyfile.h
+    proxysettings.cpp
+    proxysettings.h
     applicationlauncher.cpp
     applicationlauncher.h
     applicationruntime.cpp
@@ -45,6 +49,8 @@ install(TARGETS cutefish-framework-application EXPORT CutefishFrameworkApplicati
 install(FILES
     cutefishapplication.h
     languageenvironment.h
+    keyfile.h
+    proxysettings.h
     applicationlauncher.h
     applicationruntime.h
     applicationregistry.h
@@ -81,6 +87,10 @@ if(BUILD_TESTING)
     add_executable(tst_languageenvironment tests/tst_languageenvironment.cpp)
     target_link_libraries(tst_languageenvironment PRIVATE Cutefish::Application Qt6::Test)
     add_test(NAME languageenvironment COMMAND tst_languageenvironment)
+
+    add_executable(tst_proxysettings tests/tst_proxysettings.cpp)
+    target_link_libraries(tst_proxysettings PRIVATE Cutefish::Application Qt6::Test)
+    add_test(NAME proxysettings COMMAND tst_proxysettings)
 
     add_executable(tst_applicationregistry tests/tst_applicationregistry.cpp)
     target_link_libraries(tst_applicationregistry PRIVATE Cutefish::Application Qt6::Test)
