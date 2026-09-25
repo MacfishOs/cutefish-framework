@@ -183,6 +183,29 @@ private slots:
         QCOMPARE(fake->lastPath, adapter);
     }
 
+    void pairThroughDefaultAgent()
+    {
+        QVERIFY(!manager->agentEnabled());
+        auto *entry = manager->object(device);
+        entry->pair();
+        QTRY_VERIFY(entry->paired() && entry->trusted() && !entry->busy());
+        QVERIFY(manager->errorText().isEmpty());
+    }
+
+    void displayedCodeClosesWhenPaired()
+    {
+        manager->setAgentEnabled(true);
+        QTRY_VERIFY(manager->agentReady());
+        QDBusPendingCallWatcher display(
+                fake->ask(QStringLiteral("DisplayPasskey"),
+                          {QVariant::fromValue(QDBusObjectPath(device)), quint32(7),
+                           QVariant::fromValue(quint16(0))}));
+        QTRY_VERIFY(display.isFinished());
+        QCOMPARE(manager->pairingKind(), QStringLiteral("DisplayPasskey"));
+        fake->set(device, deviceInterface, QStringLiteral("Paired"), true);
+        QTRY_VERIFY(manager->pairingKind().isEmpty());
+    }
+
     void failedPairDoesNotTrust()
     {
         manager->setAgentEnabled(true);

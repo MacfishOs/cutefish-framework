@@ -265,6 +265,11 @@ void BluetoothManager::propertiesChanged(const QString &interface, const QVarian
     if (!entry)
         return;
     entry->update(interface, properties, invalidated);
+    // A code shown for a pairing another process started has nothing left to
+    // wait for once the device reports it paired.
+    if (interface == deviceInterface && entry->path() == m_pairingPath && !m_hasRequest
+        && properties.value(QStringLiteral("Paired")).toBool())
+        finishPrompt();
     if (interface == adapterInterface && !entry->powered()) {
         m_discoveryOwned.remove(entry->path());
         m_discoveryFailed.remove(entry->path());
@@ -418,7 +423,9 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
         fail(tr("A Bluetooth operation is already in progress for this device."));
         return;
     }
-    if (method == QStringLiteral("Pair") && !m_agentReady) {
+    // Without an agent of its own the caller pairs through BlueZ's default one,
+    // which the shell keeps registered.
+    if (method == QStringLiteral("Pair") && m_agentEnabled && !m_agentReady) {
         fail(tr("The Bluetooth pairing agent is not ready."));
         return;
     }

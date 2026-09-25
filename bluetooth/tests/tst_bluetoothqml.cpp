@@ -1,6 +1,5 @@
 #include "fakebluez.h"
 
-#include <QDBusPendingCallWatcher>
 #include <QGuiApplication>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -194,21 +193,15 @@ private slots:
         auto *manager =
                 engine.singletonInstance<BluetoothManager *>("Cutefish.Bluetooth", "Manager");
         QVERIFY(manager);
-        QTRY_VERIFY(manager->operational() && manager->agentReady());
+        QTRY_VERIFY(manager->operational());
         QTRY_COMPARE(manager->devices().size(), 1);
         QTRY_VERIFY(manager->scanning());
-        QDBusPendingCallWatcher prompt(fake.ask(QStringLiteral("RequestPasskey"),
-                                                {QVariant::fromValue(QDBusObjectPath(device))}));
-        QTRY_COMPARE(manager->pairingKind(), QStringLiteral("RequestPasskey"));
-        manager->respondPairing(true, QStringLiteral("123456"));
-        QTRY_VERIFY(prompt.isFinished());
-        QVERIFY(!prompt.isError());
-        manager->setDiscoveryRequested(false);
-        QTRY_VERIFY(!manager->scanning());
+        // Pairing prompts belong to the shell's agent, not to the page.
+        QVERIFY(!manager->agentEnabled());
         item->setVisible(false);
-        QTRY_VERIFY(!manager->agentEnabled());
+        QTRY_VERIFY(!manager->scanning());
         item->setVisible(true);
-        QTRY_VERIFY(manager->agentReady());
+        QTRY_VERIFY(manager->scanning());
         QTest::qWait(50);
         for (const auto &arguments : warnings) {
             const auto errors = qvariant_cast<QList<QQmlError>>(arguments.first());
