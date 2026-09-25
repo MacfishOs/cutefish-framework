@@ -36,6 +36,36 @@
       </description>
     </request>
 
+    <request name="quit_application">
+      <description summary="the application menu's Quit">
+        Asks every top-level window of the window's application to close, as
+        xdg_toplevel.close does; dialogs are left alone, so a second Quit asks
+        again rather than dismissing a prompt. An application is the task-list
+        windows of one app_id, as the dock groups them, or of one process for
+        windows without an app_id. Their processes that have no task-list
+        window left a few seconds later are terminated through the session's
+        application runtime; one that still shows a window, typically to ask
+        about unsaved changes, is not.
+      </description>
+      <arg name="window" type="object" interface="cutefish_window_v1"/>
+    </request>
+
+    <request name="hide_application">
+      <description summary="the application menu's Hide">
+        Hides every window of the window's application, as
+        cutefish_window_v1.hide does.
+      </description>
+      <arg name="window" type="object" interface="cutefish_window_v1"/>
+    </request>
+
+    <request name="hide_other_applications">
+      <description summary="the application menu's Hide Others">
+        Hides the windows of every application but the window's; with no
+        window, of every application.
+      </description>
+      <arg name="window" type="object" interface="cutefish_window_v1" allow-null="true"/>
+    </request>
+
     <event name="window">
       <description summary="a window appeared">
         A new cutefish_window_v1 object for an application window. Its state
@@ -142,8 +172,8 @@
         is unhidden. A hidden window cannot be activated; if it held the
         keyboard focus, the focus moves on as it does for a closed window.
 
-        This is what the shell's Hide "application" and Hide Others are built
-        on: the shell sends it for every window of the application.
+        cutefish_window_management_v1.hide_application and
+        hide_other_applications apply it to whole applications.
       </description>
     </request>
 
