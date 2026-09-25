@@ -1,4 +1,4 @@
-Source: libcutefish
+Source: cutefish-framework
 Section: devel
 Priority: optional
 Maintainer: Reion Wong <reionwong@gmail.com>
@@ -21,11 +21,15 @@ Build-Depends: cmake,
 Standards-Version: 4.5.0
 Homepage: https://github.com/cutefishos
 
-Package: libcutefish
+Package: cutefish-framework
 Architecture: any
 Depends: bluez,
+         gnome-keyring,
+         libpam-gnome-keyring,
          pipewire,
          wireplumber,
          ${misc:Depends},
          ${shlibs:Depends}
-Description: CutefishOS Library
+Breaks: libcutefish
+Replaces: libcutefish
+Description: CutefishOS Framework
