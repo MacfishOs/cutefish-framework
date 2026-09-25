@@ -15,7 +15,7 @@ Adapted for Cutefish: a versioned session D-Bus interface without Ash or Mojo.
     <method name="GetState">
       <arg name="instanceId" type="s" direction="out"/><arg name="seatId" type="s" direction="out"/>
       <arg name="topologyGeneration" type="t" direction="out"/><arg name="appliedRevision" type="t" direction="out"/>
-      <arg name="physicalDisplays" type="a(sssssssasssiiuuua(iiiiiiubbs))" direction="out"/>
+      <arg name="physicalDisplays" type="a(sssssssasssiiuuuua(iiiiiiubbs))" direction="out"/>
       <arg name="logicalDisplays" type="a(ssasiiiiiiiiuub)" direction="out"/><arg name="placements" type="a(ssui)" direction="out"/>
       <annotation name="org.qtproject.QtDBus.QtTypeName.Out4" value="QList&lt;cutefish::display::ipc::PhysicalDisplay&gt;"/>
       <annotation name="org.qtproject.QtDBus.QtTypeName.Out5" value="QList&lt;cutefish::display::ipc::LogicalDisplay&gt;"/>

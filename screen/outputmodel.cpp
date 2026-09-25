@@ -129,6 +129,19 @@ QVariant DisplayOutputModel::data(const QModelIndex &index, int role) const
                 return i;
         }
         return 0;
+    case RecommendedResolutionIndexRole:
+        // The display's preferred mode, the one the compositor starts it in.
+        for (int i = 0; i < resolutions.size(); ++i) {
+            const auto &m = e.physical.modes.at(resolutions.at(i));
+            for (const auto &preferred : e.physical.modes) {
+                if (preferred.preferred && m.width == preferred.width
+                    && m.height == preferred.height)
+                    return i;
+            }
+        }
+        return -1;
+    case RecommendedScaleRole:
+        return e.physical.recommendedScale120 / 120.0;
     case ResolutionsRole: {
         QStringList v;
         for (int i : resolutions) {
@@ -343,7 +356,9 @@ QHash<int, QByteArray> DisplayOutputModel::roleNames() const
             {IdRole, "displayId"},
             {CapabilitiesRole, "capabilities"},
             {SupportedScalesRole, "supportedScales"},
-            {DrmConnectorRole, "drmConnector"}};
+            {DrmConnectorRole, "drmConnector"},
+            {RecommendedResolutionIndexRole, "recommendedResolutionIndex"},
+            {RecommendedScaleRole, "recommendedScale"}};
 }
 
 void DisplayOutputModel::setState(const DisplayClient::State &state)

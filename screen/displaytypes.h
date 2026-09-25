@@ -59,6 +59,7 @@ struct PhysicalDisplay {
     uint connectionType = 0;
     uint panelOrientation = 0;
     uint capabilities = 0;
+    uint recommendedScale120 = 120;
     QList<Mode> modes;
 };
 

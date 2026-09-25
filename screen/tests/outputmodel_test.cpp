@@ -92,6 +92,35 @@ private slots:
         QVERIFY(!edit);
     }
 
+    void recommendationsFollowTheCompositor()
+    {
+        DisplayClient::State state;
+        cutefish::display::ipc::PhysicalDisplay physical;
+        physical.sessionId = QStringLiteral("0");
+        physical.recommendedScale120 = 180;
+        for (const QSize size : {QSize(1920, 1080), QSize(3840, 2160), QSize(2560, 1440)}) {
+            cutefish::display::ipc::Mode mode;
+            mode.width = size.width();
+            mode.height = size.height();
+            mode.refreshMilliHz = 60000;
+            mode.preferred = size.width() == 3840;
+            mode.current = size.width() == 1920;
+            physical.modes.append(mode);
+        }
+        state.physical.append(physical);
+        cutefish::display::ipc::LogicalDisplay logical;
+        logical.id = physical.sessionId;
+        logical.destinations = {physical.sessionId};
+        state.logical.append(logical);
+
+        DisplayOutputModel model;
+        model.setState(state);
+        const auto row = model.index(0);
+        // Largest first: 3840 × 2160 heads the list.
+        QCOMPARE(model.data(row, DisplayOutputModel::RecommendedResolutionIndexRole).toInt(), 0);
+        QCOMPARE(model.data(row, DisplayOutputModel::RecommendedScaleRole).toDouble(), 1.5);
+    }
+
     void screensAreNamedForPeople()
     {
         DisplayClient::State state;

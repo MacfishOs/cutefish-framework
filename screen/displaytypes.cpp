@@ -41,11 +41,11 @@ WRITE(PhysicalDisplay, << v.sessionId << v.persistentKey << v.portKey << v.edidK
                        << v.connectorName << v.devicePath << v.baseConnectorKey << v.pathTopology
                        << v.make << v.model << v.serialNumber << v.physicalWidthMm
                        << v.physicalHeightMm << v.connectionType << v.panelOrientation
-                       << v.capabilities << v.modes)
+                       << v.capabilities << v.recommendedScale120 << v.modes)
 READ(PhysicalDisplay, >> v.sessionId >> v.persistentKey >> v.portKey >> v.edidKey >> v.connectorName
              >> v.devicePath >> v.baseConnectorKey >> v.pathTopology >> v.make >> v.model
              >> v.serialNumber >> v.physicalWidthMm >> v.physicalHeightMm >> v.connectionType
-             >> v.panelOrientation >> v.capabilities >> v.modes)
+             >> v.panelOrientation >> v.capabilities >> v.recommendedScale120 >> v.modes)
 WRITE(LogicalDisplay, << v.id << v.waylandName << v.destinations << v.x << v.y << v.width
                       << v.height << v.workX << v.workY << v.workWidth << v.workHeight << v.scale120
                       << v.rotation << v.primary)

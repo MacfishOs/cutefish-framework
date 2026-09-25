@@ -41,7 +41,9 @@ public:
         IdRole,
         CapabilitiesRole,
         SupportedScalesRole,
-        DrmConnectorRole
+        DrmConnectorRole,
+        RecommendedResolutionIndexRole,
+        RecommendedScaleRole
     };
 
     explicit DisplayOutputModel(QObject *parent = nullptr);
