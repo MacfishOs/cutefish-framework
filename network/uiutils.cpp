@@ -597,6 +597,18 @@ QString UiUtils::labelFromWirelessSecurity(NetworkManager::WirelessSecurityType 
         /*: @label WPA2-EAP security */
         tip = QObject::tr("WPA2-EAP");
         break;
+    case NetworkManager::SAE:
+        /*: @label WPA3-SAE security */
+        tip = QObject::tr("WPA3-SAE");
+        break;
+    case NetworkManager::Wpa3SuiteB192:
+        /*: @label WPA3-EAP-Suite-B-192 security */
+        tip = QObject::tr("WPA3-EAP-Suite-B-192");
+        break;
+    case NetworkManager::OWE:
+        /*: @label OWE security */
+        tip = QObject::tr("OWE");
+        break;
     default:
         /*: @label unknown security */
         // tip = QObject::tr("Unknown security type");

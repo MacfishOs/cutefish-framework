@@ -503,35 +503,93 @@ void NetworkModelItem::setTxBytes(qulonglong bytes)
     }
 }
 
-QString NetworkModelItem::ipAddress() const
+QString NetworkModelItem::ipV4Address() const
 {
-    updateDetails();
-    return m_ipAdress;
+    const NetworkManager::Device::Ptr device = activatedDevice();
+    if (!device || device->ipV4Config().addresses().isEmpty()) {
+        return QString();
+    }
+
+    return device->ipV4Config().addresses().first().ip().toString();
 }
 
-void NetworkModelItem::setIpAddress(const QString address)
+QString NetworkModelItem::ipV6Address() const
 {
-    m_ipAdress = address;
+    const NetworkManager::Device::Ptr device = activatedDevice();
+    if (!device) {
+        return QString();
+    }
+
+    // Prefer a routable address; NM lists the fe80:: one too.
+    QString address;
+    for (const NetworkManager::IpAddress &entry : device->ipV6Config().addresses()) {
+        if (!entry.ip().isLinkLocal()) {
+            return entry.ip().toString();
+        }
+        if (address.isEmpty()) {
+            address = entry.ip().toString();
+        }
+    }
+
+    return address;
 }
 
-QString NetworkModelItem::router() const
+QString NetworkModelItem::gateway() const
 {
-    return m_router;
+    const NetworkManager::Device::Ptr device = activatedDevice();
+    if (!device) {
+        return QString();
+    }
+
+    if (!device->ipV4Config().gateway().isEmpty()) {
+        return device->ipV4Config().gateway();
+    }
+
+    return device->ipV6Config().gateway();
 }
 
-void NetworkModelItem::setRouter(const QString router)
+QString NetworkModelItem::nameServer() const
 {
-    m_router = router;
+    const NetworkManager::Device::Ptr device = activatedDevice();
+    if (!device) {
+        return QString();
+    }
+
+    QList<QHostAddress> servers = device->ipV4Config().nameservers();
+    if (servers.isEmpty()) {
+        servers = device->ipV6Config().nameservers();
+    }
+
+    return servers.isEmpty() ? QString() : servers.first().toString();
 }
 
-QString NetworkModelItem::gateway()
+QString NetworkModelItem::hardwareAddress() const
 {
-    return m_gateway;
+    const NetworkManager::Device::Ptr device = activatedDevice();
+    if (!device) {
+        return QString();
+    }
+
+    if (NetworkManager::WirelessDevice::Ptr wirelessDevice =
+                device.objectCast<NetworkManager::WirelessDevice>()) {
+        return wirelessDevice->hardwareAddress();
+    }
+
+    if (NetworkManager::WiredDevice::Ptr wiredDevice =
+                device.objectCast<NetworkManager::WiredDevice>()) {
+        return wiredDevice->hardwareAddress();
+    }
+
+    return QString();
 }
 
-void NetworkModelItem::setGateway(const QString gateWay)
+NetworkManager::Device::Ptr NetworkModelItem::activatedDevice() const
 {
-    m_gateway = gateWay;
+    if (m_connectionState != NetworkManager::ActiveConnection::Activated) {
+        return NetworkManager::Device::Ptr();
+    }
+
+    return NetworkManager::findNetworkInterface(m_devicePath);
 }
 
 bool NetworkModelItem::operator==(const NetworkModelItem *item) const
@@ -553,7 +611,9 @@ bool NetworkModelItem::operator==(const NetworkModelItem *item) const
 void NetworkModelItem::invalidateDetails()
 {
     m_detailsValid = false;
-    m_changedRoles << NetworkModel::ConnectionDetailsRole;
+    m_changedRoles << NetworkModel::ConnectionDetailsRole << NetworkModel::IpAddressRole
+                   << NetworkModel::IpV6AddressRole << NetworkModel::GateWayRole
+                   << NetworkModel::NameServerRole << NetworkModel::MacAddressRole;
 }
 
 void NetworkModelItem::updateDetails() const

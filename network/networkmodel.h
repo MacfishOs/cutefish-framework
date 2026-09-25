@@ -76,8 +76,10 @@ public:
         TxBytesRole,
 
         IpAddressRole,
-        RouterRole,
+        IpV6AddressRole,
         GateWayRole,
+        NameServerRole,
+        MacAddressRole,
     };
     Q_ENUMS(ItemRole)
 

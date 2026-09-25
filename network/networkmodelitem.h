@@ -120,14 +120,11 @@ public:
     qulonglong txBytes() const;
     void setTxBytes(qulonglong bytes);
 
-    QString ipAddress() const;
-    void setIpAddress(const QString address);
-
-    QString router() const;
-    void setRouter(const QString router);
-
-    QString gateway();
-    void setGateway(const QString gateWay);
+    QString ipV4Address() const;
+    QString ipV6Address() const;
+    QString gateway() const;
+    QString nameServer() const;
+    QString hardwareAddress() const;
 
     bool operator==(const NetworkModelItem *item) const;
 
@@ -139,6 +136,7 @@ public Q_SLOTS:
 
 private:
     QString computeIcon() const;
+    NetworkManager::Device::Ptr activatedDevice() const;
     void refreshIcon();
     void updateDetails() const;
 
@@ -167,10 +165,6 @@ private:
     qulonglong m_txBytes;
     QString m_icon;
     QVector<int> m_changedRoles;
-
-    mutable QString m_ipAdress;
-    mutable QString m_router;
-    mutable QString m_gateway;
 };
 
 #endif // NETWORKMODELITEM_H
