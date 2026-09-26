@@ -67,7 +67,7 @@ public:
     static QImage upright(const QImage &image, uint32_t transform);
 
     bool hasConstraints() const { return !m_size.isEmpty(); }
-    bool usesDmaBuf() const { return m_gbm != nullptr; }
+    bool usesDmaBuf() const { return m_gbm && m_memory == Memory::DmaBuf; }
     //! The render node the DMA-BUFs belong to.
     QString renderNode() const { return m_renderNode; }
     QSize bufferSize() const { return m_size; }
@@ -105,6 +105,8 @@ private:
 
     void applyConstraints();
     bool openDevice();
+    //! A device that cannot allocate what it was offered.
+    bool fallBackToShm();
     bool allocate(int count);
     bool allocateShm(Buffer *buffer);
     bool allocateDmaBuf(Buffer *buffer);

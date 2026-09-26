@@ -40,17 +40,20 @@ QString nodeFor(dev_t device)
     return QString();
 }
 
-// Some GBM backends refuse gbm_bo_create_with_modifiers2 even for LINEAR while
-// the flag form allocates a linear buffer, so both are tried.
+// An implicit modifier (INVALID) is what a driver without modifiers reports for
+// a buffer allocated linear by flag, as amdgpu does; only the flag form makes
+// one. Some backends also refuse the modifier form for LINEAR itself.
 gbm_bo *allocateBo(gbm_device *gbm, const QSize &size, uint32_t format, uint64_t modifier)
 {
     const auto width = uint32_t(size.width());
     const auto height = uint32_t(size.height());
-    if (gbm_bo *bo = gbm_bo_create_with_modifiers2(gbm, width, height, format, &modifier, 1,
-                                                   GBM_BO_USE_RENDERING))
-        return bo;
-    if (modifier != DRM_FORMAT_MOD_LINEAR)
-        return nullptr;
+    if (modifier != DRM_FORMAT_MOD_INVALID) {
+        if (gbm_bo *bo = gbm_bo_create_with_modifiers2(gbm, width, height, format, &modifier, 1,
+                                                       GBM_BO_USE_RENDERING))
+            return bo;
+        if (modifier != DRM_FORMAT_MOD_LINEAR)
+            return nullptr;
+    }
     return gbm_bo_create(gbm, width, height, format, GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
 }
 
@@ -276,7 +279,7 @@ void CaptureSession::applyConstraints()
     // The kind of memory is chosen once; a DMA-BUF session keeps its device.
     if (m_memory == Memory::DmaBuf && !m_gbm && m_size.isEmpty() && !openDevice())
         m_memory = Memory::Shm;
-    if (m_pendingSize.isEmpty() || (!m_gbm && !m_pendingArgb)) {
+    if (m_pendingSize.isEmpty() || (m_memory == Memory::Shm && !m_pendingArgb)) {
         qCWarning(cfCapture) << "no shared memory format this client can read";
         m_stopped = true;
         emit stopped();
@@ -295,7 +298,7 @@ void CaptureSession::applyConstraints()
         else
             freeBuffer(id);
     }
-    if (!allocate(m_bufferCount)) {
+    if (!allocate(m_bufferCount) && !fallBackToShm()) {
         m_stopped = true;
         emit stopped();
         return;
@@ -340,12 +343,31 @@ bool CaptureSession::openDevice()
     return true;
 }
 
+bool CaptureSession::fallBackToShm()
+{
+    if (m_memory != Memory::DmaBuf || !m_pendingArgb)
+        return false;
+    qCWarning(cfCapture, "cannot allocate DMA-BUFs on %s, capturing into shared memory",
+              qPrintable(m_renderNode));
+    // Only this size's buffers go; retired ones may still be held, and keep the device.
+    m_memory = Memory::Shm;
+    for (auto it = m_buffers.begin(); it != m_buffers.end();) {
+        const int id = it->first;
+        const bool retired = it->second->retired;
+        ++it;
+        if (!retired)
+            freeBuffer(id);
+    }
+    return allocate(m_bufferCount);
+}
+
 bool CaptureSession::allocate(int count)
 {
     for (int i = 0; i < count; ++i) {
         auto buffer = std::make_unique<Buffer>();
         buffer->size = m_size;
-        const bool allocated = m_gbm ? allocateDmaBuf(buffer.get()) : allocateShm(buffer.get());
+        const bool allocated = m_memory == Memory::DmaBuf ? allocateDmaBuf(buffer.get())
+                                                          : allocateShm(buffer.get());
         const int id = m_nextBuffer++;
         m_buffers.emplace(id, std::move(buffer));
         if (!allocated) {
