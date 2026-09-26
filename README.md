@@ -16,6 +16,7 @@ The framework provides these CMake targets and C++ aliases:
 - `cutefish-framework-audio` / `Cutefish::Audio`
 - `cutefish-framework-appearance` / `Cutefish::Appearance`
 - `cutefish-framework-bluetooth` / `Cutefish::Bluetooth`
+- `cutefish-framework-capture` / `Cutefish::Capture`
 - `cutefish-framework-display` / `Cutefish::Display`
 - `cutefish-framework-media` / `Cutefish::Media`
 - `cutefish-framework-network` / `Cutefish::Network`
@@ -26,6 +27,10 @@ The framework provides these CMake targets and C++ aliases:
 Wayland protocols (`protocols/*.xml`). That XML is kept byte-identical to
 `cutefish-compositor/protocols`; other projects link the target instead of
 keeping a copy.
+
+`Cutefish::Capture` captures outputs and windows through the compositor's
+`ext-image-copy-capture-v1`, into shared memory or DMA-BUFs. The compositor
+offers it only to the trusted shell and allowlisted programs.
 
 `Cutefish::Display` is the C++ client for the compositor's
 `com.cutefish.DisplayConfig1` D-Bus interface. Use it rather than `QScreen` for
