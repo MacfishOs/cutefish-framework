@@ -1,8 +1,44 @@
-set(CUTEFISH_SCREEN_SOURCES
+find_package(Qt6 REQUIRED COMPONENTS Core DBus Gui Quick)
+
+# The compositor's display D-Bus client, for services and the shell as well as
+# the QML module below.
+set(DISPLAY_CONFIG_XML ${CMAKE_CURRENT_SOURCE_DIR}/com.cutefish.DisplayConfig1.xml)
+set_source_files_properties(${DISPLAY_CONFIG_XML} PROPERTIES INCLUDE displaytypes.h)
+qt_add_dbus_interface(DISPLAY_CONFIG_DBUS_SOURCES ${DISPLAY_CONFIG_XML} display_config_interface)
+
+add_library(cutefish-framework-display SHARED
     displayclient.cpp
     displayclient.h
     displaytypes.cpp
     displaytypes.h
+    ${DISPLAY_CONFIG_DBUS_SOURCES}
+)
+add_library(Cutefish::Display ALIAS cutefish-framework-display)
+
+target_include_directories(cutefish-framework-display PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/Cutefish/Display>
+)
+target_link_libraries(cutefish-framework-display PUBLIC
+    Qt6::Core
+    Qt6::DBus
+)
+
+set_target_properties(cutefish-framework-display PROPERTIES EXPORT_NAME Display)
+install(TARGETS cutefish-framework-display EXPORT CutefishFrameworkDisplayTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+install(FILES
+    displayclient.h
+    displaytypes.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Cutefish/Display
+)
+install(EXPORT CutefishFrameworkDisplayTargets
+    NAMESPACE Cutefish::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/CutefishFramework
+)
+
+set(CUTEFISH_SCREEN_SOURCES
     output.cpp
     output.h
     outputmodel.cpp
@@ -11,13 +47,7 @@ set(CUTEFISH_SCREEN_SOURCES
     screen.h
 )
 
-find_package(Qt6 REQUIRED COMPONENTS Core DBus Gui Quick)
-
-set(DISPLAY_CONFIG_XML ${CMAKE_CURRENT_SOURCE_DIR}/com.cutefish.DisplayConfig1.xml)
-set_source_files_properties(${DISPLAY_CONFIG_XML} PROPERTIES INCLUDE displaytypes.h)
-qt_add_dbus_interface(DISPLAY_CONFIG_DBUS_SOURCES ${DISPLAY_CONFIG_XML} display_config_interface)
-
-add_library(cutefish-framework-screen SHARED ${CUTEFISH_SCREEN_SOURCES} ${DISPLAY_CONFIG_DBUS_SOURCES})
+add_library(cutefish-framework-screen SHARED ${CUTEFISH_SCREEN_SOURCES})
 add_library(Cutefish::Screen ALIAS cutefish-framework-screen)
 
 qt_add_qml_module(cutefish-framework-screen
@@ -30,6 +60,7 @@ qt_add_qml_module(cutefish-framework-screen
 )
 
 target_link_libraries(cutefish-framework-screen PUBLIC
+    Cutefish::Display
     Qt6::Core
     Qt6::DBus
     Qt6::Quick
@@ -44,6 +75,10 @@ if(BUILD_TESTING)
     target_link_libraries(display-outputmodel-test PRIVATE cutefish-framework-screen Qt6::Test)
     target_include_directories(display-outputmodel-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME display-outputmodel-test COMMAND display-outputmodel-test)
+    add_executable(display-client-test tests/displayclient_test.cpp)
+    target_link_libraries(display-client-test PRIVATE Cutefish::Display Qt6::Test)
+    add_test(NAME display-client-test
+        COMMAND dbus-run-session -- $<TARGET_FILE:display-client-test>)
     if(CUTEFISH_TEST_COMPOSITOR)
         add_executable(display-wayland-screen-probe tests/wayland_screen_probe.cpp)
         target_link_libraries(display-wayland-screen-probe PRIVATE Qt6::Gui)

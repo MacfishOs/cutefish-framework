@@ -16,6 +16,7 @@ The framework provides these CMake targets and C++ aliases:
 - `cutefish-framework-audio` / `Cutefish::Audio`
 - `cutefish-framework-appearance` / `Cutefish::Appearance`
 - `cutefish-framework-bluetooth` / `Cutefish::Bluetooth`
+- `cutefish-framework-display` / `Cutefish::Display`
 - `cutefish-framework-media` / `Cutefish::Media`
 - `cutefish-framework-network` / `Cutefish::Network`
 - `cutefish-framework-protocols` / `Cutefish::Protocols`
@@ -25,6 +26,11 @@ The framework provides these CMake targets and C++ aliases:
 Wayland protocols (`protocols/*.xml`). That XML is kept byte-identical to
 `cutefish-compositor/protocols`; other projects link the target instead of
 keeping a copy.
+
+`Cutefish::Display` is the C++ client for the compositor's
+`com.cutefish.DisplayConfig1` D-Bus interface. Use it rather than `QScreen` for
+facts about the hardware, such as internal and external panels, mirroring or
+power. `QScreen` still decides where a window goes.
 
 The QML modules are `Cutefish.Application`, `Cutefish.Accounts`, `Cutefish.Appearance`,
 `Cutefish.Audio`, `Cutefish.Bluetooth`, `Cutefish.Media`,

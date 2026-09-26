@@ -10,8 +10,10 @@
 
 #pragma once
 
+#include <functional>
 #include <optional>
 
+#include <QDBusPendingCall>
 #include <QHash>
 #include <QObject>
 #include <QTimer>
@@ -37,6 +39,9 @@ public:
         qulonglong previewDeadlineMs = 0;
     };
 
+    // Called once with the compositor's verdict on a request.
+    using Completion = std::function<void(bool succeeded, cutefish::display::ipc::ErrorCode error)>;
+
     explicit DisplayClient(QObject *parent = nullptr);
     bool available() const;
 
@@ -54,14 +59,24 @@ public:
     void revert(const QString &token);
     void identify(const QStringList &displayIds);
 
+    // Powers every display on or off. False when the compositor is not on the bus,
+    // and then `done` is never called.
+    bool setDisplayPower(bool on, Completion done = {});
+
+    // Closing fails with NoEnabledOutput when no external display is in use.
+    bool setDockedLidClosed(bool closed, Completion done = {});
+
 signals:
     void availabilityChanged();
     void stateChanged();
     void operationFinished(QString token, bool succeeded, bool degraded, uint errorCode,
                            QString message, QStringList affectedDisplays);
+    void identifyRequested(QStringList displayIds);
 
 private:
     void connectInterface();
+    bool sendRequest(const QDBusPendingCall &call, Completion done);
+    void failRequests();
 
     struct OperationResult {
         bool succeeded;
@@ -78,6 +93,7 @@ private:
     void finishOperation(const QString &token, const OperationResult &result);
 
     QString m_serviceName;
+    QString m_owner;
     ComCutefishDisplayConfig1Interface *m_interface = nullptr;
     State m_state;
     bool m_loaded = false;
@@ -89,4 +105,9 @@ private:
     quint64 m_serviceEpoch = 0;
     quint64 m_operationSerial = 0;
     QTimer m_operationTimeout;
+
+    // Power and lid requests run beside apply and do not wait for a state refresh.
+    int m_requestsInFlight = 0;
+    QHash<QString, Completion> m_requests;
+    QHash<QString, OperationResult> m_earlyRequestResults;
 };

@@ -17,6 +17,26 @@
 
 namespace cutefish::display::ipc {
 
+// OperationFinished's errorCode, in the compositor's DisplayErrorCode order.
+enum class ErrorCode : uint {
+    None,
+    Unavailable,
+    Unauthorized,
+    Busy,
+    StaleConfiguration,
+    UnknownOutput,
+    UnsupportedMode,
+    UnsupportedProperty,
+    InvalidLayout,
+    NoEnabledOutput,
+    ResourceExhausted,
+    TestFailed,
+    CommitFailed,
+    Cancelled,
+    RevertFailed,
+    PersistenceFailed,
+};
+
 struct Mode {
     int width = 0;
     int height = 0;

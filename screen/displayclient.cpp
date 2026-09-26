@@ -11,8 +11,11 @@
 
 #include "displayclient.h"
 
+#include <utility>
+
 #include <QDBusConnectionInterface>
 #include <QDBusPendingCallWatcher>
+#include <QDBusServiceWatcher>
 
 #include "display_config_interface.h"
 
@@ -31,17 +34,21 @@ DisplayClient::DisplayClient(QObject *parent)
                         {false, false, 1, tr("The display operation timed out."), {}});
         refresh();
     });
-    connect(QDBusConnection::sessionBus().interface(),
-            &QDBusConnectionInterface::serviceOwnerChanged, this,
-            [this](const QString &name, const QString &, const QString &) {
-                if (name != m_serviceName)
+    auto *watcher = new QDBusServiceWatcher(m_serviceName, QDBusConnection::sessionBus(),
+                                            QDBusServiceWatcher::WatchForOwnerChange, this);
+    connect(watcher, &QDBusServiceWatcher::serviceOwnerChanged, this,
+            [this](const QString &, const QString &oldOwner, const QString &newOwner) {
+                // A notification queued before this client looked the owner up is stale.
+                if (oldOwner != m_owner)
                     return;
+                m_owner = newOwner;
                 const bool wasAvailable = available();
                 connectInterface();
                 if (wasAvailable != available())
                     emit availabilityChanged();
                 refresh();
             });
+    m_owner = QDBusConnection::sessionBus().interface()->serviceOwner(m_serviceName).value();
     connectInterface();
     refresh();
 }
@@ -78,12 +85,20 @@ void DisplayClient::connectInterface()
                    qulonglong revision) {
                 const OperationResult result {succeeded, degraded,   errorCode, message,
                                               affected,  generation, revision};
+                if (const Completion done = m_requests.take(token))
+                    done(succeeded, ipc::ErrorCode(errorCode));
+                else if (m_requestsInFlight)
+                    m_earlyRequestResults.insert(token, result);
                 if (m_applyPending)
                     m_earlyResults.insert(token, result);
                 else if (token == m_operationToken)
                     queueCompletion(token, result);
                 refresh();
             });
+    connect(m_interface, &ComCutefishDisplayConfig1Interface::IdentifyRequested, this,
+            &DisplayClient::identifyRequested);
+    // Last, so a completion that asks again reaches the new owner.
+    failRequests();
 }
 
 void DisplayClient::refresh()
@@ -209,4 +224,63 @@ void DisplayClient::identify(const QStringList &displayIds)
 {
     if (available())
         m_interface->IdentifyDisplays(displayIds);
+}
+
+bool DisplayClient::setDisplayPower(bool on, Completion done)
+{
+    if (!m_interface || !m_interface->isValid())
+        return false;
+    // The compositor's power states: 0 is on, 1 is off.
+    return sendRequest(m_interface->SetDisplayPower({}, on ? 0 : 1), std::move(done));
+}
+
+bool DisplayClient::setDockedLidClosed(bool closed, Completion done)
+{
+    if (!m_interface || !m_interface->isValid())
+        return false;
+    return sendRequest(m_interface->SetDockedLidClosed(closed), std::move(done));
+}
+
+bool DisplayClient::sendRequest(const QDBusPendingCall &call, Completion done)
+{
+    ++m_requestsInFlight;
+    const auto epoch = m_serviceEpoch;
+    auto *watcher = new QDBusPendingCallWatcher(call, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher, epoch, done = std::move(done)] {
+                QDBusPendingReply<QString> reply = *watcher;
+                watcher->deleteLater();
+                // Sent to a previous owner, whose OperationFinished never reaches this interface.
+                if (epoch != m_serviceEpoch) {
+                    if (done)
+                        done(false, ipc::ErrorCode::Unavailable);
+                    return;
+                }
+
+                // A rejected request reports OperationFinished before its reply.
+                std::optional<OperationResult> early;
+                if (!reply.isError() && m_earlyRequestResults.contains(reply.value()))
+                    early = m_earlyRequestResults.take(reply.value());
+                if (--m_requestsInFlight == 0)
+                    m_earlyRequestResults.clear();
+
+                if (!done)
+                    return;
+                if (reply.isError())
+                    done(false, ipc::ErrorCode::Unavailable);
+                else if (early)
+                    done(early->succeeded, ipc::ErrorCode(early->errorCode));
+                else
+                    m_requests.insert(reply.value(), done);
+            });
+    return true;
+}
+
+void DisplayClient::failRequests()
+{
+    const auto requests = std::exchange(m_requests, {});
+    m_requestsInFlight = 0;
+    m_earlyRequestResults.clear();
+    for (const Completion &done : requests)
+        done(false, ipc::ErrorCode::Unavailable);
 }
