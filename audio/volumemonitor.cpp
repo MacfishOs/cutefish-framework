@@ -57,11 +57,14 @@ void VolumeMonitor::setTarget(AudioObject *target)
     const QByteArray serial = target->properties().value(PW_KEY_OBJECT_SERIAL).toString().toUtf8();
     if (serial.isEmpty())
         return;
+    const bool sink = target->kind() == AudioObject::Sink;
+    // A passive link never wakes its peer: right for a sink, which plays anyway,
+    // but a microphone nobody else records from would stay suspended.
     auto *properties = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture",
         PW_KEY_NODE_NAME, "cutefish.internal.monitor",
         PW_KEY_MEDIA_ROLE, "DSP", PW_KEY_TARGET_OBJECT, serial.constData(),
-        "stream.capture.sink", target->kind() == AudioObject::Sink ? "true" : "false",
-        "node.passive", "true", "node.dont-fallback", "true", "node.linger", "true", nullptr);
+        "stream.capture.sink", sink ? "true" : "false",
+        "node.passive", sink ? "true" : "false", "node.dont-fallback", "true", "node.linger", "true", nullptr);
     m_stream = pw_stream_new(backend->core(), "Cutefish volume monitor", properties);
     if (!m_stream)
         return;
@@ -82,6 +85,7 @@ void VolumeMonitor::setTarget(AudioObject *target)
 void VolumeMonitor::process()
 {
     double peak = 0.0;
+    quint32 frames = 0;
     pw_buffer *buffer;
     while ((buffer = pw_stream_dequeue_buffer(m_stream))) {
         const spa_buffer *spaBuffer = buffer->buffer;
@@ -90,6 +94,7 @@ void VolumeMonitor::process()
             if (data.data && data.chunk && data.chunk->offset <= data.maxsize) {
                 const quint32 size = std::min(data.chunk->size, data.maxsize - data.chunk->offset);
                 const auto *samples = static_cast<const uint8_t *>(data.data) + data.chunk->offset;
+                frames += size / sizeof(float);
                 for (quint32 offset = 0; offset + sizeof(float) <= size; offset += sizeof(float)) {
                     float value;
                     std::memcpy(&value, samples + offset, sizeof(value));
@@ -100,7 +105,12 @@ void VolumeMonitor::process()
         }
         pw_stream_queue_buffer(m_stream, buffer);
     }
-    const double volume = std::clamp(peak, 0.0, 1.0);
+    if (frames == 0)
+        return;
+    // Rise at once but fall at 30 dB/s, as a level meter does; raw per-buffer
+    // peaks jump by tens of dB and make the meter flicker.
+    const double fall = std::pow(10.0, -30.0 / 20.0 * frames / 48000.0);
+    const double volume = std::clamp(std::max(peak, m_volume * fall), 0.0, 1.0);
     if (m_volume != volume) {
         m_volume = volume;
         Q_EMIT volumeChanged();

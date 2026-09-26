@@ -568,21 +568,15 @@ void AudioTest::settingsMultipleDevices()
     };
     QTRY_VERIFY(child("device-", first));
     QTRY_VERIFY(child("device-", second));
-    QTRY_VERIFY(child("device-", source));
+    QVERIFY(!child("device-", source));
     QTRY_VERIFY(child("device-", first)->property("width").toDouble() > 700);
-    QObject *defaultButton = child("default-", second);
-    QVERIFY(defaultButton);
-    QVERIFY(defaultButton->property("width").toDouble() <= 90);
-    QVERIFY(defaultButton->property("height").toDouble() <= 30);
-    QVERIFY(QMetaObject::invokeMethod(defaultButton, "clicked"));
+    QObject *secondRow = child("device-", second);
+    QVERIFY(QMetaObject::invokeMethod(secondRow, "clicked"));
     QTRY_COMPARE(m_backend->defaultNode(AudioObject::Sink), second);
-    QTRY_VERIFY(!defaultButton->property("enabled").toBool());
-
-    auto *outputSection = qobject_cast<QQuickItem *>(visualChild("output-section"));
-    auto *inputSection = qobject_cast<QQuickItem *>(visualChild("input-section"));
-    QVERIFY(outputSection && inputSection);
-    QCOMPARE(inputSection->y() - outputSection->y() - outputSection->height(),
-        outputSection->parentItem()->property("spacing").toDouble());
+    QTRY_VERIFY(secondRow->property("checked").toBool());
+    QVERIFY(!child("device-", first)->property("checked").toBool());
+    QTRY_VERIFY(child("volume-", second));
+    QVERIFY(!child("volume-", first));
 
     const double originalVolume = first->volume();
     QObject *slider = child("volume-", second);
@@ -591,9 +585,8 @@ void AudioTest::settingsMultipleDevices()
     QVERIFY(QMetaObject::invokeMethod(slider, "moved"));
     QTRY_VERIFY(std::abs(second->volume() - 0.57) < 0.0001);
     QVERIFY(std::abs(first->volume() - originalVolume) < 0.0001);
-    QVERIFY(!child("mute-", second));
+    QVERIFY(!visualChild("mute"));
     second->setMuted(true);
-    QTRY_VERIFY(second->muted());
     QTRY_COMPARE(slider->property("value").toDouble(), 0.0);
     slider->setProperty("value", 0.4);
     QVERIFY(QMetaObject::invokeMethod(slider, "moved"));
@@ -602,12 +595,12 @@ void AudioTest::settingsMultipleDevices()
     slider->setProperty("value", 0.0);
     QVERIFY(QMetaObject::invokeMethod(slider, "moved"));
     QTRY_VERIFY(second->muted());
-    slider->setProperty("value", 0.57);
-    QVERIFY(QMetaObject::invokeMethod(slider, "moved"));
-    QTRY_VERIFY(!second->muted());
-    QTRY_VERIFY(std::abs(second->volume() - 0.57) < 0.0001);
     QVERIFY(!first->muted());
     QVERIFY(std::abs(first->volume() - originalVolume) < 0.0001);
+    visualChild("tabs")->setProperty("currentIndex", 1);
+    QTRY_VERIFY(child("device-", source));
+    QVERIFY(!child("device-", first));
+    QTRY_VERIFY(child("volume-", source));
     AudioObject *stream = find("settings-playback");
     QVERIFY(!child("stream-", stream));
     QVERIFY(!child("volume-", stream));
@@ -615,7 +608,7 @@ void AudioTest::settingsMultipleDevices()
     while (!pending.isEmpty()) {
         QQuickItem *candidate = pending.takeLast();
         const QString text = candidate->property("text").toString();
-        QVERIFY(text != "Applications" && text != "Mute" && text != "Test sound");
+        QVERIFY(text != "Applications" && text != "Test sound");
         pending.append(candidate->childItems());
     }
     QTest::qWait(100);
@@ -626,6 +619,7 @@ void AudioTest::settingsMultipleDevices()
         QVERIFY(screenshot.save(qEnvironmentVariable("CUTEFISH_AUDIO_SCREENSHOT")));
     }
 
+    visualChild("tabs")->setProperty("currentIndex", 0);
     const QString firstCardName = "device-" + QString::number(first->index());
     playback.reset();
     QTRY_VERIFY(!find("settings-playback"));

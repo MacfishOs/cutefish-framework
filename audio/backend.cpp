@@ -84,15 +84,14 @@ const pw_node_events Backend::nodeEvents = [] {
             }
         }
         Q_EMIT object->changed();
-        binding->backend->updateRouteVolume(object);
         binding->backend->updateDefaults();
     };
     events.param = [](void *data, int, quint32 id, quint32, quint32, const spa_pod *param) {
         auto *binding = static_cast<Binding *>(data);
-        if (id == SPA_PARAM_Props) {
+        // The card's cached route still holds the previous volume at this
+        // point; applying it here would flash the old value.
+        if (id == SPA_PARAM_Props)
             binding->object->updateVolume(param);
-            binding->backend->updateRouteVolume(binding->object);
-        }
     };
     return events;
 }();
@@ -130,8 +129,16 @@ const pw_device_events Backend::deviceEvents = [] {
             return;
         if (id == SPA_PARAM_EnumProfile || id == SPA_PARAM_Profile)
             binding->object->updateProfile(param, id == SPA_PARAM_Profile);
-        else if (id == SPA_PARAM_EnumRoute || id == SPA_PARAM_Route)
-            binding->object->updateRoute(param, id == SPA_PARAM_Route);
+        else if (id == SPA_PARAM_EnumRoute || id == SPA_PARAM_Route) {
+            const int device = binding->object->updateRoute(param, id == SPA_PARAM_Route);
+            // Only that device's nodes: the card's other routes may still hold
+            // the previous volume of a node that has already changed.
+            for (AudioObject *node : binding->backend->objects()) {
+                if (device >= 0 && node->kind() != AudioObject::Card
+                    && node->cardIndex() == binding->object->index() && node->profileDevice() == device)
+                    binding->backend->updateRouteVolume(node);
+            }
+        }
     };
     return events;
 }();
@@ -332,6 +339,9 @@ void Backend::addGlobal(quint32 id, quint32 permissions, const char *type,
     const char *nodeName = spa_dict_lookup(properties, PW_KEY_NODE_NAME);
     if (nodeName && QString::fromUtf8(nodeName).startsWith("cutefish.internal."))
         return;
+    // WirePlumber's "Dummy Output", which stands in while no real sink exists.
+    if (nodeName && std::strcmp(nodeName, "auto_null") == 0)
+        return;
     AudioObject::Kind kind;
     quint32 bindVersion;
     if (std::strcmp(type, PW_TYPE_INTERFACE_Node) == 0) {
@@ -363,10 +373,8 @@ void Backend::addGlobal(quint32 id, quint32 permissions, const char *type,
         pw_device_add_listener(reinterpret_cast<pw_device *>(proxy), &binding->listener, &deviceEvents, binding);
         connect(audioObject, &AudioObject::changed, this, [this, id] {
             for (AudioObject *node : objects()) {
-                if (node->kind() != AudioObject::Card && node->cardIndex() == id) {
-                    updateRouteVolume(node);
+                if (node->kind() != AudioObject::Card && node->cardIndex() == id)
                     Q_EMIT node->changed();
-                }
             }
         });
     } else {

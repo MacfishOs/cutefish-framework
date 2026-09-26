@@ -29,6 +29,7 @@ class AudioObject : public QObject
     Q_PROPERTY(int state READ state NOTIFY changed)
     Q_PROPERTY(bool virtualDevice READ isVirtualDevice NOTIFY changed)
     Q_PROPERTY(quint32 cardIndex READ cardIndex NOTIFY changed)
+    Q_PROPERTY(QString bus READ bus NOTIFY changed)
     Q_PROPERTY(QVariantList ports READ ports NOTIFY changed)
     Q_PROPERTY(int activePortIndex READ activePortIndex WRITE setActivePortIndex NOTIFY changed)
     Q_PROPERTY(QVariantList profiles READ profiles NOTIFY changed)
@@ -65,6 +66,7 @@ public:
     int state() const { return m_state; }
     bool isVirtualDevice() const;
     quint32 cardIndex() const;
+    QString bus() const;
     QVariantList ports() const;
     int activePortIndex() const;
     QVariantList profiles() const { return m_profiles; }
@@ -94,7 +96,8 @@ private:
     void updateProperties(const spa_dict *properties);
     void updateVolume(const spa_pod *param);
     void updateProfile(const spa_pod *param, bool current);
-    void updateRoute(const spa_pod *param, bool current);
+    // Returns the device of a current route, -1 otherwise.
+    int updateRoute(const spa_pod *param, bool current);
     int profileDevice() const;
 
     Backend *m_backend;

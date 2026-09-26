@@ -135,6 +135,14 @@ quint32 AudioObject::cardIndex() const
     return ok ? id : InvalidId;
 }
 
+// The card's bus, such as "pci", "usb" or "bluetooth"; empty for virtual
+// nodes and for SoC codecs, which have no bus.
+QString AudioObject::bus() const
+{
+    const AudioObject *card = m_backend ? m_backend->object(cardIndex()) : nullptr;
+    return card ? card->m_properties.value("device.bus").toString() : QString();
+}
+
 int AudioObject::profileDevice() const
 {
     bool ok = false;
@@ -336,7 +344,7 @@ void AudioObject::updateProfile(const spa_pod *param, bool current)
     Q_EMIT changed();
 }
 
-void AudioObject::updateRoute(const spa_pod *param, bool current)
+int AudioObject::updateRoute(const spa_pod *param, bool current)
 {
     int index = -1;
     int device = -1;
@@ -353,7 +361,7 @@ void AudioObject::updateRoute(const spa_pod *param, bool current)
             SPA_PARAM_ROUTE_description, SPA_POD_OPT_String(&description),
             SPA_PARAM_ROUTE_priority, SPA_POD_OPT_Int(&priority),
             SPA_PARAM_ROUTE_available, SPA_POD_OPT_Id(&available)) < 0)
-        return;
+        return -1;
     if (current) {
         m_activeRoutes.insert(device, index);
         const spa_pod_prop *props = spa_pod_find_prop(param, nullptr, SPA_PARAM_ROUTE_props);
@@ -380,6 +388,7 @@ void AudioObject::updateRoute(const spa_pod *param, bool current)
             {"devices", devices}, {"profiles", profiles}});
     }
     Q_EMIT changed();
+    return current ? device : -1;
 }
 
 }
