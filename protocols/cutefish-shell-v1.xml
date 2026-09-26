@@ -3,8 +3,8 @@
 
   <description summary="private shell surface roles for cutefish-shell">
     This protocol lets the trusted Cutefish shell process describe what its
-    surfaces are for: a desktop background, a panel, a dock, the launcher or a
-    notification banner.
+    surfaces are for: a desktop background, a panel, a dock, the launcher, a
+    notification banner or the screen capture interface.
 
     It is an *extension* of an ordinary wl_surface, not a replacement for
     xdg-shell. The shell keeps creating xdg_toplevel objects through
@@ -72,12 +72,18 @@
         The role decides which stacking layer the window lives in and how the
         window manager places it. Roles other than desktop are always kept in
         their own layer: activation can never move a window between layers.
+
+        A capture surface and its popups are shown on screen but never
+        painted into an image or a video the compositor captures, so the
+        interface that takes a screenshot is never part of it.
       </description>
       <entry name="desktop" value="0" summary="the desktop background, below everything"/>
       <entry name="panel" value="1" summary="a panel such as the status bar"/>
       <entry name="dock" value="2" summary="the dock"/>
       <entry name="launcher" value="3" summary="the full screen launcher"/>
       <entry name="notification" value="4" summary="a notification banner"/>
+      <entry name="capture" value="5"
+             summary="the screen capture interface, above everything else"/>
     </enum>
 
     <enum name="panel_behavior">

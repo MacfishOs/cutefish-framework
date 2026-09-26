@@ -30,6 +30,15 @@
       the whole task list.
     </description>
 
+    <enum name="picked_kind">
+      <description summary="what is shown at a picked position"/>
+      <entry name="none" value="0" summary="nothing that can be captured as a window"/>
+      <entry name="window" value="1" summary="an announced application window"/>
+      <entry name="desktop" value="2" summary="the shell's desktop"/>
+      <entry name="panel" value="3" summary="a shell panel such as the status bar"/>
+      <entry name="dock" value="4" summary="the shell's dock"/>
+    </enum>
+
     <request name="destroy" type="destructor">
       <description summary="stop managing windows">
         Existing cutefish_window_v1 objects stay valid until destroyed.
@@ -66,6 +75,18 @@
       <arg name="window" type="object" interface="cutefish_window_v1" allow-null="true"/>
     </request>
 
+    <request name="pick">
+      <description summary="find the window shown at a position">
+        Asks which window is shown at a position in global logical
+        coordinates, found the way the pointer finds it but looking through
+        screen capture surfaces and their popups, so the capture interface
+        can pick what is under it. Answered by picked with the same serial.
+      </description>
+      <arg name="serial" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+    </request>
+
     <event name="window">
       <description summary="a window appeared">
         A new cutefish_window_v1 object for an application window. Its state
@@ -75,6 +96,10 @@
         stable 64-bit window identifier. Wayland has no 64-bit scalar, so the
         identifier is carried as two uints; it is unique for the lifetime of
         the compositor and is never reused.
+
+        The same window's ext_foreign_toplevel_handle_v1 identifier is
+        "cutefish-" followed by this identifier in decimal, so a capture
+        client can be told which window to capture.
       </description>
       <arg name="window" type="new_id" interface="cutefish_window_v1"/>
       <arg name="id_hi" type="uint"/>
@@ -97,6 +122,18 @@
         announced. A shell that is rebuilding its task list can hold off
         drawing until this arrives.
       </description>
+    </event>
+
+    <event name="picked">
+      <description summary="the window shown at a picked position">
+        The answer to pick. For a window, id_hi and id_lo name it, and a
+        popup is answered with the window it belongs to; otherwise they are
+        zero.
+      </description>
+      <arg name="serial" type="uint"/>
+      <arg name="kind" type="uint" enum="picked_kind"/>
+      <arg name="id_hi" type="uint"/>
+      <arg name="id_lo" type="uint"/>
     </event>
   </interface>
 
@@ -196,7 +233,9 @@
     <event name="pid">
       <description summary="the process that owns the window">
         Taken from the Wayland client credentials of the connection the
-        window's xdg_surface was created on. Zero when unknown.
+        window's xdg_surface was created on, or for an X11 window from the
+        credentials the X server holds for its client connection. Never from
+        a client-supplied property such as _NET_WM_PID. Zero when unknown.
       </description>
       <arg name="pid" type="uint"/>
     </event>
