@@ -196,6 +196,7 @@ void AudioTest::parseProperties()
     const spa_dict properties = SPA_DICT_INIT(items, 2);
     object.updateProperties(&properties);
     QCOMPARE(object.description(), QString("Test speaker"));
+    QCOMPARE(object.displayName(), QString("Test speaker"));
     QCOMPARE(object.cardIndex(), AudioObject::InvalidId);
 }
 
@@ -361,6 +362,7 @@ void AudioTest::hardwareRoutes()
     sink->setActivePortIndex(1);
     QTRY_COMPARE(device.route, 10);
     QTRY_COMPARE(sink->activePortIndex(), 1);
+    QCOMPARE(sink->displayName(), QString("Headphones"));
     sink->setChannelVolumes({0.5, 0.5});
     QTRY_COMPARE(device.volumes[0], 0.125f);
     QTRY_COMPARE(device.volumes[1], 0.125f);

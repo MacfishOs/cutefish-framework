@@ -17,6 +17,7 @@ class AudioObject : public QObject
     Q_PROPERTY(quint32 index READ index CONSTANT)
     Q_PROPERTY(QString name READ name NOTIFY changed)
     Q_PROPERTY(QString description READ description NOTIFY changed)
+    Q_PROPERTY(QString displayName READ displayName NOTIFY changed)
     Q_PROPERTY(QString iconName READ iconName NOTIFY changed)
     Q_PROPERTY(QVariantMap properties READ properties NOTIFY changed)
     Q_PROPERTY(double volume READ volume WRITE setVolume NOTIFY changed)
@@ -54,6 +55,7 @@ public:
     Kind kind() const { return m_kind; }
     QString name() const;
     QString description() const;
+    QString displayName() const;
     QString iconName() const;
     QVariantMap properties() const { return m_properties; }
     double volume() const;

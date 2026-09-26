@@ -74,6 +74,24 @@ QString AudioObject::description() const
     return name();
 }
 
+// A built-in card's node is named after the controller ("Ryzen HD Audio
+// Controller Analog Stereo"); its active port says what it is ("Speakers").
+QString AudioObject::displayName() const
+{
+    const QString cardBus = bus();
+    if ((m_kind == Sink || m_kind == Source) && !isVirtualDevice()
+        && cardBus != "usb" && cardBus != "bluetooth") {
+        const QVariantList routes = ports();
+        const int active = activePortIndex();
+        if (active >= 0 && active < routes.size()) {
+            const QString port = routes.at(active).toMap().value("description").toString();
+            if (!port.isEmpty())
+                return port;
+        }
+    }
+    return description();
+}
+
 QString AudioObject::iconName() const
 {
     return m_properties.value("device.icon-name",
