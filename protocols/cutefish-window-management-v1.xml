@@ -87,6 +87,39 @@
       <arg name="y" type="int"/>
     </request>
 
+    <request name="activate_desk">
+      <description summary="switch to a desk">
+        Slides to the desk as clicking it does. Ignored for a desk that no
+        longer exists and while desks are being switched.
+      </description>
+      <arg name="desk" type="uint"/>
+    </request>
+
+    <request name="create_desk">
+      <description summary="add a desk after the last one">
+        Ignored when there are as many desks as the compositor allows. With
+        `activate` 1 the new desk is also switched to.
+      </description>
+      <arg name="activate" type="uint"/>
+    </request>
+
+    <request name="remove_desk">
+      <description summary="remove a desk, keeping its windows">
+        The desk's windows go to the desk on its left, or on its right when it
+        is the first, below that desk's own windows. Removing the active desk
+        slides to that desk first. Ignored for the only desk.
+      </description>
+      <arg name="desk" type="uint"/>
+    </request>
+
+    <request name="set_desk_name">
+      <description summary="name a desk">
+        An empty name gives the desk its default name back.
+      </description>
+      <arg name="desk" type="uint"/>
+      <arg name="name" type="string"/>
+    </request>
+
     <event name="window">
       <description summary="a window appeared">
         A new cutefish_window_v1 object for an application window. Its state
@@ -134,6 +167,39 @@
       <arg name="kind" type="uint" enum="picked_kind"/>
       <arg name="id_hi" type="uint"/>
       <arg name="id_lo" type="uint"/>
+    </event>
+
+    <event name="desk">
+      <description summary="a desk was added">
+        Desks are announced in order, before initial_state_done for those that
+        exist at bind time; a new desk is always the last. `desk` is its
+        identifier, unique for the lifetime of the compositor and never
+        reused, and never zero.
+      </description>
+      <arg name="desk" type="uint"/>
+    </event>
+
+    <event name="desk_removed">
+      <description summary="a desk was removed">
+        Its windows have moved to another desk, which their desk events say.
+      </description>
+      <arg name="desk" type="uint"/>
+    </event>
+
+    <event name="desk_name">
+      <description summary="a desk's name">
+        Empty while the desk has its default name, which the shell words
+        itself from the desk's position, as "Desk 2".
+      </description>
+      <arg name="desk" type="uint"/>
+      <arg name="name" type="string"/>
+    </event>
+
+    <event name="active_desk">
+      <description summary="the desk in front of the user">
+        There is always one.
+      </description>
+      <arg name="desk" type="uint"/>
     </event>
   </interface>
 
@@ -220,6 +286,15 @@
         no animation. It is neither raised nor activated; send activate for
         that. Ignored when the window is not hidden.
       </description>
+    </request>
+
+    <request name="move_to_desk">
+      <description summary="send the window to a desk">
+        Its dialogs go with it. Zero puts it on every desk. A window on the
+        active desk slides off towards the desk it goes to, and does not take
+        the user along.
+      </description>
+      <arg name="desk" type="uint"/>
     </request>
 
     <event name="title">
@@ -330,6 +405,16 @@
         Apply this state together with the other events at done.
       </description>
       <arg name="skip" type="uint"/>
+    </event>
+
+    <event name="desk">
+      <description summary="the desk the window is on">
+        Zero for a window on every desk: one the user put there, an always on
+        top window or a system dialog. A window on a desk that is not active
+        is not on screen, and activating it switches to its desk. Applies with
+        the next done event.
+      </description>
+      <arg name="desk" type="uint"/>
     </event>
   </interface>
 </protocol>
