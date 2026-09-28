@@ -246,6 +246,12 @@ void BluetoothManager::interfacesRemoved(const QDBusObjectPath &path, const QStr
     } else {
         for (const auto &interface : interfaces)
             entry->removeInterface(interface);
+        // bluetoothd names media transports from a global counter, so their paths never
+        // return; the standard freedesktop interfaces alone do not keep an object.
+        if (!entry->hasBluezInterface()) {
+            m_objects.remove(path.path());
+            entry->deleteLater();
+        }
     }
     emit devicesChanged();
     emit changed();

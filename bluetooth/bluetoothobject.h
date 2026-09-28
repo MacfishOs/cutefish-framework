@@ -57,6 +57,7 @@ public:
     bool isDevice() const;
 
     bool hasInterface(const QString &interface) const { return m_interfaces.contains(interface); }
+    bool hasBluezInterface() const;
 
     quint64 revision(const QString &interface, const QString &property) const;
     QVariant value(const QString &property) const;

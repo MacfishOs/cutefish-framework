@@ -111,6 +111,15 @@ bool BluetoothObject::isDevice() const
     return m_interfaces.contains(deviceInterface);
 }
 
+bool BluetoothObject::hasBluezInterface() const
+{
+    for (auto it = m_interfaces.cbegin(); it != m_interfaces.cend(); ++it) {
+        if (it.key().startsWith(QLatin1String("org.bluez.")))
+            return true;
+    }
+    return false;
+}
+
 void BluetoothObject::setValue(const QString &property, const QVariant &value)
 {
     m_manager->setProperty(this, property, value);

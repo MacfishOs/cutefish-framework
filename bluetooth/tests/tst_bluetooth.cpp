@@ -87,6 +87,22 @@ private slots:
         QTRY_COMPARE(model.rowCount(), 0);
     }
 
+    void removedChildObjectIsDropped()
+    {
+        const QString transport = device + QStringLiteral("/sep1/fd0");
+        const QString transportInterface = QStringLiteral("org.bluez.MediaTransport1");
+        fake->add(transport,
+                  {{transportInterface,
+                    {{"State", "idle"}, {"Device", QVariant::fromValue(QDBusObjectPath(device))}}},
+                   {QStringLiteral("org.freedesktop.DBus.Properties"), {}}});
+        QTRY_VERIFY(manager->object(transport));
+        QPointer<BluetoothObject> entry = manager->object(transport);
+        fake->remove(transport, {transportInterface});
+        QTRY_VERIFY(entry.isNull());
+        QVERIFY(!manager->object(transport));
+        QCOMPARE(manager->devices().size(), 1);
+    }
+
     void modelUpdatesRowsInPlace()
     {
         BluetoothDevicesModel model;
