@@ -19,6 +19,9 @@ and optional battery percentage (`-1` means unavailable). `mediaCommand()` accep
 the standard BlueZ player commands. Adapter objects expose power, discovery,
 discoverability, pairability, and aliases. Successful user-initiated pairing is
 followed by setting trust and connecting; a failed pairing never grants trust.
+A failed device action is sent as a desktop notification that names the device
+and explains BlueZ's reason in plain words; dismissing a pairing prompt is not
+reported. `errorText` holds only adapter and service errors.
 
 Settings enables the `KeyboardDisplay` agent while its Bluetooth page is visible.
 All interactive Agent1 methods require a user response, except display-only

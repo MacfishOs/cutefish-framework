@@ -96,6 +96,9 @@ signals:
     void devicesChanged();
     void errorChanged();
     void pairingChanged();
+    // Device actions report here rather than through errorText; the default
+    // constructor turns each one into a desktop notification.
+    void deviceFailed(const QString &summary, const QString &body);
 private slots:
     void ownerChanged(const QString &service, const QString &oldOwner, const QString &newOwner);
     void interfacesAdded(const QDBusObjectPath &path, const BluetoothInterfaces &interfaces);
@@ -111,6 +114,9 @@ private:
     void registerAgent();
     void finishPrompt(const QString &error = QString());
     void prompt(const QDBusMessage &message);
+    void deviceFailure(const QString &method, const QString &device, const QString &body);
+    QString describe(const QDBusMessage &reply) const;
+    void notify(const QString &summary, const QString &body);
     QDBusConnection m_bus;
     QString m_owner;
     QMap<QString, BluetoothObject *> m_objects;

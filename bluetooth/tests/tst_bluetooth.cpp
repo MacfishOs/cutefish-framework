@@ -227,12 +227,40 @@ private slots:
         manager->setAgentEnabled(true);
         QTRY_VERIFY(manager->agentReady());
         fake->failMethod = QStringLiteral("Pair");
+        QSignalSpy failures(manager.get(), &BluetoothManager::deviceFailed);
         auto *entry = manager->object(device);
         entry->pair();
         QTRY_VERIFY(!entry->busy());
         QVERIFY(!entry->trusted());
         QVERIFY(!fake->calls.contains(QStringLiteral("Connect")));
-        QVERIFY(manager->errorText().contains(QStringLiteral("Injected failure")));
+        QCOMPARE(failures.size(), 1);
+        QVERIFY(manager->errorText().isEmpty());
+    }
+
+    void connectFailureIsExplained()
+    {
+        fake->failMethod = QStringLiteral("Connect");
+        fake->failMessage = QStringLiteral("br-connection-page-timeout");
+        QSignalSpy failures(manager.get(), &BluetoothManager::deviceFailed);
+        auto *entry = manager->object(device);
+        entry->connectToDevice();
+        QTRY_COMPARE(failures.size(), 1);
+        QVERIFY(failures.at(0).at(0).toString().contains(entry->name()));
+        QVERIFY(failures.at(0).at(1).toString().contains(QStringLiteral("didn't respond")));
+        QVERIFY(!failures.at(0).at(1).toString().contains(QStringLiteral("br-connection")));
+        QVERIFY(manager->errorText().isEmpty());
+    }
+
+    void dismissedPairingIsQuiet()
+    {
+        fake->failMethod = QStringLiteral("Pair");
+        fake->failName = QStringLiteral("org.bluez.Error.AuthenticationCanceled");
+        QSignalSpy failures(manager.get(), &BluetoothManager::deviceFailed);
+        auto *entry = manager->object(device);
+        entry->pair();
+        QTRY_VERIFY(!entry->busy());
+        QTest::qWait(30);
+        QVERIFY(failures.isEmpty());
     }
 
     void confirmationAndValidation()
@@ -394,7 +422,8 @@ private slots:
         fake->failMethod = QStringLiteral("StartDiscovery");
         manager->setDiscoveryRequested(true);
         QTRY_VERIFY(!manager->discoveryRequested());
-        QVERIFY(manager->errorText().contains(QStringLiteral("Injected failure")));
+        QVERIFY(!manager->errorText().isEmpty());
+        QVERIFY(!manager->errorText().contains(QStringLiteral("Injected failure")));
         fake->failMethod.clear();
         manager->setDiscoveryRequested(true);
         QTRY_VERIFY(manager->scanning());

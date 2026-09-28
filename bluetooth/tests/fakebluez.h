@@ -37,8 +37,7 @@ public:
         calls.append(message.member());
         lastPath = message.path();
         if (message.member() == failMethod) {
-            connection.send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"),
-                                                     QStringLiteral("Injected failure")));
+            connection.send(message.createErrorReply(failName, failMessage));
             return true;
         }
         const auto args = message.arguments();
@@ -150,6 +149,8 @@ public:
     QStringList calls;
     QString lastPath;
     QString failMethod;
+    QString failName = QStringLiteral("org.bluez.Error.Failed");
+    QString failMessage = QStringLiteral("Injected failure");
     QString agentOwner;
     QString agentPath;
     bool holdPair = false;

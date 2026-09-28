@@ -8,15 +8,19 @@
 #include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
 #include <QDBusVariant>
+#include <QLoggingCategory>
 #include <QPointer>
 #include <QRegularExpression>
 #include <utility>
 
 using namespace BluetoothDBus;
 
+Q_LOGGING_CATEGORY(lcBluetooth, "cutefish.bluetooth")
+
 BluetoothManager::BluetoothManager(QObject *parent)
     : BluetoothManager(QDBusConnection::systemBus(), true, parent)
 {
+    connect(this, &BluetoothManager::deviceFailed, this, &BluetoothManager::notify);
 }
 
 BluetoothManager::BluetoothManager(const QDBusConnection &bus, bool monitorRfkill, QObject *parent)
@@ -46,8 +50,10 @@ BluetoothManager::BluetoothManager(const QDBusConnection &bus, bool monitorRfkil
     m_promptTimer.setSingleShot(true);
     m_promptTimer.setInterval(120000);
     connect(&m_promptTimer, &QTimer::timeout, this, [this] {
+        const QString device = m_pairingDevice;
         cancelPairing();
-        fail(tr("Bluetooth pairing timed out."));
+        deviceFailure(QStringLiteral("Pair"), device,
+                      tr("The device didn't finish pairing in time. Try again."));
     });
     m_retryTimer.setSingleShot(true);
     m_retryTimer.setInterval(2000);
@@ -399,9 +405,13 @@ void BluetoothManager::call(const QString &path, const QString &interface, const
                 watcher->deleteLater();
                 if (generation != m_generation)
                     return;
-                if (reply.type() == QDBusMessage::ErrorMessage && errors == Errors::Report)
-                    fail(tr("%1 failed: %2 (%3)")
-                                 .arg(method, reply.errorMessage(), reply.errorName()));
+                if (reply.type() == QDBusMessage::ErrorMessage && errors == Errors::Report) {
+                    qCWarning(lcBluetooth) << method << "failed:" << reply.errorName()
+                                           << reply.errorMessage();
+                    const QString reason = describe(reply);
+                    fail(reason.isEmpty() ? tr("Bluetooth couldn't complete the request.")
+                                          : reason);
+                }
                 if (completion)
                     completion(reply);
             });
@@ -421,18 +431,20 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
                                const QVariantList &arguments)
 {
     if (!entry || object(entry->path()) != entry || !entry->isDevice()) {
-        fail(tr("This Bluetooth device is no longer available."));
+        deviceFailure(method, entry ? entry->name() : QString(),
+                      tr("This device is no longer available."));
         return;
     }
     const bool cancel = method == QStringLiteral("CancelPairing");
     if (entry->busy() && !cancel) {
-        fail(tr("A Bluetooth operation is already in progress for this device."));
+        deviceFailure(method, entry->name(), tr("The device is busy. Try again in a moment."));
         return;
     }
     // Without an agent of its own the caller pairs through BlueZ's default one,
     // which the shell keeps registered.
     if (method == QStringLiteral("Pair") && m_agentEnabled && !m_agentReady) {
-        fail(tr("The Bluetooth pairing agent is not ready."));
+        deviceFailure(method, entry->name(),
+                      tr("Bluetooth isn't ready yet. Try again in a moment."));
         return;
     }
     clearError();
@@ -441,12 +453,13 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
     const bool remove = method == QStringLiteral("RemoveDevice");
     QPointer<BluetoothObject> guard(entry);
     const QString path = entry->path();
+    const QString name = entry->name();
     if (method == QStringLiteral("Pair"))
         m_pairingOperations.insert(path);
     call(
             remove ? entry->adapterPath() : path, remove ? adapterInterface : deviceInterface,
             method, remove ? QVariantList {QVariant::fromValue(QDBusObjectPath(path))} : arguments,
-            [this, guard, path, method, cancel](const QDBusMessage &reply) {
+            [this, guard, path, name, method, cancel](const QDBusMessage &reply) {
                 if (method == QStringLiteral("Pair"))
                     m_pairingOperations.remove(path);
                 if (guard && !cancel)
@@ -454,6 +467,22 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
                 if (method == QStringLiteral("Pair") || cancel) {
                     if (m_pairingPath == path)
                         finishPrompt(QStringLiteral("org.bluez.Error.Canceled"));
+                }
+                if (reply.type() == QDBusMessage::ErrorMessage && !cancel) {
+                    qCWarning(lcBluetooth) << method << "failed:" << reply.errorName()
+                                           << reply.errorMessage();
+                    // Dismissing the pairing prompt ends Pair with Canceled or Rejected,
+                    // and a device that is already in the requested state needs no report.
+                    static const QStringList quiet {
+                            QStringLiteral("org.bluez.Error.AuthenticationCanceled"),
+                            QStringLiteral("org.bluez.Error.AuthenticationRejected"),
+                            QStringLiteral("org.bluez.Error.AlreadyConnected"),
+                            QStringLiteral("org.bluez.Error.AlreadyExists"),
+                            QStringLiteral("org.bluez.Error.NotConnected")};
+                    const bool alreadyConnected =
+                            reply.errorMessage().endsWith(QLatin1String("-already-connected"));
+                    if (!quiet.contains(reply.errorName()) && !alreadyConnected)
+                        deviceFailure(method, guard ? guard->name() : name, describe(reply));
                 }
                 if (!guard || reply.type() == QDBusMessage::ErrorMessage
                     || method != QStringLiteral("Pair"))
@@ -471,7 +500,7 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
                              operate(guard, QStringLiteral("Connect"));
                      });
             },
-            Errors::Report, method == QStringLiteral("Pair") ? 180000 : 60000);
+            Errors::Ignore, method == QStringLiteral("Pair") ? 180000 : 60000);
 }
 
 void BluetoothManager::setDiscoveryRequested(bool requested)
@@ -701,6 +730,87 @@ void BluetoothManager::fail(const QString &message)
 {
     m_error = message;
     emit errorChanged();
+}
+
+void BluetoothManager::deviceFailure(const QString &method, const QString &device,
+                                     const QString &body)
+{
+    QString summary;
+    if (method == QStringLiteral("Connect") || method == QStringLiteral("ConnectProfile"))
+        summary = tr("Couldn't connect to %1");
+    else if (method == QStringLiteral("Disconnect")
+             || method == QStringLiteral("DisconnectProfile"))
+        summary = tr("Couldn't disconnect %1");
+    else if (method == QStringLiteral("Pair"))
+        summary = tr("Couldn't pair with %1");
+    else if (method == QStringLiteral("RemoveDevice"))
+        summary = tr("Couldn't forget %1");
+    else
+        return;
+    emit deviceFailed(summary.arg(device.isEmpty() ? tr("the device") : device),
+                      body.isEmpty() ? tr("Try again. If it keeps failing, turn the device off "
+                                          "and on again.")
+                                     : body);
+}
+
+// BlueZ reports most connection failures as org.bluez.Error.Failed with a
+// "br-connection-*" or "le-connection-*" reason, or an errno string on older versions.
+QString BluetoothManager::describe(const QDBusMessage &reply) const
+{
+    const QString name = reply.errorName().section(QLatin1Char('.'), -1);
+    QString reason = reply.errorMessage();
+    for (const auto prefix : {QLatin1String("br-connection-"), QLatin1String("le-connection-")}) {
+        if (reason.startsWith(prefix))
+            reason = reason.mid(prefix.size());
+    }
+
+    if (name == QLatin1String("NoReply") || name == QLatin1String("AuthenticationTimeout")
+        || reason == QLatin1String("timeout") || reason == QLatin1String("Connection timed out"))
+        return tr("The device didn't respond in time. Make sure it is turned on and nearby.");
+    if (name == QLatin1String("ConnectionAttemptFailed") || reason == QLatin1String("page-timeout")
+        || reason == QLatin1String("Host is down"))
+        return tr("The device didn't respond. Make sure it is turned on, nearby, and not "
+                  "connected to another device.");
+    if (reason == QLatin1String("key-missing"))
+        return tr("The device no longer recognizes this computer. Forget the device and pair "
+                  "it again.");
+    if (name == QLatin1String("AuthenticationFailed"))
+        return tr("Pairing failed. Make sure the code matches on both devices and try again.");
+    if (name == QLatin1String("AuthenticationRejected"))
+        return tr("The device declined the request.");
+    if (reason == QLatin1String("refused") || reason == QLatin1String("Connection refused"))
+        return tr("The device refused the connection.");
+    if (name == QLatin1String("NotSupported") || reason == QLatin1String("profile-unavailable")
+        || reason == QLatin1String("not-supported") || reason == QLatin1String("sdp-search")
+        || reason == QLatin1String("Protocol not available"))
+        return tr("The device has no features this computer can use.");
+    if (reason == QLatin1String("adapter-not-powered"))
+        return tr("Bluetooth is turned off.");
+    if (name == QLatin1String("NotReady"))
+        return tr("Bluetooth isn't ready yet. Try again in a moment.");
+    if (name == QLatin1String("InProgress") || reason == QLatin1String("busy")
+        || reason == QLatin1String("Operation already in progress"))
+        return tr("The device is busy. Try again in a moment.");
+    if (reason == QLatin1String("concurrent-connection-limit"))
+        return tr("Too many devices are connected. Disconnect one and try again.");
+    if (reason == QLatin1String("aborted-by-remote"))
+        return tr("The device ended the connection.");
+    if (reason == QLatin1String("aborted-by-local") || reason == QLatin1String("canceled"))
+        return tr("The connection was interrupted. Try again.");
+    if (name == QLatin1String("DoesNotExist") || name == QLatin1String("UnknownObject"))
+        return tr("This device is no longer available.");
+    return QString();
+}
+
+void BluetoothManager::notify(const QString &summary, const QString &body)
+{
+    const QString service = QStringLiteral("org.freedesktop.Notifications");
+    const QString path = QStringLiteral("/org/freedesktop/Notifications");
+    QDBusMessage message =
+            QDBusMessage::createMethodCall(service, path, service, QStringLiteral("Notify"));
+    message << tr("Bluetooth") << 0u << QStringLiteral("bluetooth") << summary << body
+            << QStringList() << QVariantMap() << -1;
+    QDBusConnection::sessionBus().call(message, QDBus::NoBlock);
 }
 
 void BluetoothManager::clearError()
