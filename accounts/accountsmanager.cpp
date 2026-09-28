@@ -87,9 +87,21 @@ void AccountsManagerPrivate::remove(const QString &path)
         user->deleteLater();
 }
 
+static constexpr int kMaxDeletionSerials = 64;
+
 void AccountsManagerPrivate::removedByService(const QString &path)
 {
     deletionSerials.insert(path, ++serial);
+    // Only replies still in flight can be older than a deletion; the hash
+    // needs no more history than that.
+    while (deletionSerials.size() > kMaxDeletionSerials) {
+        auto oldest = deletionSerials.begin();
+        for (auto it = deletionSerials.begin(); it != deletionSerials.end(); ++it) {
+            if (it.value() < oldest.value())
+                oldest = it;
+        }
+        deletionSerials.erase(oldest);
+    }
     UserAccount *user = accounts.value(path);
     bool valid = false;
     const qlonglong uid = path.startsWith(userPathPrefix)

@@ -35,6 +35,7 @@
 
 #include <libnm/nm-vpn-plugin-info.h>
 
+#include <QTimer>
 #include <QDBusError>
 #include <QDBusMetaType>
 #include <QDBusPendingReply>
@@ -315,6 +316,8 @@ void Handler::addAndActivateWireless(const QString &device, const QString &speci
     settings.clear();
 }
 
+static constexpr int kForgetWatchTimeoutMs = 2 * 60 * 1000;
+
 void Handler::forgetUnlessActivated(const QString &connectionPath, const QString &activePath)
 {
     // A wrong password the user then gave up on would otherwise stay behind as a
@@ -330,6 +333,9 @@ void Handler::forgetUnlessActivated(const QString &connectionPath, const QString
                          // Breaks the cycle the lambda holds on the active connection.
                          QObject::disconnect(*watch);
                      });
+    // An activation NetworkManager drops without a final state would keep the
+    // object alive through its own handler for good.
+    QTimer::singleShot(kForgetWatchTimeoutMs, this, [watch] { QObject::disconnect(*watch); });
 }
 
 void Handler::addConnection(const NMVariantMapMap &map)
@@ -351,6 +357,7 @@ void Handler::deactivateConnection(const QString &connection, const QString &dev
     }
 
     QDBusPendingReply<> reply;
+    bool requested = false;
     for (const NetworkManager::ActiveConnection::Ptr &active :
          NetworkManager::activeConnections()) {
         if (active->uuid() == con->uuid()
@@ -358,15 +365,21 @@ void Handler::deactivateConnection(const QString &connection, const QString &dev
                 || active->vpn())) {
             if (active->vpn()) {
                 reply = NetworkManager::deactivateConnection(active->path());
+                requested = true;
             } else {
                 NetworkManager::Device::Ptr device =
                         NetworkManager::findNetworkInterface(active->devices().first());
                 if (device) {
                     reply = device->disconnectInterface();
+                    requested = true;
                 }
             }
         }
     }
+
+    // A watcher on a reply that was never asked for never finishes.
+    if (!requested)
+        return;
 
     QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(reply, this);
     watcher->setProperty("action", Handler::DeactivateConnection);
@@ -407,13 +420,13 @@ void makeDBusCall(const QDBusMessage &message, QObject *context,
     QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(reply, context);
     QObject::connect(watcher, &QDBusPendingCallWatcher::finished, context,
                      [func](QDBusPendingCallWatcher *watcher) {
+                         watcher->deleteLater();
                          const QDBusPendingReply<T> reply = *watcher;
                          if (!reply.isValid()) {
                              qWarning() << reply.error().message();
                              return;
                          }
                          func(reply);
-                         watcher->deleteLater();
                      });
 }
 
@@ -578,9 +591,11 @@ void Handler::requestScan(const QString &interface)
                         return;
                     }
                     continue;
-                } else if (m_wirelessScanRetryTimer.contains(interface)) {
-                    m_wirelessScanRetryTimer.value(interface)->stop();
-                    delete m_wirelessScanRetryTimer.take(interface);
+                } else if (m_wirelessScanRetryTimer.contains(wifiDevice->interfaceName())) {
+                    // Keyed by the device, not by the argument, which QML
+                    // leaves empty.
+                    m_wirelessScanRetryTimer.value(wifiDevice->interfaceName())->stop();
+                    delete m_wirelessScanRetryTimer.take(wifiDevice->interfaceName());
                 }
 
                 qDebug() << "Requesting wifi scan on device" << wifiDevice->interfaceName();

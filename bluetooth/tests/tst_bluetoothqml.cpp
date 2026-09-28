@@ -78,6 +78,7 @@ private slots:
     {
         qmlRegisterType<TestHardware>("Cutefish.Settings", 1, 0, "Battery");
         qmlRegisterType<TestHardware>("Cutefish.Settings", 1, 0, "Touchpad");
+        qmlRegisterType<TestHardware>("Cutefish.Settings", 1, 0, "Touchscreen");
         qmlRegisterType<TestHardware>("Cutefish.Network", 1, 0, "EnabledConnections");
         qmlRegisterType<TestNetworkModel>("Cutefish.Network", 1, 0, "NetworkModel");
         qmlRegisterType<TestNetworkModel>("Cutefish.Network", 1, 0, "AppletProxyModel");
@@ -103,6 +104,7 @@ private slots:
             import QtQuick.Controls
             ApplicationWindow {
                 title: "Settings"
+                property int headerInset: 40
                 header: Item { height: 40 }
             }
         )",
@@ -173,6 +175,7 @@ private slots:
                 width: 900
                 height: 650
                 visible: true
+                property int headerInset: 40
                 header: Item { height: 40 }
                 background: Rectangle { color: "white" }
             }

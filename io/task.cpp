@@ -337,6 +337,8 @@ Task *TaskController::submit(const TaskRequest &request, bool keepRedo)
         const auto &result = task->outcome();
         if (request.operation == Operation::Trash && !result.outputs.isEmpty()) {
             m_undo.append({Operation::Restore, result.outputs});
+            while (m_undo.size() > kMaxHistory)
+                m_undo.removeFirst();
             emit historyChanged();
         }
         emit taskFinished(task);

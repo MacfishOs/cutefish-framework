@@ -240,14 +240,10 @@ void BluetoothManager::interfacesRemoved(const QDBusObjectPath &path, const QStr
         m_discoveryFailed.remove(path.path());
         m_stopRetries.remove(path.path());
         m_pairingOperations.remove(path.path());
-        if (adapter) {
+        // bluetoothd removes an adapter's devices itself, one InterfacesRemoved
+        // each, before the adapter.
+        if (adapter)
             emit adaptersChanged();
-            const auto children = devices();
-            for (auto *device : children) {
-                if (device->adapterPath() == path.path())
-                    interfacesRemoved(QDBusObjectPath(device->path()), {deviceInterface});
-            }
-        }
         entry->deleteLater();
     } else {
         for (const auto &interface : interfaces)

@@ -405,7 +405,7 @@ void MprisManager::onServiceAppeared(const QString &service)
     if (!controller.isNull()) {
         Q_ASSERT(m_availableControllers.contains(controller));
         m_availableControllers.removeOne(controller);
-        m_otherPlayingControllers.removeOne(controller);
+        m_otherPlayingControllers.removeAll(controller);
     } else {
         if (!m_currentController.isNull() && service == m_currentController->service()) {
             controller = m_currentController;
@@ -415,7 +415,8 @@ void MprisManager::onServiceAppeared(const QString &service)
 
         connect(controller.data(), SIGNAL(playbackStatusChanged()), m_playbackStatusMapper, SLOT(map()));
         m_playbackStatusMapper->setMapping(controller.data(), controller->service());
-        connect(m_playbackStatusMapper, SIGNAL(mapped(QString)), this, SLOT(onAvailableControllerPlaybackStatusChanged(QString)));
+        // One mapper for every controller: connected once, not per player.
+        connect(m_playbackStatusMapper, SIGNAL(mapped(QString)), this, SLOT(onAvailableControllerPlaybackStatusChanged(QString)), Qt::UniqueConnection);
     }
 
     if (m_currentController.isNull()) {
@@ -448,7 +449,7 @@ void MprisManager::onServiceVanished(const QString &service)
     if (!controller.isNull()) {
         Q_ASSERT(m_availableControllers.contains(controller));
         m_availableControllers.removeOne(controller);
-        m_otherPlayingControllers.removeOne(controller);
+        m_otherPlayingControllers.removeAll(controller);
     }
 
     if (!m_currentController.isNull() && service == m_currentController->service()) {
@@ -484,7 +485,7 @@ void MprisManager::onAvailableControllerPlaybackStatusChanged(const QString &ser
         }
     } else {
         if (controller->playbackStatus() != Mpris::Playing) {
-            m_otherPlayingControllers.removeOne(controller);
+            m_otherPlayingControllers.removeAll(controller);
             return;
         }
 
@@ -493,7 +494,7 @@ void MprisManager::onAvailableControllerPlaybackStatusChanged(const QString &ser
             setCurrentController(controller);
         } else {
             m_availableControllers.move(m_availableControllers.indexOf(controller), 1);
-            m_otherPlayingControllers.removeOne(controller); // Just in case, shouldn't be needed
+            m_otherPlayingControllers.removeAll(controller); // Just in case, shouldn't be needed
             m_otherPlayingControllers.prepend(controller);
         }
     }
@@ -550,7 +551,8 @@ void MprisManager::setCurrentController(QSharedPointer<MprisController> controll
         disconnect(m_currentController.data(), &MprisController::volumeChanged, this, &MprisManager::volumeChanged);
         disconnect(m_currentController.data(), &MprisController::seeked, this, &MprisManager::seeked);
 
-        if (m_currentController->playbackStatus() == Mpris::Playing) {
+        if (m_currentController->playbackStatus() == Mpris::Playing
+            && !m_otherPlayingControllers.contains(m_currentController)) {
             m_otherPlayingControllers.prepend(m_currentController);
         }
     }
@@ -587,7 +589,7 @@ void MprisManager::setCurrentController(QSharedPointer<MprisController> controll
         connect(m_currentController.data(), &MprisController::seeked, this, &MprisManager::seeked);
 
         if (m_currentController->playbackStatus() == Mpris::Playing) {
-            m_otherPlayingControllers.removeOne(m_currentController);
+            m_otherPlayingControllers.removeAll(m_currentController);
         }
     }
 

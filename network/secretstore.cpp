@@ -1,5 +1,6 @@
 #include "secretstore.h"
 
+#include <QTimer>
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMetaType>
@@ -51,6 +52,8 @@ const QDBusArgument &operator>>(const QDBusArgument &argument, Secret &secret)
 Q_DECLARE_METATYPE(Secret)
 
 // Completed arrives on the prompt object after the user answered it.
+constexpr int kPromptTimeoutMs = 10 * 60 * 1000;
+
 class PromptWatcher : public QObject
 {
     Q_OBJECT
@@ -309,6 +312,9 @@ void SecretStore::prompt(const QDBusObjectPath &prompt,
     QDBusConnection::sessionBus().connect(service, prompt.path(), promptInterface,
                                           QStringLiteral("Completed"), watcher,
                                           SLOT(completed(bool, QDBusVariant)));
+    // A prompt the service never completes - it crashed, or the dialog was
+    // lost - counts as dismissed instead of keeping the callback chain.
+    QTimer::singleShot(kPromptTimeoutMs, watcher, [watcher] { watcher->finish(true, {}); });
 
     call(prompt.path(), promptInterface, QStringLiteral("Prompt"), {QString()},
          [watcher](const QDBusMessage &reply) {

@@ -92,6 +92,12 @@ void AudioTest::initTestCase()
     QTRY_VERIFY_WITH_TIMEOUT(find("test-output-a") && find("test-output-b") && find("test-input"), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(m_backend->defaultNode(AudioObject::Sink), 10000);
     activateDevices();
+    // The settings application registers this module from C++; the page
+    // under test only needs its Metrics singleton.
+    qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(
+                                     AUDIO_SOURCE_ROOT "/settings/src/qml/Metrics.qml")),
+                             "Cutefish.Settings", 1, 0, "Metrics");
+    qmlProtectModule("Cutefish.Settings", 1);
     m_engine = std::make_unique<QQmlEngine>();
     m_engine->addImportPath(AUDIO_IMPORT_PATH);
 }
@@ -532,6 +538,7 @@ void AudioTest::settingsMultipleDevices()
         import QtQuick.Controls
         import FishUI 1.0 as FishUI
         FishUI.ApplicationWindow {
+            property int headerInset: 40
             width: 820
             height: 780
             visible: true

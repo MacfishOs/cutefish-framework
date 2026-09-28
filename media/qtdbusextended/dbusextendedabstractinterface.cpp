@@ -254,7 +254,10 @@ QVariant DBusExtendedAbstractInterface::asyncProperty(const QString &propertyNam
     QDBusPendingReply<QVariant> async = connection().asyncCall(msg);
     DBusExtendedPendingCallWatcher *watcher = new DBusExtendedPendingCallWatcher(async, propertyName, QVariant(), this);
 
-    connect(watcher, SIGNAL(finished(QDBusPendingCallWatcher*)), this, SLOT(onAsyncPropertyFinished(QDBusPendingCallWatcher*)));
+    // The slot takes the derived watcher, so a string-based connect on the
+    // base signature never matched and the reply was lost with the watcher.
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher] { onAsyncPropertyFinished(watcher); });
 
     return QVariant();
 }
@@ -266,7 +269,8 @@ void DBusExtendedAbstractInterface::asyncSetProperty(const QString &propertyName
     QDBusPendingReply<QVariant> async = connection().asyncCall(msg);
     DBusExtendedPendingCallWatcher *watcher = new DBusExtendedPendingCallWatcher(async, propertyName, value, this);
 
-    connect(watcher, SIGNAL(finished(QDBusPendingCallWatcher*)), this, SLOT(onAsyncSetPropertyFinished(QDBusPendingCallWatcher*)));
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher] { onAsyncSetPropertyFinished(watcher); });
 }
 
 void DBusExtendedAbstractInterface::onAsyncPropertyFinished(DBusExtendedPendingCallWatcher *watcher)

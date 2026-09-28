@@ -140,6 +140,8 @@ signals:
 private:
     Task *submit(const TaskRequest &request, bool keepRedo);
 
+    // Trash operations each add an entry; a long session must not keep them all.
+    static constexpr int kMaxHistory = 50;
     QList<TaskRequest> m_undo;
     QList<TaskRequest> m_redo;
 };

@@ -26,8 +26,9 @@ struct CaptureClientListeners {
                 watchOutput(self, output.get());
             self->m_outputs.push_back(std::move(output));
         } else if (!strcmp(interface, wl_shm_interface.name)) {
+            // Version 2 has release, so the compositor can drop it with us.
             self->m_shm = static_cast<wl_shm *>(
-                    wl_registry_bind(registry, name, &wl_shm_interface, 1));
+                    wl_registry_bind(registry, name, &wl_shm_interface, std::min(version, 2u)));
         } else if (!strcmp(interface, zxdg_output_manager_v1_interface.name)) {
             self->m_xdgOutputManager = static_cast<zxdg_output_manager_v1 *>(wl_registry_bind(
                     registry, name, &zxdg_output_manager_v1_interface, std::min(version, 3u)));
@@ -185,7 +186,12 @@ CaptureClient::~CaptureClient()
     for (auto &output : m_outputs) {
         if (output->xdgOutput)
             zxdg_output_v1_destroy(output->xdgOutput);
-        wl_output_destroy(output->output);
+        // Only a release tells the compositor; a plain destroy leaves the
+        // server object until the connection closes.
+        if (wl_output_get_version(output->output) >= WL_OUTPUT_RELEASE_SINCE_VERSION)
+            wl_output_release(output->output);
+        else
+            wl_output_destroy(output->output);
     }
     if (m_copyManager)
         ext_image_copy_capture_manager_v1_destroy(m_copyManager);
@@ -197,8 +203,12 @@ CaptureClient::~CaptureClient()
         ext_output_image_capture_source_manager_v1_destroy(m_outputSources);
     if (m_xdgOutputManager)
         zxdg_output_manager_v1_destroy(m_xdgOutputManager);
-    if (m_shm)
-        wl_shm_destroy(m_shm);
+    if (m_shm) {
+        if (wl_shm_get_version(m_shm) >= WL_SHM_RELEASE_SINCE_VERSION)
+            wl_shm_release(m_shm);
+        else
+            wl_shm_destroy(m_shm);
+    }
     if (m_registry)
         wl_registry_destroy(m_registry);
     if (m_display)
