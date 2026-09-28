@@ -295,6 +295,12 @@ void NetworkModel::addActiveConnection(
         device = NetworkManager::findNetworkInterface(activeConnection->devices().first());
     }
 
+    // Another user's private profile is unreadable and has no uuid, which would match
+    // every access point without a saved connection.
+    if (!connection || connection->uuid().isEmpty()) {
+        return;
+    }
+
     // Check whether we have a base connection
     if (!m_list.contains(NetworkItemsList::Uuid, connection->uuid())) {
         // Active connection appeared before a base connection, so we have to add its base
