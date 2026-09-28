@@ -37,6 +37,7 @@ public:
     Q_INVOKABLE QString getAccessPointDevice();
     Q_INVOKABLE QString getAccessPointConnection();
 
+    // type: none, wep, wpa, wpa2-wpa3, wpa3, wpa-eap, wpa2-eap or wpa3-eap.
     Q_INVOKABLE bool addOtherConnection(const QString ssid, const QString userName,
                                         const QString pwd, const QString type);
 

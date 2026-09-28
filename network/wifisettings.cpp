@@ -322,42 +322,51 @@ bool WifiSettings::addOtherConnection(const QString ssid, const QString userName
     wirelessSetting.setMode(NetworkManager::WirelessSetting::Infrastructure);
     wirelessSetting.setHidden(true);
 
-    if (type != "None") {
+    if (type != QLatin1String("none")) {
         wirelessSetting.setSecurity("802-11-wireless-security");
     }
 
     NetworkManager::WirelessSecuritySetting wirelessSecuritySetting;
-    if(type == "None") {
-        wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::Unknown);
-    } else if (type == "WEP") {
-        wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::Ieee8021x);
-        NetworkManager::Security8021xSetting security8021x;
-        security8021x.setEapMethods(QList<NetworkManager::Security8021xSetting::EapMethod>() << NetworkManager::Security8021xSetting::EapMethodPwd);
-        security8021x.setIdentity(userName);
-        security8021x.setPassword(pwd);
-        security8021x.setPasswordFlags(secretFlags);
-        QVariantMap security8021xMap = security8021x.toMap();
-        csMapMap.insert(NetworkManager::Setting::typeAsString(NetworkManager::Setting::Security8021x), security8021xMap);
-    } else if (type == "WPA/WPA2") {
+    if (type == QLatin1String("wep")) {
+        // The "key" type takes both 5/13-character ASCII and 10/26-digit hex keys.
+        wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::Wep);
+        wirelessSecuritySetting.setWepKeyType(NetworkManager::WirelessSecuritySetting::Hex);
+        wirelessSecuritySetting.setWepTxKeyindex(0);
+        wirelessSecuritySetting.setWepKey0(pwd);
+        wirelessSecuritySetting.setWepKeyFlags(secretFlags);
+        wirelessSecuritySetting.setAuthAlg(NetworkManager::WirelessSecuritySetting::Open);
+    } else if (type == QLatin1String("wpa") || type == QLatin1String("wpa2-wpa3")) {
+        // wpa-psk also joins WPA2/WPA3 transition networks.
         wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::WpaPsk);
+        wirelessSecuritySetting.setProto({ type == QLatin1String("wpa")
+                                           ? NetworkManager::WirelessSecuritySetting::Wpa
+                                           : NetworkManager::WirelessSecuritySetting::Rsn });
         wirelessSecuritySetting.setPsk(pwd);
         wirelessSecuritySetting.setPskFlags(secretFlags);
-    } else if (type == "WPA3") {
+    } else if (type == QLatin1String("wpa3")) {
         wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::SAE);
         wirelessSecuritySetting.setPsk(pwd);
         wirelessSecuritySetting.setPskFlags(secretFlags);
-    } else if (type == "LEAP") {
-        wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::Ieee8021x);
-        wirelessSecuritySetting.setAuthAlg(NetworkManager::WirelessSecuritySetting::Leap);
-        wirelessSecuritySetting.setLeapUsername(userName);
-        wirelessSecuritySetting.setLeapPassword(pwd);
-        wirelessSecuritySetting.setLeapPasswordFlags(secretFlags);
-    } else if(type == "WepHex") {
-        wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::Wep);
-        wirelessSecuritySetting.setWepKeyType(NetworkManager::WirelessSecuritySetting::Hex);
-        wirelessSecuritySetting.setWepTxKeyindex(1);
-        wirelessSecuritySetting.setWepKey0(pwd);
-        wirelessSecuritySetting.setAuthAlg(NetworkManager::WirelessSecuritySetting::Open);
+    } else if (type.endsWith(QLatin1String("-eap"))) {
+        wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::WpaEap);
+        wirelessSecuritySetting.setProto({ type == QLatin1String("wpa-eap")
+                                           ? NetworkManager::WirelessSecuritySetting::Wpa
+                                           : NetworkManager::WirelessSecuritySetting::Rsn });
+        if (type == QLatin1String("wpa3-eap")) {
+            wirelessSecuritySetting.setPmf(NetworkManager::WirelessSecuritySetting::RequiredPmf);
+        }
+
+        // A user name and password is PEAP or TTLS with MSCHAPv2 inside, whichever
+        // the server offers.
+        NetworkManager::Security8021xSetting security8021x;
+        security8021x.setEapMethods({ NetworkManager::Security8021xSetting::EapMethodPeap,
+                                      NetworkManager::Security8021xSetting::EapMethodTtls });
+        security8021x.setPhase2AuthMethod(NetworkManager::Security8021xSetting::AuthMethodMschapv2);
+        security8021x.setIdentity(userName);
+        security8021x.setPassword(pwd);
+        security8021x.setPasswordFlags(secretFlags);
+        csMapMap.insert(NetworkManager::Setting::typeAsString(NetworkManager::Setting::Security8021x),
+                        security8021x.toMap());
     }
 
     NetworkManager::Ipv4Setting ipv4Setting;
@@ -368,7 +377,7 @@ bool WifiSettings::addOtherConnection(const QString ssid, const QString userName
     QVariantMap ipv4Map = ipv4Setting.toMap();
 
     csMapMap.insert(NetworkManager::Setting::typeAsString(NetworkManager::Setting::Wireless), wifiSettingMap);
-    if(type != "None") {
+    if (type != QLatin1String("none")) {
         csMapMap.insert(NetworkManager::Setting::typeAsString(NetworkManager::Setting::WirelessSecurity), wifiSecurityMap);
     }
     csMapMap.insert(NetworkManager::Setting::typeAsString(NetworkManager::Setting::Ipv4), ipv4Map);
