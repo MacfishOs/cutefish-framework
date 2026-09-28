@@ -772,7 +772,7 @@ void Handler::scheduleRequestScan(const QString &interface, int timeout)
     QTimer *timer;
     if (!m_wirelessScanRetryTimer.contains(interface)) {
         // create a timer for the interface
-        timer = new QTimer();
+        timer = new QTimer(this);
         timer->setSingleShot(true);
         m_wirelessScanRetryTimer.insert(interface, timer);
         auto retryAction = [this, interface]() {

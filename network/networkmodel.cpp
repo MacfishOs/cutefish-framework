@@ -248,17 +248,20 @@ void NetworkModel::initializeSignals(const NetworkManager::Device::Ptr &device)
     connect(device.data(), &NetworkManager::Device::stateChanged, this,
             &NetworkModel::deviceStateChanged, Qt::UniqueConnection);
 
+    // The Device owns its DeviceStatistics, so capturing the Device::Ptr here would form a
+    // cycle that keeps every removed device alive.
     auto deviceStatistics = device->deviceStatistics();
+    const QString uni = device->uni();
     connect(deviceStatistics.data(), &NetworkManager::DeviceStatistics::rxBytesChanged, this,
-            [this, device](qulonglong rxBytes) {
-                for (auto *item : m_list.returnItems(NetworkItemsList::Device, device->uni())) {
+            [this, uni](qulonglong rxBytes) {
+                for (auto *item : m_list.returnItems(NetworkItemsList::Device, uni)) {
                     item->setRxBytes(rxBytes);
                     updateItem(item);
                 }
             });
     connect(deviceStatistics.data(), &NetworkManager::DeviceStatistics::txBytesChanged, this,
-            [this, device](qulonglong txBytes) {
-                for (auto *item : m_list.returnItems(NetworkItemsList::Device, device->uni())) {
+            [this, uni](qulonglong txBytes) {
+                for (auto *item : m_list.returnItems(NetworkItemsList::Device, uni)) {
                     item->setTxBytes(txBytes);
                     updateItem(item);
                 }
