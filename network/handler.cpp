@@ -203,7 +203,15 @@ void Handler::addAndActivateWireless(const QString &device, const QString &speci
     settings->setId(ap->ssid());
     settings->setUuid(NetworkManager::ConnectionSettings::createNewUuid());
     settings->setAutoconnect(true);
-    settings->addToPermissions(m_userName, QString());
+
+    // A shared connection keeps its password in NetworkManager for every user;
+    // a private one keeps it in the user's keyring through the secret agent.
+    const bool shared = UiUtils::shareNewConnections();
+    const NetworkManager::Setting::SecretFlags secretFlags =
+            shared ? NetworkManager::Setting::None : NetworkManager::Setting::AgentOwned;
+    if (!shared) {
+        settings->addToPermissions(m_userName, QString());
+    }
 
     NetworkManager::WirelessSetting::Ptr wifiSetting =
             settings->setting(NetworkManager::Setting::Wireless)
@@ -272,12 +280,10 @@ void Handler::addAndActivateWireless(const QString &device, const QString &speci
         m_tmpSpecificPath = specificObject;
 
     } else {
-        // The connection is this user's alone, so its password goes to the
-        // user's keyring through the session's secret agent.
         if (securityType == NetworkManager::StaticWep) {
             wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::Wep);
             wifiSecurity->setWepKey0(password);
-            wifiSecurity->setWepKeyFlags(NetworkManager::Setting::AgentOwned);
+            wifiSecurity->setWepKeyFlags(secretFlags);
         } else if (securityType == NetworkManager::OWE) {
             wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::OWE);
         } else {
@@ -289,7 +295,7 @@ void Handler::addAndActivateWireless(const QString &device, const QString &speci
                 wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::WpaPsk);
             }
             wifiSecurity->setPsk(password);
-            wifiSecurity->setPskFlags(NetworkManager::Setting::AgentOwned);
+            wifiSecurity->setPskFlags(secretFlags);
         }
         QDBusPendingReply<QDBusObjectPath, QDBusObjectPath> reply =
                 NetworkManager::addAndActivateConnection(settings->toMap(), device, specificObject);

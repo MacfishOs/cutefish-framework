@@ -19,6 +19,7 @@
  */
 
 #include "wifisettings.h"
+#include "uiutils.h"
 
 #include <NetworkManagerQt/ActiveConnection>
 #include <NetworkManagerQt/AccessPoint>
@@ -304,7 +305,14 @@ bool WifiSettings::addOtherConnection(const QString ssid, const QString userName
     connectionSettings->setAutoconnect(true);
     connectionSettings->setUuid(NetworkManager::ConnectionSettings::createNewUuid());
     connectionSettings->setId(ssid);
-    connectionSettings->addToPermissions(m_userName, QString());
+
+    // Shared like a network joined from the list; see Handler::addAndActivateWireless.
+    const bool shared = UiUtils::shareNewConnections();
+    const NetworkManager::Setting::SecretFlags secretFlags =
+            shared ? NetworkManager::Setting::None : NetworkManager::Setting::AgentOwned;
+    if (!shared) {
+        connectionSettings->addToPermissions(m_userName, QString());
+    }
 
     NMVariantMapMap csMapMap = connectionSettings->toMap();;
     NetworkManager::WirelessSetting wirelessSetting;
@@ -327,23 +335,23 @@ bool WifiSettings::addOtherConnection(const QString ssid, const QString userName
         security8021x.setEapMethods(QList<NetworkManager::Security8021xSetting::EapMethod>() << NetworkManager::Security8021xSetting::EapMethodPwd);
         security8021x.setIdentity(userName);
         security8021x.setPassword(pwd);
-        security8021x.setPasswordFlags(NetworkManager::Setting::AgentOwned);
+        security8021x.setPasswordFlags(secretFlags);
         QVariantMap security8021xMap = security8021x.toMap();
         csMapMap.insert(NetworkManager::Setting::typeAsString(NetworkManager::Setting::Security8021x), security8021xMap);
     } else if (type == "WPA/WPA2") {
         wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::WpaPsk);
         wirelessSecuritySetting.setPsk(pwd);
-        wirelessSecuritySetting.setPskFlags(NetworkManager::Setting::AgentOwned);
+        wirelessSecuritySetting.setPskFlags(secretFlags);
     } else if (type == "WPA3") {
         wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::SAE);
         wirelessSecuritySetting.setPsk(pwd);
-        wirelessSecuritySetting.setPskFlags(NetworkManager::Setting::AgentOwned);
+        wirelessSecuritySetting.setPskFlags(secretFlags);
     } else if (type == "LEAP") {
         wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::Ieee8021x);
         wirelessSecuritySetting.setAuthAlg(NetworkManager::WirelessSecuritySetting::Leap);
         wirelessSecuritySetting.setLeapUsername(userName);
         wirelessSecuritySetting.setLeapPassword(pwd);
-        wirelessSecuritySetting.setPskFlags(NetworkManager::Setting::AgentOwned);
+        wirelessSecuritySetting.setLeapPasswordFlags(secretFlags);
     } else if(type == "WepHex") {
         wirelessSecuritySetting.setKeyMgmt(NetworkManager::WirelessSecuritySetting::Wep);
         wirelessSecuritySetting.setWepKeyType(NetworkManager::WirelessSecuritySetting::Hex);

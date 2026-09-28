@@ -138,5 +138,9 @@ public:
 
     static QString formatDateRelative(const QDateTime &lastUsed);
     static QString formatLastUsedDateRelative(const QDateTime &lastUsed);
+
+    // Whether a new connection is shared with every user, which it is when this
+    // user may change system connections without authenticating.
+    static bool shareNewConnections();
 };
 #endif // UIUTILS_H

@@ -680,3 +680,10 @@ QString UiUtils::formatLastUsedDateRelative(const QDateTime &lastUsed)
     }
     return lastUsedText;
 }
+
+bool UiUtils::shareNewConnections()
+{
+    return NetworkManager::permissions()
+                   .value(QStringLiteral("org.freedesktop.NetworkManager.settings.modify.system"))
+            == QLatin1String("yes");
+}
