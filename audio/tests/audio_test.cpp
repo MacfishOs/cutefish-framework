@@ -526,6 +526,13 @@ void AudioTest::qmlModelsAndControls()
 
 void AudioTest::settingsMultipleDevices()
 {
+    const QString pagePath = QStringLiteral(AUDIO_SOURCE_ROOT "/settings/src/qml/Sound/Main.qml");
+    // The page lives in the settings checkout next to this one, which a
+    // source tarball does not have.
+    if (!QFile::exists(pagePath)) {
+        QSKIP("the settings checkout is not next to this one");
+    }
+
     auto playback = std::make_unique<TestStream>(m_backend->core(), "settings-playback",
         find("test-output-a")->properties().value(PW_KEY_OBJECT_SERIAL).toString().toUtf8());
     QTRY_VERIFY(playback->streaming);
@@ -549,7 +556,7 @@ void AudioTest::settingsMultipleDevices()
     QScopedPointer<QObject> window(host.create());
     QVERIFY2(window, qPrintable(host.errorString()));
     engine.rootContext()->setContextProperty("rootWindow", window.data());
-    QQmlComponent component(&engine, QUrl::fromLocalFile(QStringLiteral(AUDIO_SOURCE_ROOT "/settings/src/qml/Sound/Main.qml")));
+    QQmlComponent component(&engine, QUrl::fromLocalFile(pagePath));
     QTRY_VERIFY_WITH_TIMEOUT(component.status() != QQmlComponent::Loading, 3000);
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
     QScopedPointer<QObject> page(component.create());
