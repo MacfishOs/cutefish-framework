@@ -1,8 +1,10 @@
 #pragma once
+
 #include "fileitem.h"
 #include "operationcontext.h"
 
 namespace Cutefish::IO {
+
 class FileEnumerator
 {
 public:
@@ -10,4 +12,5 @@ public:
                              OperationContext *context = nullptr);
     static quint64 size(const QString &path, OperationContext &context);
 };
+
 } // namespace Cutefish::IO

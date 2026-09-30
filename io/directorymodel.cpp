@@ -1,12 +1,16 @@
 #include "directorymodel.h"
+
 #include "task.h"
+
 #include <QSet>
 
 namespace Cutefish::IO {
+
 void DirectoryModel::setDirLister(DirectoryLister *lister)
 {
     if (m_lister)
         disconnect(m_lister, nullptr, this, nullptr);
+
     beginResetModel();
     m_lister = lister;
     m_items = lister->items();
@@ -14,6 +18,7 @@ void DirectoryModel::setDirLister(DirectoryLister *lister)
     for (int row = 0; row < m_items.size(); ++row)
         m_rowsByUrl.insert(m_items[row].url(), row);
     endResetModel();
+
     connect(lister, &DirectoryLister::itemsChanged, this, &DirectoryModel::synchronize);
     connect(lister, &DirectoryLister::directoryChanged, this, [this] {
         beginResetModel();
@@ -46,10 +51,13 @@ QVariant DirectoryModel::data(const QModelIndex &idx, int role) const
     const auto item = itemForIndex(idx);
     if (item.isNull())
         return {};
+
     if (role == FileItemRole)
         return QVariant::fromValue(item);
+
     if (role == ChildCountRole)
         return -1;
+
     if (role == Qt::DisplayRole || role == Qt::EditRole) {
         switch (idx.column()) {
         case Name:
@@ -64,6 +72,7 @@ QVariant DirectoryModel::data(const QModelIndex &idx, int role) const
             return {};
         }
     }
+
     return {};
 }
 
@@ -71,21 +80,26 @@ bool DirectoryModel::setData(const QModelIndex &idx, const QVariant &value, int 
 {
     if (role != Qt::EditRole || !idx.isValid())
         return false;
+
     const auto name = value.toString();
     if (name.isEmpty() || name == "." || name == ".." || name.contains('/')
         || name.contains(QChar(0)))
         return false;
+
     const auto item = itemForIndex(idx);
     if (!item.isLocalFile())
         return false;
+
     const auto destination =
             QUrl::fromLocalFile(QFileInfo(item.localPath()).absolutePath() + '/' + name);
     auto *task = TaskController::instance()->submit(
             {Operation::Rename, {item.url()}, destination, ConflictPolicy::Ask});
+
     connect(task, &Task::result, this, [this](Task *done) {
         if (done->error())
             emit error(done->errorString());
     });
+
     return true;
 }
 
@@ -93,10 +107,12 @@ Qt::ItemFlags DirectoryModel::flags(const QModelIndex &idx) const
 {
     if (!idx.isValid())
         return Qt::ItemIsDropEnabled;
+
     auto flags =
             Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled | Qt::ItemIsEditable;
     if (itemForIndex(idx).isDir())
         flags |= Qt::ItemIsDropEnabled;
+
     return flags;
 }
 
@@ -104,11 +120,13 @@ QMimeData *DirectoryModel::mimeData(const QModelIndexList &indexes) const
 {
     auto *data = new QMimeData;
     QList<QUrl> urls;
+
     for (const auto &idx : indexes) {
         const auto item = itemForIndex(idx);
         if (!item.isNull() && !urls.contains(item.url()))
             urls.append(item.url());
     }
+
     data->setUrls(urls);
     return data;
 }
@@ -116,9 +134,11 @@ QMimeData *DirectoryModel::mimeData(const QModelIndexList &indexes) const
 void DirectoryModel::synchronize()
 {
     const auto incoming = m_lister->items();
+
     QSet<QUrl> urls;
     for (const auto &item : incoming)
         urls.insert(item.url());
+
     for (int last = m_items.size() - 1; last >= 0;) {
         if (urls.contains(m_items[last].url())) {
             --last;
@@ -135,10 +155,12 @@ void DirectoryModel::synchronize()
         endRemoveRows();
         last = first - 1;
     }
+
     QHash<QUrl, int> existing;
     for (int row = 0; row < m_items.size(); ++row)
         existing.insert(m_items[row].url(), row);
     m_rowsByUrl = existing;
+
     FileItemList added;
     for (const auto &item : incoming) {
         if (existing.contains(item.url())) {
@@ -148,8 +170,10 @@ void DirectoryModel::synchronize()
             added.append(item);
         }
     }
+
     if (!m_items.isEmpty())
         emit dataChanged(index(0, 0), index(m_items.size() - 1, ColumnCount - 1));
+
     if (!added.isEmpty()) {
         const int first = m_items.size();
         beginInsertRows({}, first, first + added.size() - 1);
@@ -159,4 +183,5 @@ void DirectoryModel::synchronize()
         endInsertRows();
     }
 }
+
 } // namespace Cutefish::IO

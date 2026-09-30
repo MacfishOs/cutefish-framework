@@ -1,12 +1,15 @@
 #include "fileitem.h"
+
 #include "error.h"
 #include "filesystemurl.h"
+
 #include <QDir>
 #include <QLocale>
 #include <QMimeDatabase>
 #include <QStandardPaths>
 
 namespace Cutefish::IO {
+
 FileItem::FileItem(const QUrl &url)
 {
     try {
@@ -47,8 +50,10 @@ QString FileItem::iconName() const
 {
     if (!m_iconName.isEmpty())
         return m_iconName;
+
     if (!isDir())
         return determineMimeType().iconName();
+
     const QString standard = standardFolderIconName(localPath());
     return standard.isEmpty() ? QStringLiteral("folder") : standard;
 }
@@ -57,9 +62,11 @@ bool FileItemListProperties::supportsMoving() const
 {
     if (m_items.isEmpty())
         return false;
+
     for (const auto &item : m_items)
         if (item.isNull() || !QFileInfo(QFileInfo(item.localPath()).absolutePath()).isWritable())
             return false;
+
     return true;
 }
 
@@ -72,6 +79,7 @@ QString standardFolderIconName(const QString &path)
 {
     if (path.isEmpty())
         return {};
+
     static const QList<QPair<QStandardPaths::StandardLocation, QString>> folders = {
             {QStandardPaths::HomeLocation, QStringLiteral("folder-home")},
             {QStandardPaths::DesktopLocation, QStringLiteral("folder-desktop")},
@@ -83,13 +91,16 @@ QString standardFolderIconName(const QString &path)
             {QStandardPaths::TemplatesLocation, QStringLiteral("folder-templates")},
             {QStandardPaths::PublicShareLocation, QStringLiteral("folder-publicshare")},
     };
+
     const QString cleaned = QDir::cleanPath(path);
+
     // Home first: disabled XDG directories resolve to the home directory itself.
     for (const auto &[location, icon] : folders) {
         const QString standard = QStandardPaths::writableLocation(location);
         if (!standard.isEmpty() && QDir::cleanPath(standard) == cleaned)
             return icon;
     }
+
     return {};
 }
 

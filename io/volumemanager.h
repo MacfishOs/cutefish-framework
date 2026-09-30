@@ -8,10 +8,12 @@
 #include <QVariantMap>
 
 namespace Cutefish::IO {
+
 using VolumeInterfaces = QMap<QString, QVariantMap>;
 using VolumeObjects = QMap<QDBusObjectPath, VolumeInterfaces>;
 
-struct Volume {
+struct Volume
+{
     QString id;
     QString drive;
     QString device;
@@ -24,17 +26,21 @@ struct Volume {
     bool removable = false;
     bool ejectable = false;
     bool canPowerOff = false;
+
     bool operator==(const Volume &) const = default;
 };
 
 class VolumeManager : public QObject
 {
     Q_OBJECT
+
 public:
     explicit VolumeManager(QObject *parent = nullptr);
     explicit VolumeManager(const QDBusConnection &bus, QObject *parent = nullptr);
+
     QList<Volume> volumes() const;
     Volume volume(const QString &id) const;
+
     void mount(const QString &id);
     void unmount(const QString &id);
     void eject(const QString &id);
@@ -57,6 +63,7 @@ private:
     void perform(const QString &id, const QString &operation, const QString &path,
                  const QString &interface, const QString &method, QStringList unmounts,
                  quint64 generation);
+
     QDBusConnection m_bus;
     VolumeObjects m_objects;
     QMap<QString, Volume> m_volumes;
@@ -65,6 +72,8 @@ private:
     bool m_refreshAgain = false;
     quint64 m_generation = 0;
 };
+
 } // namespace Cutefish::IO
+
 Q_DECLARE_METATYPE(Cutefish::IO::VolumeInterfaces)
 Q_DECLARE_METATYPE(Cutefish::IO::VolumeObjects)

@@ -1,10 +1,12 @@
 #pragma once
+
 #include <QDateTime>
 #include <QFileInfo>
 #include <QMimeType>
 #include <QUrl>
 
 namespace Cutefish::IO {
+
 class FileItem
 {
 public:
@@ -17,46 +19,114 @@ public:
     FileItem() = default;
     explicit FileItem(const QUrl &url);
 
-    QUrl url() const { return m_url; }
+    QUrl url() const
+    {
+        return m_url;
+    }
 
-    QUrl mostLocalUrl() const { return QUrl::fromLocalFile(localPath()); }
+    QUrl mostLocalUrl() const
+    {
+        return QUrl::fromLocalFile(localPath());
+    }
 
-    QString localPath() const { return m_info.filePath(); }
+    QString localPath() const
+    {
+        return m_info.filePath();
+    }
 
-    QString name() const { return m_url.fileName(); }
+    QString name() const
+    {
+        return m_url.fileName();
+    }
 
-    QString text() const { return m_displayName.isEmpty() ? name() : m_displayName; }
-    void setDisplayName(const QString &name) { m_displayName = name; }
-    void setIconName(const QString &icon) { m_iconName = icon; }
-    QUrl targetUrl() const { return m_targetUrl; }
-    void setTargetUrl(const QUrl &url) { m_targetUrl = url; }
+    QString text() const
+    {
+        return m_displayName.isEmpty() ? name() : m_displayName;
+    }
 
-    bool isFile() const { return m_info.isFile(); }
+    void setDisplayName(const QString &name)
+    {
+        m_displayName = name;
+    }
 
-    bool isNull() const { return m_url.isEmpty(); }
+    void setIconName(const QString &icon)
+    {
+        m_iconName = icon;
+    }
 
-    bool isLocalFile() const { return m_url.isLocalFile(); }
+    QUrl targetUrl() const
+    {
+        return m_targetUrl;
+    }
 
-    bool isDir() const { return m_info.isDir(); }
+    void setTargetUrl(const QUrl &url)
+    {
+        m_targetUrl = url;
+    }
 
-    bool isLink() const { return m_info.isSymbolicLink(); }
+    bool isFile() const
+    {
+        return m_info.isFile();
+    }
 
-    bool isHidden() const { return m_info.isHidden(); }
+    bool isNull() const
+    {
+        return m_url.isEmpty();
+    }
 
-    bool isWritable() const { return m_info.isWritable(); }
+    bool isLocalFile() const
+    {
+        return m_url.isLocalFile();
+    }
 
-    bool isDesktopFile() const { return name().endsWith(".desktop"); }
+    bool isDir() const
+    {
+        return m_info.isDir();
+    }
 
-    quint64 size() const { return m_info.size(); }
+    bool isLink() const
+    {
+        return m_info.isSymbolicLink();
+    }
+
+    bool isHidden() const
+    {
+        return m_info.isHidden();
+    }
+
+    bool isWritable() const
+    {
+        return m_info.isWritable();
+    }
+
+    bool isDesktopFile() const
+    {
+        return name().endsWith(".desktop");
+    }
+
+    quint64 size() const
+    {
+        return m_info.size();
+    }
 
     QDateTime time(FileTime type) const;
     QMimeType determineMimeType() const;
     void prepareMetadata();
 
-    QString mimetype() const { return determineMimeType().name(); }
-    QString typeDescription() const { return m_typeDescription; }
+    QString mimetype() const
+    {
+        return determineMimeType().name();
+    }
 
-    QMimeType currentMimeType() const { return determineMimeType(); }
+    QString typeDescription() const
+    {
+        return m_typeDescription;
+    }
+
+    QMimeType currentMimeType() const
+    {
+        return determineMimeType();
+    }
 
     QString iconName() const;
 
@@ -82,7 +152,10 @@ public:
 
     bool supportsMoving() const;
 
-    bool supportsDeleting() const { return supportsMoving(); }
+    bool supportsDeleting() const
+    {
+        return supportsMoving();
+    }
 
 private:
     FileItemList m_items;
@@ -94,5 +167,7 @@ QString convertSize(quint64 size);
 QString standardFolderIconName(const QString &path);
 bool isStandardFolder(const QUrl &url);
 bool canMoveStandardFolderTo(const QUrl &source, const QUrl &destination);
+
 } // namespace Cutefish::IO
+
 Q_DECLARE_METATYPE(Cutefish::IO::FileItem)

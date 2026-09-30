@@ -1,30 +1,53 @@
 #pragma once
+
 #include "error.h"
 #include "fileitem.h"
 #include "filewatcher.h"
 #include "operationcontext.h"
+
 #include <QFutureWatcher>
 #include <QTimer>
 #include <memory>
 
 namespace Cutefish::IO {
+
 class DirectoryLister : public QObject
 {
     Q_OBJECT
+
 public:
     explicit DirectoryLister(QObject *parent = nullptr);
     ~DirectoryLister() override;
 
-    QUrl url() const { return m_url; }
-    bool isListing() const { return m_future != nullptr; }
+    QUrl url() const
+    {
+        return m_url;
+    }
 
-    FileItem rootItem() const { return m_rootItem; }
+    bool isListing() const
+    {
+        return m_future != nullptr;
+    }
 
-    const FileItemList &items() const { return m_items; }
+    FileItem rootItem() const
+    {
+        return m_rootItem;
+    }
 
-    void setShowHiddenFiles(bool show) { m_hidden = show; }
+    const FileItemList &items() const
+    {
+        return m_items;
+    }
 
-    void setAutoUpdate(bool enabled) { m_autoUpdate = enabled; }
+    void setShowHiddenFiles(bool show)
+    {
+        m_hidden = show;
+    }
+
+    void setAutoUpdate(bool enabled)
+    {
+        m_autoUpdate = enabled;
+    }
 
     // The copied callback runs on a worker and must not access GUI objects.
     void setItemPreparer(std::function<void(FileItem &)> preparer)
@@ -35,9 +58,13 @@ public:
     void openUrl(const QUrl &url);
     void updateDirectory(const QUrl &url);
 
-    void emitChanges() { refresh(); }
+    void emitChanges()
+    {
+        refresh();
+    }
 
     void stop();
+
 signals:
     void started();
     void completed();
@@ -50,7 +77,8 @@ private:
     void refresh();
     void cancelListing();
 
-    struct Listing {
+    struct Listing
+    {
         FileItemList items;
         FileItem rootItem;
         QUrl url;

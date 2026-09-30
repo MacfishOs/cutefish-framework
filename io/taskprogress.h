@@ -1,9 +1,12 @@
 #pragma once
+
 #include <QMetaType>
 #include <QString>
 
 namespace Cutefish::IO {
-struct TaskProgress {
+
+struct TaskProgress
+{
     Q_GADGET
     Q_PROPERTY(bool preparing MEMBER preparing)
     Q_PROPERTY(bool totalsKnown MEMBER totalsKnown)
@@ -13,6 +16,7 @@ struct TaskProgress {
     Q_PROPERTY(quint64 totalItems MEMBER totalItems)
     Q_PROPERTY(qint64 elapsedMs MEMBER elapsedMs)
     Q_PROPERTY(QString currentPath MEMBER currentPath)
+
 public:
     bool preparing = true;
     bool totalsKnown = false;
@@ -23,5 +27,7 @@ public:
     qint64 elapsedMs = 0;
     QString currentPath;
 };
+
 } // namespace Cutefish::IO
+
 Q_DECLARE_METATYPE(Cutefish::IO::TaskProgress)

@@ -1,10 +1,13 @@
 #include "filesystemurl.h"
+
 #include "error.h"
+
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <cerrno>
 
 namespace Cutefish::IO {
+
 FileSystemUrl::FileSystemUrl(QUrl url)
     : m_url(std::move(url))
 {
@@ -13,6 +16,7 @@ FileSystemUrl::FileSystemUrl(QUrl url)
         || (!m_url.isLocalFile() && m_url.scheme() != "trash") || !m_url.path().startsWith('/')
         || m_url.path().contains(QChar(0)))
         throw Failure(ENOTSUP, m_url.toString());
+
     if (m_url.scheme() == "trash") {
         for (const auto &part : m_url.path().split('/'))
             if (part == ".." || part == ".")
@@ -36,4 +40,5 @@ QUrl upUrl(const QUrl &url)
     result.setPath(QFileInfo(result.path()).path());
     return result;
 }
+
 } // namespace Cutefish::IO

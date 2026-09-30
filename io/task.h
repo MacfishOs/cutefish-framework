@@ -1,6 +1,8 @@
 #pragma once
+
 #include "filesystem.h"
 #include "taskprogress.h"
+
 #include <QFutureWatcher>
 #include <QMimeData>
 #include <QObject>
@@ -10,6 +12,7 @@
 #include <optional>
 
 namespace Cutefish::IO {
+
 enum class Operation {
     Copy,
     Move,
@@ -23,14 +26,16 @@ enum class Operation {
     Size
 };
 
-struct TaskRequest {
+struct TaskRequest
+{
     Operation operation = Operation::Copy;
     QList<QUrl> sources;
     QUrl destination;
     ConflictPolicy conflict = ConflictPolicy::Fail;
 };
 
-struct TaskResult {
+struct TaskResult
+{
     Error error;
     QList<QUrl> outputs;
     QList<QUrl> completedSources;
@@ -46,6 +51,7 @@ class Task : public QObject
     Q_PROPERTY(int sourceCount READ sourceCount CONSTANT)
     Q_PROPERTY(QString sourceName READ sourceName CONSTANT)
     Q_PROPERTY(QString destinationName READ destinationName CONSTANT)
+
 public:
     enum class State {
         Queued,
@@ -55,20 +61,31 @@ public:
         Canceled
     };
     Q_ENUM(State)
+
     explicit Task(TaskRequest request, QObject *parent = nullptr);
     ~Task() override;
+
     void start();
     Q_INVOKABLE void cancel();
     // applyToAll answers every later conflict of this task the same way.
     Q_INVOKABLE void resolveConflict(int policy, bool applyToAll = false);
 
-    State state() const { return m_state; }
+    State state() const
+    {
+        return m_state;
+    }
 
-    TaskProgress progressInfo() const { return m_progressInfo; }
+    TaskProgress progressInfo() const
+    {
+        return m_progressInfo;
+    }
 
     QString operationName() const;
 
-    int sourceCount() const { return m_request.sources.size(); }
+    int sourceCount() const
+    {
+        return m_request.sources.size();
+    }
 
     QString sourceName() const
     {
@@ -78,13 +95,25 @@ public:
     QString destinationName() const;
     Q_INVOKABLE QString formattedSize(quint64 bytes) const;
 
-    Q_INVOKABLE bool wasCanceled() const { return m_state == State::Canceled; }
+    Q_INVOKABLE bool wasCanceled() const
+    {
+        return m_state == State::Canceled;
+    }
 
-    const TaskResult &outcome() const { return m_result; }
+    const TaskResult &outcome() const
+    {
+        return m_result;
+    }
 
-    const TaskRequest &request() const { return m_request; }
+    const TaskRequest &request() const
+    {
+        return m_request;
+    }
 
-    Q_INVOKABLE int error() const { return m_result.error.code; }
+    Q_INVOKABLE int error() const
+    {
+        return m_result.error.code;
+    }
 
     Q_INVOKABLE QString errorString() const
     {
@@ -116,6 +145,7 @@ private:
 class TaskController : public QObject
 {
     Q_OBJECT
+
 public:
     explicit TaskController(QObject *parent = nullptr)
         : QObject(parent)
@@ -124,13 +154,22 @@ public:
 
     static TaskController *instance();
     ~TaskController() override;
+
     Task *submit(const TaskRequest &request);
 
-    bool isUndoAvailable() const { return !m_undo.isEmpty(); }
-    bool isRedoAvailable() const { return !m_redo.isEmpty(); }
+    bool isUndoAvailable() const
+    {
+        return !m_undo.isEmpty();
+    }
+
+    bool isRedoAvailable() const
+    {
+        return !m_redo.isEmpty();
+    }
 
     Task *undo();
     Task *redo();
+
 signals:
     void taskAdded(Cutefish::IO::Task *task);
     void taskFinished(Cutefish::IO::Task *task);
@@ -142,6 +181,7 @@ private:
 
     // Trash operations each add an entry; a long session must not keep them all.
     static constexpr int kMaxHistory = 50;
+
     QList<TaskRequest> m_undo;
     QList<TaskRequest> m_redo;
 };
@@ -155,4 +195,5 @@ Task *restoreFromTrash(const QList<QUrl> &sources);
 Task *emptyTrash();
 Task *paste(const QMimeData *data, const QUrl &destination);
 Task *drop(const QMimeData *data, const QUrl &destination, Qt::DropAction action);
+
 } // namespace Cutefish::IO

@@ -4,6 +4,7 @@
 #include <QImage>
 #include <QQuickTextureFactory>
 #include <QThreadPool>
+
 #include <atomic>
 
 namespace {
@@ -14,6 +15,7 @@ QThreadPool &thumbnailPool()
         pool.setMaxThreadCount(2);
         return true;
     }();
+
     Q_UNUSED(configured)
     return pool;
 }
@@ -29,6 +31,7 @@ public:
                 if (!m_cancelled.load())
                     m_image = std::move(thumbnail.image);
             }
+
             // Qt keeps the response alive until finished, including cancelled requests.
             emit finished();
         });

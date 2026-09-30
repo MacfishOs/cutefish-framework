@@ -1,16 +1,20 @@
 #include "task.h"
 #include "async.h"
 #include "fileitem.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QLocale>
 #include <QMetaMethod>
 #include <QTimer>
+
 #include <cerrno>
 
 namespace Cutefish::IO {
+
 namespace {
+
 TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                    const std::function<void(const TaskProgress &, bool)> &report)
 {
@@ -23,31 +27,39 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
     quint64 sourceBytes = 0, sourceItems = 0;
     const auto legacyProgress = ctx.progress;
     const auto conflictResolver = ctx.conflict;
+
     auto update = [&](bool force = false) {
         info.elapsedMs = elapsed.isValid() ? elapsed.elapsed() - pausedMs : 0;
         report(info, force);
     };
+
     ctx.conflict = [&](const QString &source, const QString &destination) {
         const auto before = elapsed.isValid() ? elapsed.elapsed() : 0;
         const auto policy = conflictResolver ? conflictResolver(source, destination)
                                              : ConflictPolicy::Fail;
         if (elapsed.isValid())
             pausedMs += elapsed.elapsed() - before;
+
         return policy;
     };
+
     ctx.currentItem = [&](const QString &path) {
         info.currentPath = path;
         update();
     };
+
     ctx.progress = [&](quint64 bytes, quint64 files) {
         info.processedBytes = info.totalsKnown ? creditedBytes + bytes - sourceBytes : bytes;
         info.processedItems = info.totalsKnown ? creditedItems + files - sourceItems : files;
         update();
+
         if (legacyProgress)
             legacyProgress(bytes, files);
     };
+
     try {
         ctx.checkpoint();
+
         if (request.operation == Operation::Move || request.operation == Operation::Rename
             || request.operation == Operation::Trash || request.operation == Operation::Delete) {
             for (const auto &url : request.sources) {
@@ -57,17 +69,21 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                     throw Failure(EPERM, url.toLocalFile());
             }
         }
+
         auto sources = request.sources;
         if (request.operation == Operation::EmptyTrash) {
             for (const auto &item : LocalFileSystem::enumerate(QUrl("trash:/")))
                 sources.append(item.url());
         }
+
         info.totalsKnown = request.operation != Operation::Size;
+
         if (request.operation != Operation::Size) {
             for (const auto &url : sources) {
                 OperationContext scan;
                 scan.cancelFlag = &ctx.canceled;
                 scan.currentItem = ctx.currentItem;
+
                 if (request.operation == Operation::Rename || request.operation == Operation::Link)
                     scan.files = 1;
                 else {
@@ -79,16 +95,20 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                         info.totalsKnown = false;
                     }
                 }
+
                 weights.append({scan.bytes, scan.files});
                 info.totalBytes += scan.bytes;
                 info.totalItems += scan.files;
             }
         }
+
         if (request.operation == Operation::Mkdir)
             info.totalItems = 1;
+
         info.preparing = false;
         elapsed.start();
         update(true);
+
         if (request.operation == Operation::Mkdir) {
             LocalFileSystem::mkdir(FileSystemUrl(request.destination).localPath());
             result.outputs.append(request.destination);
@@ -96,12 +116,15 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
             LocalFileSystem::emptyTrash(ctx);
         } else {
             int sourceIndex = 0;
+
             for (const auto &url : request.sources) {
                 sourceBytes = ctx.bytes;
                 sourceItems = ctx.files;
                 ctx.checkpoint(FileSystemUrl(url).localPath());
+
                 const auto source = FileSystemUrl(url).localPath();
                 QUrl output;
+
                 switch (request.operation) {
                 case Operation::Copy:
                 case Operation::Move:
@@ -135,15 +158,18 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                 default:
                     break;
                 }
+
                 result.completedSources.append(url);
                 if (!output.isEmpty())
                     result.outputs.append(output);
+
                 if (info.totalsKnown && sourceIndex < weights.size()) {
                     creditedBytes += weights[sourceIndex].first;
                     creditedItems += weights[sourceIndex].second;
                     info.processedBytes = creditedBytes;
                     info.processedItems = creditedItems;
                 }
+
                 ++sourceIndex;
                 update(true);
             }
@@ -153,18 +179,22 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
     } catch (const std::exception &exception) {
         result.error = {EIO, {}, QString::fromLocal8Bit(exception.what())};
     }
+
     result.bytes = ctx.bytes;
     result.files = ctx.files;
+
     if (!result.error && info.totalsKnown) {
         info.processedBytes = info.totalBytes;
         info.processedItems = info.totalItems;
     }
+
     update(true);
     ctx.currentItem = {};
     ctx.progress = legacyProgress;
     ctx.conflict = conflictResolver;
     return result;
 }
+
 } // namespace
 
 Task::Task(TaskRequest request, QObject *parent)
@@ -177,6 +207,7 @@ Task::Task(TaskRequest request, QObject *parent)
         m_state = m_result.error.code == ECANCELED ? State::Canceled
                 : m_result.error                   ? State::Failed
                                                    : State::Succeeded;
+
         emit progress(m_result.bytes, m_result.files);
         emit stateChanged(m_state);
         emit result(this);
@@ -195,6 +226,7 @@ void Task::cancel()
         std::lock_guard lock(m_conflictMutex);
         m_context->canceled.store(true);
     }
+
     m_conflictCondition.notify_all();
 }
 
@@ -202,6 +234,7 @@ void Task::resolveConflict(int policy, bool applyToAll)
 {
     if (policy < int(ConflictPolicy::Fail) || policy >= int(ConflictPolicy::Ask))
         return;
+
     {
         std::lock_guard lock(m_conflictMutex);
         m_resolution = ConflictPolicy(policy);
@@ -209,6 +242,7 @@ void Task::resolveConflict(int policy, bool applyToAll)
         if (applyToAll)
             m_resolutionForAll = m_resolution;
     }
+
     m_conflictCondition.notify_all();
 }
 
@@ -216,11 +250,14 @@ void Task::start()
 {
     if (m_state != State::Queued)
         return;
+
     m_state = State::Running;
     emit stateChanged(m_state);
+
     m_context->progress = [this, timer = QElapsedTimer()](quint64 bytes, quint64 files) mutable {
         if (timer.isValid() && timer.elapsed() < 40)
             return;
+
         timer.start();
         QMetaObject::invokeMethod(
                 this,
@@ -229,10 +266,12 @@ void Task::start()
                 },
                 Qt::QueuedConnection);
     };
+
     m_context->conflict = [this](const QString &source, const QString &destination) {
         std::unique_lock lock(m_conflictMutex);
         if (m_resolutionForAll)
             return *m_resolutionForAll;
+
         m_resolved = false;
         QMetaObject::invokeMethod(
                 this,
@@ -243,19 +282,23 @@ void Task::start()
                         resolveConflict(int(ConflictPolicy::Fail));
                 },
                 Qt::QueuedConnection);
+
         QThreadPool::globalInstance()->releaseThread();
         m_conflictCondition.wait(lock, [this] {
             return m_resolved || m_context->canceled.load();
         });
         QThreadPool::globalInstance()->reserveThread();
+
         m_context->checkpoint(destination);
         return m_resolution;
     };
+
     m_watcher.setFuture(Internal::runAsync([this, request = m_request, ctx = m_context] {
         auto report = [this, timer = QElapsedTimer()](const TaskProgress &info,
                                                       bool force) mutable {
             if (!force && timer.isValid() && timer.elapsed() < 80)
                 return;
+
             timer.start();
             QMetaObject::invokeMethod(
                     this,
@@ -265,6 +308,7 @@ void Task::start()
                     },
                     Qt::QueuedConnection);
         };
+
         return execute(request, *ctx, report);
     }));
 }
@@ -298,6 +342,7 @@ QString Task::operationName() const
     case Operation::Size:
         return QStringLiteral("size");
     }
+
     return {};
 }
 
@@ -332,18 +377,23 @@ Task *TaskController::submit(const TaskRequest &request, bool keepRedo)
         m_redo.clear();
         emit historyChanged();
     }
+
     auto *task = new Task(request, this);
+
     connect(task, &Task::result, this, [this, request](Task *task) {
         const auto &result = task->outcome();
+
         if (request.operation == Operation::Trash && !result.outputs.isEmpty()) {
             m_undo.append({Operation::Restore, result.outputs});
             while (m_undo.size() > kMaxHistory)
                 m_undo.removeFirst();
             emit historyChanged();
         }
+
         emit taskFinished(task);
         task->deleteLater();
     });
+
     emit taskAdded(task);
     QTimer::singleShot(0, task, &Task::start);
     return task;
@@ -353,13 +403,16 @@ Task *TaskController::undo()
 {
     if (m_undo.isEmpty())
         return nullptr;
+
     const auto request = m_undo.takeLast();
     emit historyChanged();
     auto *task = submit(request, true);
+
     connect(task, &Task::result, this, [this, request](Task *done) {
         const auto &result = done->outcome();
         if (!result.outputs.isEmpty())
             m_redo.append({Operation::Trash, result.outputs});
+
         if (done->error()) {
             auto remaining = request;
             for (const auto &source : result.completedSources)
@@ -367,8 +420,10 @@ Task *TaskController::undo()
             if (!remaining.sources.isEmpty())
                 m_undo.append(remaining);
         }
+
         emit historyChanged();
     });
+
     return task;
 }
 
@@ -377,20 +432,24 @@ Task *TaskController::redo()
 {
     if (m_redo.isEmpty())
         return nullptr;
+
     const auto request = m_redo.takeLast();
     emit historyChanged();
     auto *task = submit(request, true);
+
     connect(task, &Task::result, this, [this, request](Task *done) {
         if (done->error()) {
             auto remaining = request;
             for (const auto &source : done->outcome().completedSources)
                 remaining.sources.removeAll(source);
+
             if (!remaining.sources.isEmpty()) {
                 m_redo.append(remaining);
                 emit historyChanged();
             }
         }
     });
+
     return task;
 }
 
@@ -434,8 +493,8 @@ Task *emptyTrash()
 
 Task *paste(const QMimeData *data, const QUrl &destination)
 {
-    const bool cut = data
-            && data->hasFormat("application/x-cutefish-cutselection");
+    const bool cut = data && data->hasFormat("application/x-cutefish-cutselection");
+
     return TaskController::instance()->submit({cut ? Operation::Move : Operation::Copy,
                                                data ? data->urls() : QList<QUrl>(), destination,
                                                ConflictPolicy::Ask});
@@ -443,10 +502,11 @@ Task *paste(const QMimeData *data, const QUrl &destination)
 
 Task *drop(const QMimeData *data, const QUrl &destination, Qt::DropAction action)
 {
-    return TaskController::instance()->submit({action == Qt::LinkAction           ? Operation::Link
-                                                       : action == Qt::MoveAction ? Operation::Move
-                                                                                  : Operation::Copy,
-                                               data ? data->urls() : QList<QUrl>(), destination,
-                                               ConflictPolicy::Ask});
+    return TaskController::instance()->submit(
+            {action == Qt::LinkAction       ? Operation::Link
+                     : action == Qt::MoveAction ? Operation::Move
+                                                : Operation::Copy,
+             data ? data->urls() : QList<QUrl>(), destination, ConflictPolicy::Ask});
 }
+
 } // namespace Cutefish::IO

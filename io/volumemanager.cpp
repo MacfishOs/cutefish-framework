@@ -9,7 +9,9 @@
 #include <QLocale>
 
 namespace Cutefish::IO {
+
 namespace {
+
 const QString service = QStringLiteral("org.freedesktop.UDisks2");
 const QString root = QStringLiteral("/org/freedesktop/UDisks2");
 const QString blockInterface = service + ".Block";
@@ -20,8 +22,10 @@ QString decodePath(QByteArray bytes)
 {
     if (bytes.endsWith('\0'))
         bytes.chop(1);
+
     return QFile::decodeName(bytes);
 }
+
 } // namespace
 
 VolumeManager::VolumeManager(QObject *parent)
@@ -36,12 +40,14 @@ VolumeManager::VolumeManager(const QDBusConnection &bus, QObject *parent)
     qDBusRegisterMetaType<VolumeInterfaces>();
     qDBusRegisterMetaType<VolumeObjects>();
     qDBusRegisterMetaType<QList<QByteArray>>();
+
     m_bus.connect(service, root, "org.freedesktop.DBus.ObjectManager", "InterfacesAdded", this,
                   SLOT(refresh()));
     m_bus.connect(service, root, "org.freedesktop.DBus.ObjectManager", "InterfacesRemoved", this,
                   SLOT(refresh()));
     m_bus.connect(service, QString(), "org.freedesktop.DBus.Properties", "PropertiesChanged", this,
                   SLOT(refresh()));
+
     auto *watcher =
             new QDBusServiceWatcher(service, m_bus, QDBusServiceWatcher::WatchForOwnerChange, this);
     connect(watcher, &QDBusServiceWatcher::serviceOwnerChanged, this,
@@ -49,9 +55,11 @@ VolumeManager::VolumeManager(const QDBusConnection &bus, QObject *parent)
                 ++m_generation;
                 m_objects.clear();
                 rebuild();
+
                 if (!owner.isEmpty())
                     refresh();
             });
+
     refresh();
 }
 
@@ -71,15 +79,18 @@ void VolumeManager::refresh()
         m_refreshAgain = true;
         return;
     }
+
     m_refreshing = true;
     const auto generation = m_generation;
     auto message = QDBusMessage::createMethodCall(
             service, root, "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
     auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(message), this);
+
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation] {
         QDBusPendingReply<VolumeObjects> reply = *watcher;
         watcher->deleteLater();
         m_refreshing = false;
+
         if (generation == m_generation) {
             if (reply.isError())
                 emit errorOccurred(reply.error().message());
@@ -88,6 +99,7 @@ void VolumeManager::refresh()
                 rebuild();
             }
         }
+
         if (m_refreshAgain) {
             m_refreshAgain = false;
             refresh();
@@ -98,17 +110,21 @@ void VolumeManager::refresh()
 void VolumeManager::rebuild()
 {
     QMap<QString, Volume> next;
+
     for (auto it = m_objects.cbegin(); it != m_objects.cend(); ++it) {
         if (!it->contains(blockInterface))
             continue;
+
         const auto block = it->value(blockInterface);
         if (block.value("HintIgnore").toBool())
             continue;
+
         Volume v;
         v.id = it.key().path();
         v.drive = qdbus_cast<QDBusObjectPath>(block.value("Drive")).path();
         const auto drive = m_objects.value(QDBusObjectPath(v.drive.isEmpty() ? "/" : v.drive))
                                    .value(driveInterface);
+
         v.device = decodePath(qdbus_cast<QByteArray>(block.value("PreferredDevice")));
         v.size = block.value("Size").toULongLong();
         v.filesystem = it->contains(filesystemInterface);
@@ -117,17 +133,20 @@ void VolumeManager::rebuild()
                 || drive.value("ConnectionBus").toString() == "usb";
         v.ejectable = drive.value("Ejectable").toBool();
         v.canPowerOff = drive.value("CanPowerOff").toBool();
+
         v.name = block.value("HintName").toString();
         if (v.name.isEmpty())
             v.name = block.value("IdLabel").toString();
         if (v.name.isEmpty())
             v.name = v.size ? tr("%1 Volume").arg(QLocale().formattedDataSize(v.size))
                             : QFileInfo(v.device).fileName();
+
         v.icon = block.value("HintIconName").toString();
         if (v.icon.isEmpty())
             v.icon = v.optical    ? "drive-optical"
                     : v.removable ? "drive-removable-media"
                                   : "drive-harddisk";
+
         const auto points =
                 qdbus_cast<QList<QByteArray>>(it->value(filesystemInterface).value("MountPoints"));
         for (const auto &point : points) {
@@ -135,13 +154,17 @@ void VolumeManager::rebuild()
             if (!path.isEmpty())
                 v.mountPoints.append(path);
         }
+
         next.insert(v.id, v);
     }
+
     const auto previous = m_volumes;
     m_volumes = next;
+
     for (auto it = previous.cbegin(); it != previous.cend(); ++it)
         if (!next.contains(it.key()))
             emit volumeRemoved(it.key());
+
     for (auto it = next.cbegin(); it != next.cend(); ++it) {
         if (!previous.contains(it.key()))
             emit volumeAdded(it.key());
@@ -175,20 +198,25 @@ void VolumeManager::call(const QString &id, const QString &operation, const QStr
         emit operationFailed(id, operation, tr("The device does not support this operation."));
         return;
     }
+
     bool busy = m_pending.contains(id);
     for (const auto &pending : m_pending)
         busy |= v.drive != "/" && !v.drive.isEmpty() && volume(pending).drive == v.drive;
+
     if (busy) {
         emit operationFailed(id, operation, tr("A device operation is already in progress."));
         return;
     }
+
     m_pending.insert(id);
+
     QStringList unmounts;
     if (operation == "eject") {
         for (const auto &other : m_volumes)
             if (other.drive == v.drive && !other.mountPoints.isEmpty())
                 unmounts.append(other.id);
     }
+
     perform(id, operation, path, interface, method, unmounts, m_generation);
 }
 
@@ -203,17 +231,20 @@ void VolumeManager::perform(const QString &id, const QString &operation, const Q
                                                   unmounting ? "Unmount" : method);
     message << QVariantMap();
     auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(message, 120000), this);
+
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             [this, watcher, id, operation, path, interface, method, unmounts, unmounting,
              generation] {
                 const QDBusMessage reply = watcher->reply();
                 watcher->deleteLater();
+
                 if (generation != m_generation
                     || (operation != "eject" && !m_volumes.contains(id))) {
                     m_pending.remove(id);
                     emit operationFailed(id, operation, tr("The device is no longer available."));
                     return;
                 }
+
                 if (reply.type() == QDBusMessage::ErrorMessage) {
                     m_pending.remove(id);
                     emit operationFailed(id, operation, reply.errorMessage());
@@ -222,12 +253,16 @@ void VolumeManager::perform(const QString &id, const QString &operation, const Q
                     return;
                 } else {
                     m_pending.remove(id);
+
                     QString mountPoint;
                     if (operation == "mount" && !reply.arguments().isEmpty())
                         mountPoint = reply.arguments().first().toString();
+
                     emit operationFinished(id, operation, mountPoint);
                 }
+
                 refresh();
             });
 }
+
 } // namespace Cutefish::IO

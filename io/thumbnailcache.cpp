@@ -35,6 +35,7 @@ const Flavor &flavorFor(const QSize &requestedSize)
         if (extent <= flavor.size)
             return flavor;
     }
+
     return flavors[std::size(flavors) - 1];
 }
 
@@ -101,8 +102,8 @@ Thumbnail ThumbnailCache::requestThumbnail(const QString &filePath, const QSize 
 
     const QByteArray encodedUri = QUrl::fromLocalFile(info.absoluteFilePath()).toEncoded();
     const QString uri = QString::fromLatin1(encodedUri);
-    const QString name = QString::fromLatin1(
-                                 QCryptographicHash::hash(encodedUri, QCryptographicHash::Md5).toHex())
+    const QString name =
+            QString::fromLatin1(QCryptographicHash::hash(encodedUri, QCryptographicHash::Md5).toHex())
             + QStringLiteral(".png");
     const qint64 mtime = info.lastModified().toSecsSinceEpoch();
     const qint64 size = info.size();
@@ -124,8 +125,10 @@ Thumbnail ThumbnailCache::requestThumbnail(const QString &filePath, const QSize 
         QImage marker(1, 1, QImage::Format_ARGB32);
         marker.fill(Qt::transparent);
         setMetadata(marker, uri, mtime, size);
+
         if (ensurePrivateDirectory(root) && ensurePrivateDirectory(failDirectory))
             writeCacheFile(failTarget, marker);
+
         return {};
     }
 
@@ -134,6 +137,7 @@ Thumbnail ThumbnailCache::requestThumbnail(const QString &filePath, const QSize 
     // An unwritable cache must not hide the thumbnail; only the path goes missing.
     if (!ensurePrivateDirectory(root) || !ensurePrivateDirectory(directory))
         return {{}, image};
+
     return {writeCacheFile(target, image), image};
 }
 
@@ -150,8 +154,10 @@ QImage ThumbnailCache::generateThumbnail(const QString &source, const QSize &req
     QImage image = reader.read();
     if (image.isNull())
         return {};
+
     if (image.width() > requestedSize.width() || image.height() > requestedSize.height())
         image = image.scaled(requestedSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
     return image;
 }
 
@@ -166,5 +172,6 @@ QString ThumbnailCache::writeCacheFile(const QString &path, const QImage &image)
         || !file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)
         || !image.save(&file, "PNG") || !file.commit())
         return {};
+
     return path;
 }
