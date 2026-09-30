@@ -2,6 +2,8 @@
 #include "fileenumerator.h"
 #include "posix_p.h"
 #include <QUuid>
+#include <linux/fs.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 
@@ -74,9 +76,15 @@ void copyAt(int sourceParent, const QByteArray &source, int targetParent, const 
         Fd output(::openat(targetParent, target,
                            O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600));
         check(output.value, path);
-        QByteArray buffer(1024 * 1024, Qt::Uninitialized);
+        QByteArray buffer;
         off_t position = 0;
         bool sparse = true;
+        bool inKernel = true;
+        // Filesystems that share extents (Btrfs, XFS) clone the whole file; the rest refuse.
+        if (opened.st_size > 0 && ::ioctl(output.value, FICLONE, input.value) == 0) {
+            ctx.advance(opened.st_size);
+            position = opened.st_size;
+        }
         while (position < opened.st_size) {
             ctx.checkpoint(path);
             off_t extentEnd = opened.st_size;
@@ -102,6 +110,25 @@ void copyAt(int sourceParent, const QByteArray &source, int targetParent, const 
             }
             while (position < extentEnd) {
                 ctx.checkpoint(path);
+                if (inKernel) {
+                    off_t from = position;
+                    off_t to = position;
+                    const size_t length = std::min<off_t>(4 * 1024 * 1024, extentEnd - position);
+                    const ssize_t copied =
+                            ::copy_file_range(input.value, &from, output.value, &to, length, 0);
+                    if (copied < 0 && errno == EINTR)
+                        continue;
+                    if (copied > 0) {
+                        ctx.advance(copied);
+                        position += copied;
+                        continue;
+                    }
+                    // Refused (another filesystem, no support) or cut short: the buffered copy
+                    // takes over and reports a genuine failure itself.
+                    inKernel = false;
+                }
+                if (buffer.isEmpty())
+                    buffer.resize(1024 * 1024);
                 ssize_t count =
                         ::pread(input.value, buffer.data(),
                                 std::min<off_t>(buffer.size(), extentEnd - position), position);
@@ -130,7 +157,6 @@ void copyAt(int sourceParent, const QByteArray &source, int targetParent, const 
         check(::fchmod(output.value, st.st_mode & 0777), path);
         const timespec times[] = {st.st_atim, st.st_mtim};
         check(::futimens(output.value, times), path);
-        check(::fsync(output.value), path);
     } else {
         throw Failure(ENOTSUP, path);
     }
@@ -192,6 +218,9 @@ QString publish(int parent, const QByteArray &temporary, const QString &source,
         if (policy == ConflictPolicy::Fail)
             throw Failure(EEXIST, destination);
         if (policy == ConflictPolicy::Replace) {
+            // Copies are not synced one by one; the replacement must be on disk before the
+            // original goes.
+            check(::syncfs(parent), destination);
             struct stat from, to;
             check(::fstatat(parent, temporary, &from, AT_SYMLINK_NOFOLLOW), destination);
             check(::fstatat(parent, name, &to, AT_SYMLINK_NOFOLLOW), destination);
@@ -298,6 +327,8 @@ QString LocalFileSystem::move(const QString &source, const QString &destination,
     auto result = copy(source, destination, policy, ctx);
     // Once a cross-device copy is published, finish removal without cancellation.
     if (!result.isEmpty()) {
+        // The source is the only durable copy until the target reaches the disk.
+        check(::syncfs(output.fd.value), result);
         OperationContext removal;
         remove(source, removal);
     }

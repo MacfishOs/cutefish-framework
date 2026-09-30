@@ -306,6 +306,41 @@ private slots:
         QCOMPARE(target.read(4), QByteArray(4, '\0'));
     }
 
+    void dataAroundHolesCopiesExactly()
+    {
+        QTemporaryDir dir;
+        QByteArray head(9 * 1024 * 1024 + 3, Qt::Uninitialized);
+        QByteArray tail(5 * 1024 * 1024 + 11, Qt::Uninitialized);
+        for (qsizetype i = 0; i < head.size(); ++i)
+            head[i] = char(i * 7 + i / 4099);
+        for (qsizetype i = 0; i < tail.size(); ++i)
+            tail[i] = char(i * 13 + i / 8191);
+        constexpr qint64 gap = 64 * 1024 * 1024;
+        QFile source(dir.filePath("source"));
+        QVERIFY(source.open(QIODevice::WriteOnly));
+        QCOMPARE(source.write(head), head.size());
+        QVERIFY(source.seek(head.size() + gap));
+        QCOMPARE(source.write(tail), tail.size());
+        source.close();
+        const qint64 length = head.size() + gap + tail.size();
+        quint64 previous = 0;
+        OperationContext ctx;
+        ctx.progress = [&](quint64 bytes, quint64) {
+            QVERIFY(bytes >= previous);
+            previous = bytes;
+        };
+        LocalFileSystem::copy(source.fileName(), dir.filePath("target"), ConflictPolicy::Fail, ctx);
+        QCOMPARE(ctx.bytes, quint64(length));
+        const QByteArray copied = readFile(dir.filePath("target"));
+        QCOMPARE(copied.size(), length);
+        QVERIFY(copied.first(head.size()) == head);
+        QVERIFY(copied.sliced(head.size(), gap) == QByteArray(gap, '\0'));
+        QVERIFY(copied.last(tail.size()) == tail);
+        struct stat st;
+        QCOMPARE(::stat(QFile::encodeName(dir.filePath("target")), &st), 0);
+        QVERIFY(st.st_blocks * 512 < length - gap / 2);
+    }
+
     void specialFilesRejected()
     {
         QTemporaryDir dir;
