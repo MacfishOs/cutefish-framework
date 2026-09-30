@@ -1,4 +1,5 @@
 #include "languageenvironment.h"
+#include "preferences.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -26,7 +27,8 @@ private slots:
         QVERIFY(directory.isValid());
         const QByteArray previous = qgetenv("XDG_CONFIG_HOME");
         qputenv("XDG_CONFIG_HOME", directory.path().toUtf8());
-        QSettings settings("cutefish", "language");
+        QSettings settings(Preferences::file(QStringLiteral("services")), QSettings::IniFormat);
+        settings.beginGroup(QStringLiteral("Language"));
         settings.setValue("language", "en_US");
         auto environment = QProcessEnvironment::systemEnvironment();
         LanguageEnvironment::apply(environment);

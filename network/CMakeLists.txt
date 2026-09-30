@@ -67,13 +67,16 @@ qt_add_qml_module(cutefish-framework-network
 
 add_library(Cutefish::Network ALIAS cutefish-framework-network)
 
-target_link_libraries(cutefish-framework-network PUBLIC
-    Qt6::Core
-    Qt6::Quick
-    Qt6::Gui
-    Qt6::DBus
+target_link_libraries(cutefish-framework-network
+    PUBLIC
+        Qt6::Core
+        Qt6::Quick
+        Qt6::Gui
+        Qt6::DBus
 
-    KF6::NetworkManagerQt
+        KF6::NetworkManagerQt
+    PRIVATE
+        Cutefish::Application
 )
 
 cutefish_install_qml_module(cutefish-framework-network)

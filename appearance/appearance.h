@@ -82,7 +82,7 @@ public:
     bool backgroundVisible() const;
 
     Q_INVOKABLE void setCursorTheme(const QString &theme);
-    Q_INVOKABLE void applyFontSettings();
+    Q_INVOKABLE void setFontRendering(bool antialias, const QString &hintStyle);
 
 signals:
     void darkModeChanged();

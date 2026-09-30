@@ -9,6 +9,8 @@ add_library(cutefish-framework-application SHARED
     languageenvironment.h
     keyfile.cpp
     keyfile.h
+    preferences.cpp
+    preferences.h
     proxysettings.cpp
     proxysettings.h
     applicationlauncher.cpp
@@ -50,6 +52,7 @@ install(FILES
     cutefishapplication.h
     languageenvironment.h
     keyfile.h
+    preferences.h
     proxysettings.h
     applicationlauncher.h
     applicationruntime.h

@@ -266,9 +266,10 @@ void Appearance::setCursorTheme(const QString &theme)
         callService("setCursorTheme", theme);
 }
 
-void Appearance::applyFontSettings()
+void Appearance::setFontRendering(bool antialias, const QString &hintStyle)
 {
-    callService("applyFontSettings");
+    if (m_interface && m_interface->isValid())
+        m_interface->call("setFontRendering", antialias, hintStyle);
 }
 
 void Appearance::onDarkModeChanged(bool darkMode)

@@ -1,8 +1,11 @@
 #include "languageenvironment.h"
 
+#include <QFile>
 #include <QLocale>
 #include <QProcess>
 #include <QSettings>
+
+#include "preferences.h"
 
 #include <locale.h>
 #include <langinfo.h>
@@ -73,12 +76,29 @@ QString fallbackLocale()
 }
 }
 
+QString LanguageEnvironment::systemLanguage()
+{
+    QString language;
+    QFile file("/etc/locale.gen");
+    if (file.open(QIODevice::ReadOnly)) {
+        const QStringList lines = QString::fromUtf8(file.readAll()).split('\n');
+        for (const QString &line : lines) {
+            if (line.startsWith('#') || line.trimmed().isEmpty())
+                continue;
+
+            language = line.split(' ').first().split('.').first();
+        }
+    }
+    return language.isEmpty() ? QStringLiteral("en_US") : language;
+}
+
 QStringList LanguageEnvironment::preferredLanguages()
 {
-    QSettings settings("cutefish", "language");
+    QSettings settings(Preferences::file(QStringLiteral("services")), QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("Language"));
     const QString primary = settings.value("language").toString();
     if (primary.isEmpty())
-        return {};
+        return {systemLanguage()};
     QStringList codes = settings.value("preferredLanguages").toStringList();
     codes.removeAll(QString());
     codes.removeAll(primary);
