@@ -10,6 +10,9 @@ set(CUTEFISH_NETWORK_SOURCES
     wifiutils.cpp
     wifiutils.h
 
+    vpnutils.cpp
+    vpnutils.h
+
     networkmodel.cpp
     networkmodel.h
 

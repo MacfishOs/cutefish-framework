@@ -2,9 +2,12 @@
 #include "../handler.h"
 #include "../networkclient.h"
 #include "../networkmodel.h"
+#include "../vpnutils.h"
 #include "../wirelessitemsettings.h"
 #include "fixture.h"
 
+#include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <memory>
@@ -197,6 +200,140 @@ private slots:
         QCOMPARE(nm->count(QStringLiteral("RequestScan")), 1);
     }
 
+    void vpnRowsFollowTheirState()
+    {
+        NetworkModel model;
+        QTRY_COMPARE(model.rowCount(), 5);
+        addVpn(officeVpn, QStringLiteral("Office VPN"), QStringLiteral("org.freedesktop.NetworkManager.openvpn"), 3000);
+        addVpn(branchVpn, QStringLiteral("Branch"), QStringLiteral("org.freedesktop.NetworkManager.l2tp"), 2000);
+        addWireGuard(homeVpn, QStringLiteral("Home WG"), 1000);
+        QTRY_COMPARE(model.rowCount(), 8);
+
+        QModelIndex officeRow = row(model, QStringLiteral("Office VPN"));
+        QCOMPARE(officeRow.data(NetworkModel::TypeRole).toInt(), int(Enums::Vpn));
+        QCOMPARE(officeRow.data(NetworkModel::VpnType).toString(), QStringLiteral("OpenVPN"));
+        QVERIFY(officeRow.data(NetworkModel::CanActivateRole).toBool());
+        QCOMPARE(officeRow.data(NetworkModel::ConnectionStateRole).toInt(), int(NetworkModel::Deactivated));
+
+        // No l2tp plugin is installed in this test.
+        const QModelIndex branchRow = row(model, QStringLiteral("Branch"));
+        QVERIFY(!branchRow.data(NetworkModel::CanActivateRole).toBool());
+        QVERIFY(branchRow.data(NetworkModel::StatusMessageRole).toString().contains(QStringLiteral("network-manager-l2tp")));
+        QCOMPARE(row(model, QStringLiteral("Home WG")).data(NetworkModel::VpnType).toString(), QStringLiteral("WireGuard"));
+
+        // The tunnel is up when the plugin says so, not when the active connection exists.
+        const QString active = FakeNM::managerPath + QStringLiteral("/ActiveConnection/60");
+        nm->add(active, {{FakeNM::active,
+                          {{QStringLiteral("Connection"), FakeNM::path(officeVpn)},
+                           {QStringLiteral("Devices"), FakeNM::paths({})},
+                           {QStringLiteral("State"), 2u},
+                           {QStringLiteral("Type"), QStringLiteral("vpn")},
+                           {QStringLiteral("Vpn"), true}}},
+                         {vpnInterface, {{QStringLiteral("VpnState"), 3u}}}});
+        QTRY_COMPARE(row(model, QStringLiteral("Office VPN")).data(NetworkModel::ConnectionStateRole).toInt(),
+                     int(NetworkModel::Activating));
+        nm->set(active, vpnInterface, QStringLiteral("VpnState"), 5u);
+        QTRY_COMPARE(row(model, QStringLiteral("Office VPN")).data(NetworkModel::ConnectionStateRole).toInt(),
+                     int(NetworkModel::Activated));
+
+        // NM_ACTIVE_CONNECTION_STATE_REASON_LOGIN_FAILED stays on the row until the next try.
+        nm->emitSignal(active, FakeNM::active, QStringLiteral("StateChanged"), {4u, 10u});
+        nm->remove(active);
+        QTRY_VERIFY(!row(model, QStringLiteral("Office VPN")).data(NetworkModel::StatusMessageRole).toString().isEmpty());
+        QCOMPARE(row(model, QStringLiteral("Office VPN")).data(NetworkModel::ConnectionStateRole).toInt(),
+                 int(NetworkModel::Deactivated));
+    }
+
+    void vpnUserNameIsSavedInTheProfile()
+    {
+        NetworkModel model;
+        addVpn(officeVpn, QStringLiteral("Office VPN"), QStringLiteral("org.freedesktop.NetworkManager.openvpn"), 1000);
+        QTRY_VERIFY(row(model, QStringLiteral("Office VPN")).isValid());
+        QVERIFY(row(model, QStringLiteral("Office VPN")).data(NetworkModel::VpnUsesUserNameRole).toBool());
+        QVERIFY(row(model, QStringLiteral("Office VPN")).data(NetworkModel::VpnUserNameRole).toString().isEmpty());
+
+        Handler handler;
+        handler.setVpnUserName(officeVpn, QStringLiteral("alice"));
+        QTRY_COMPARE(nm->count(QStringLiteral("Update")), 1);
+        const auto settings = qdbus_cast<NMVariantMapMap>(nm->last(QStringLiteral("Update")).arguments().value(0));
+        const auto data = settings.value(QStringLiteral("vpn")).value(QStringLiteral("data")).value<QDBusArgument>();
+        QCOMPARE(data.currentSignature(), QStringLiteral("a{ss}"));
+        const auto values = qdbus_cast<QMap<QString, QString>>(data);
+        QCOMPARE(values.value(QStringLiteral("username")), QStringLiteral("alice"));
+        QTRY_COMPARE(row(model, QStringLiteral("Office VPN")).data(NetworkModel::VpnUserNameRole).toString(),
+                     QStringLiteral("alice"));
+    }
+
+    void vpnAddedByHandIsPrivate()
+    {
+        Handler handler;
+        QSignalSpy added(&handler, &Handler::vpnAdded);
+        handler.addVpn({{QStringLiteral("kind"), QStringLiteral("l2tp")},
+                        {QStringLiteral("name"), QStringLiteral("Branch")},
+                        {QStringLiteral("server"), QStringLiteral("vpn.example.com")},
+                        {QStringLiteral("userName"), QStringLiteral("alice")},
+                        {QStringLiteral("password"), QStringLiteral("s3cret")},
+                        {QStringLiteral("presharedKey"), QStringLiteral("shared")}});
+        QTRY_COMPARE(added.size(), 1);
+
+        const auto settings = qdbus_cast<NMVariantMapMap>(nm->last(QStringLiteral("AddConnection")).arguments().value(0));
+        const QVariantMap connection = settings.value(QStringLiteral("connection"));
+        QCOMPARE(connection.value(QStringLiteral("type")).toString(), QStringLiteral("vpn"));
+        QCOMPARE(connection.value(QStringLiteral("autoconnect")).toBool(), false);
+        QCOMPARE(connection.value(QStringLiteral("permissions")).toStringList(), QStringList {NetworkClient::userPermission()});
+
+        const QVariantMap vpn = settings.value(QStringLiteral("vpn"));
+        QCOMPARE(vpn.value(QStringLiteral("service-type")).toString(), QStringLiteral("org.freedesktop.NetworkManager.l2tp"));
+        const auto data = vpn.value(QStringLiteral("data")).value<QDBusArgument>();
+        const auto secrets = vpn.value(QStringLiteral("secrets")).value<QDBusArgument>();
+        QCOMPARE(data.currentSignature(), QStringLiteral("a{ss}"));
+        QCOMPARE(secrets.currentSignature(), QStringLiteral("a{ss}"));
+        const auto dataMap = qdbus_cast<QMap<QString, QString>>(data);
+        const auto secretMap = qdbus_cast<QMap<QString, QString>>(secrets);
+        QCOMPARE(dataMap.value(QStringLiteral("user")), QStringLiteral("alice"));
+        QCOMPARE(dataMap.value(QStringLiteral("password-flags")), QStringLiteral("1"));
+        QCOMPARE(dataMap.value(QStringLiteral("ipsec-enabled")), QStringLiteral("yes"));
+        QCOMPARE(secretMap.value(QStringLiteral("ipsec-psk")), QStringLiteral("shared"));
+
+        QSignalSpy failed(&handler, &Handler::vpnAddFailed);
+        handler.addVpn({{QStringLiteral("kind"), QStringLiteral("openvpn")}, {QStringLiteral("server"), QStringLiteral("x")}});
+        QCOMPARE(failed.size(), 1);
+    }
+
+    void wireGuardImportsAsPrivateAndManual()
+    {
+        QTemporaryDir directory;
+        QFile file(directory.filePath(QStringLiteral("Home Office.conf")));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("[Interface]\nPrivateKey = yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=\n"
+                   "Address = 10.99.0.2/24\nDNS = 10.99.0.1\n\n"
+                   "[Peer]\nPublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=\n"
+                   "AllowedIPs = 10.99.0.0/24\nEndpoint = 192.0.2.1:51820\n");
+        file.close();
+
+        Handler handler;
+        QSignalSpy imported(&handler, &Handler::vpnAdded);
+        handler.importVpn(QUrl::fromLocalFile(file.fileName()));
+        QTRY_COMPARE(imported.size(), 1);
+        QCOMPARE(nm->count(QStringLiteral("AddConnection")), 1);
+
+        const QDBusMessage call = nm->last(QStringLiteral("AddConnection"));
+        QCOMPARE(call.signature(), QStringLiteral("a{sa{sv}}"));
+        const auto settings = qdbus_cast<NMVariantMapMap>(call.arguments().value(0));
+        const QVariantMap connection = settings.value(QStringLiteral("connection"));
+        QCOMPARE(connection.value(QStringLiteral("id")).toString(), QStringLiteral("Home Office"));
+        QCOMPARE(connection.value(QStringLiteral("autoconnect")).toBool(), false);
+        QCOMPARE(connection.value(QStringLiteral("permissions")).toStringList(), QStringList {NetworkClient::userPermission()});
+        QCOMPARE(connection.value(QStringLiteral("uuid")).toString(), imported.first().first().toString());
+
+        const auto signature = [&](const QString &setting, const QString &key) {
+            return settings.value(setting).value(key).value<QDBusArgument>().currentSignature();
+        };
+        QCOMPARE(signature(QStringLiteral("wireguard"), QStringLiteral("peers")), QStringLiteral("aa{sv}"));
+        QCOMPARE(signature(QStringLiteral("ipv4"), QStringLiteral("address-data")), QStringLiteral("aa{sv}"));
+        QCOMPARE(signature(QStringLiteral("ipv4"), QStringLiteral("dns")), QStringLiteral("au"));
+    }
+
     void reloadsAfterRestart()
     {
         NetworkModel model;
@@ -213,6 +350,40 @@ private slots:
     }
 
 private:
+    void addVpn(const QString &path, const QString &name, const QString &service, qulonglong timestamp)
+    {
+        nm->settings[path] = {
+            {QStringLiteral("connection"),
+             {{QStringLiteral("id"), name},
+              {QStringLiteral("uuid"), name.toLower()},
+              {QStringLiteral("type"), QStringLiteral("vpn")},
+              {QStringLiteral("timestamp"), timestamp}}},
+            {QStringLiteral("vpn"),
+             {{QStringLiteral("service-type"), service},
+              {QStringLiteral("data"),
+               QVariant::fromValue(QMap<QString, QString> {{QStringLiteral("connection-type"), QStringLiteral("password")}})}}},
+        };
+        nm->add(path, {{FakeNM::connection, {{QStringLiteral("Flags"), 0u}}}});
+    }
+
+    void addWireGuard(const QString &path, const QString &name, qulonglong timestamp)
+    {
+        nm->settings[path] = {
+            {QStringLiteral("connection"),
+             {{QStringLiteral("id"), name},
+              {QStringLiteral("uuid"), name.toLower()},
+              {QStringLiteral("type"), QStringLiteral("wireguard")},
+              {QStringLiteral("timestamp"), timestamp}}},
+            {QStringLiteral("wireguard"), {{QStringLiteral("listen-port"), 0u}}},
+        };
+        nm->add(path, {{FakeNM::connection, {{QStringLiteral("Flags"), 0u}}}});
+    }
+
+    const QString officeVpn = FakeNM::managerPath + QStringLiteral("/Settings/30");
+    const QString branchVpn = FakeNM::managerPath + QStringLiteral("/Settings/31");
+    const QString homeVpn = FakeNM::managerPath + QStringLiteral("/Settings/32");
+    const QString vpnInterface = QStringLiteral("org.freedesktop.NetworkManager.VPN.Connection");
+
     static QModelIndex row(const NetworkModel &model, const QString &name)
     {
         for (int i = 0; i < model.rowCount(); ++i) {
@@ -232,6 +403,14 @@ int main(int argc, char **argv)
     // NetworkManager is served on the session bus of dbus-run-session.
     qputenv("DBUS_SYSTEM_BUS_ADDRESS", qgetenv("DBUS_SESSION_BUS_ADDRESS"));
     QCoreApplication app(argc, argv);
+    // Only OpenVPN's plugin is installed.
+    QTemporaryDir plugins;
+    QFile name(plugins.filePath(QStringLiteral("nm-openvpn-service.name")));
+    if (!name.open(QIODevice::WriteOnly))
+        return 1;
+    name.write("[VPN Connection]\nname=openvpn\nservice=org.freedesktop.NetworkManager.openvpn\n");
+    name.close();
+    VpnUtils::setPluginDirectories({plugins.path()});
     NetworkClientTest test;
     return QTest::qExec(&test, argc, argv);
 }

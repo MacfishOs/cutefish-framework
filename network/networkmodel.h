@@ -74,6 +74,10 @@ public:
         GateWayRole,
         NameServerRole,
         MacAddressRole,
+        StatusMessageRole,
+        CanActivateRole,
+        VpnUsesUserNameRole,
+        VpnUserNameRole,
     };
     Q_ENUM(ItemRole)
 
@@ -121,16 +125,25 @@ private:
         QString gateway;
         QString nameServer;
         QString macAddress;
+        QString vpnType;
+        // Why the VPN can't be used, or why its last attempt failed.
+        QString statusMessage;
+        bool canActivate = true;
+        bool vpnUsesUserName = false;
+        QString vpnUserName;
     };
 
     void rebuild();
     void addWired(const QString &device, QList<Item> &items) const;
     void addWireless(const QString &device, QList<Item> &items) const;
+    void addVpns(QList<Item> &items) const;
     void fillDetails(Item &item) const;
     QVariant itemData(const Item &item, int role) const;
 
     NetworkClient *m_client;
     QList<Item> m_items;
+    // The last failure of each VPN, until it is tried again.
+    QHash<QString, QString> m_vpnFailures;
 };
 
 #endif // CUTEFISH_NETWORK_NETWORKMODEL_H

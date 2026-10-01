@@ -37,6 +37,16 @@ bool savedByAgent(uint flags)
     return (flags & SecretAgentOwned) && !(flags & SecretNotSaved);
 }
 
+// A VPN's data and secrets: string to string, nested in the vpn setting.
+QMap<QString, QString> stringMap(const QVariant &value)
+{
+    QMap<QString, QString> map;
+    const QVariantMap entries = NetworkDBus::plain(value).toMap();
+    for (auto it = entries.cbegin(); it != entries.cend(); ++it)
+        map.insert(it.key(), it.value().toString());
+    return map;
+}
+
 } // namespace
 
 // The object NetworkManager calls. It stays out of the QML type, which also serves the
@@ -58,12 +68,11 @@ public Q_SLOTS:
                                const QDBusObjectPath &connectionPath, const QString &settingName,
                                const QStringList &hints, uint flags)
     {
-        Q_UNUSED(hints)
         if (!accepted())
             return {};
 
         setDelayedReply(true);
-        m_owner->getSecrets(connection, connectionPath.path(), settingName, flags, message());
+        m_owner->getSecrets(connection, connectionPath.path(), settingName, hints, flags, message());
         return {};
     }
 
@@ -178,6 +187,27 @@ bool NetworkSecretAgent::retry() const
     return !m_requests.isEmpty() && m_requests.first().retry;
 }
 
+QVariantList NetworkSecretAgent::fields() const
+{
+    QVariantList fields;
+    if (m_requests.isEmpty())
+        return fields;
+
+    const Request &request = m_requests.first();
+    for (const VpnUtils::SecretField &field : request.fields) {
+        fields << QVariantMap {{QStringLiteral("key"), field.key},
+                               {QStringLiteral("label"), field.label},
+                               {QStringLiteral("secret"), field.secret},
+                               {QStringLiteral("value"), request.values.value(field.key)}};
+    }
+    return fields;
+}
+
+QString NetworkSecretAgent::message() const
+{
+    return m_requests.isEmpty() ? QString() : m_requests.first().serverMessage;
+}
+
 bool NetworkSecretAgent::fromNetworkManager(const QDBusMessage &message) const
 {
     // The bus policy already lets only root talk to agents; this keeps it to NetworkManager.
@@ -188,7 +218,7 @@ void NetworkSecretAgent::registerAgent(int attempt)
 {
     const quint64 registration = m_registration;
     m_client->call(agentManagerPath, agentManagerInterface, QStringLiteral("RegisterWithCapabilities"),
-                   {agentIdentifier, 0u}, this, [this, registration, attempt](const QDBusMessage &reply) {
+                   {agentIdentifier, 1u}, this, [this, registration, attempt](const QDBusMessage &reply) {
                        if (registration != m_registration)
                            return;
                        if (reply.type() == QDBusMessage::ReplyMessage) {
@@ -212,7 +242,7 @@ void NetworkSecretAgent::registerAgent(int attempt)
 
 void NetworkSecretAgent::getSecrets(const NMVariantMapMap &connection,
                                     const QString &connectionPath, const QString &settingName,
-                                    uint flags, const QDBusMessage &message)
+                                    const QStringList &hints, uint flags, const QDBusMessage &message)
 {
     Request request;
     request.id = ++m_nextId;
@@ -227,7 +257,16 @@ void NetworkSecretAgent::getSecrets(const NMVariantMapMap &connection,
 
     const QVariantMap setting = connection.value(settingName);
 
-    if (settingName == wirelessSecurity) {
+    if (settingName == QLatin1String("vpn")) {
+        request.kind = VpnSecrets;
+        request.vpnData = stringMap(setting.value(QStringLiteral("data")));
+        request.fields = VpnUtils::secretFields(setting.value(QStringLiteral("service-type")).toString(),
+                                                request.vpnData, hints);
+        request.serverMessage = VpnUtils::hintMessage(hints);
+        const QMap<QString, QString> existing = stringMap(setting.value(QStringLiteral("secrets")));
+        for (auto it = existing.cbegin(); it != existing.cend(); ++it)
+            request.values.insert(it.key(), it.value());
+    } else if (settingName == wirelessSecurity) {
         const QString keyMgmt = setting.value(QStringLiteral("key-mgmt")).toString();
 
         if (keyMgmt == QLatin1String("wpa-psk") || keyMgmt == QLatin1String("sae")
@@ -272,7 +311,7 @@ void NetworkSecretAgent::getSecrets(const NMVariantMapMap &connection,
         if (!same(m_requests.at(i)))
             continue;
         fail(m_requests.at(i), agentCanceled, QStringLiteral("A newer request replaced it"));
-        if (request.interactive && !request.key.isEmpty()) {
+        if (request.interactive && (!request.key.isEmpty() || !request.fields.isEmpty())) {
             m_requests[i] = request;
             if (i == 0)
                 Q_EMIT requestChanged();
@@ -283,11 +322,14 @@ void NetworkSecretAgent::getSecrets(const NMVariantMapMap &connection,
             Q_EMIT requestChanged();
     }
 
+    if (request.kind == VpnSecrets) {
+        getVpnSecrets(request);
+        return;
+    }
+
     // RequestNew means what is stored was just rejected, and a secret that is never saved
-    // has nothing stored. VPN secrets nest in a map of their own, which this agent doesn't
-    // offer.
-    if (request.retry || (request.secretFlags & SecretNotSaved) || request.uuid.isEmpty()
-        || settingName == QLatin1String("vpn")) {
+    // has nothing stored.
+    if (request.retry || (request.secretFlags & SecretNotSaved) || request.uuid.isEmpty()) {
         ask(request);
         return;
     }
@@ -311,6 +353,61 @@ void NetworkSecretAgent::getSecrets(const NMVariantMapMap &connection,
             return;
         }
     });
+}
+
+void NetworkSecretAgent::getVpnSecrets(Request request)
+{
+    // Nothing to ask for, a plugin that signs in by itself for instance: what NetworkManager
+    // has is the answer.
+    if (request.fields.isEmpty()) {
+        replyVpn(request, request.values);
+        return;
+    }
+    if (request.retry || request.uuid.isEmpty()) {
+        ask(request);
+        return;
+    }
+
+    m_lookups.append(request);
+    m_store->load(request.uuid, QStringLiteral("vpn"), [this, id = request.id](const QVariantMap &stored) {
+        for (int i = 0; i < m_lookups.size(); ++i) {
+            if (m_lookups.at(i).id != id)
+                continue;
+
+            Request request = m_lookups.takeAt(i);
+            for (auto it = stored.cbegin(); it != stored.cend(); ++it) {
+                if (request.values.value(it.key()).toString().isEmpty())
+                    request.values.insert(it.key(), it.value());
+            }
+
+            // A one-time code and other secrets that are never saved are asked for each time.
+            bool complete = true;
+            for (const VpnUtils::SecretField &field : std::as_const(request.fields)) {
+                const uint flags = request.vpnData.value(field.key + QLatin1String("-flags")).toUInt();
+                complete &= !(flags & SecretNotSaved) && !request.values.value(field.key).toString().isEmpty();
+            }
+
+            // Without interaction, an answer with no secrets has NetworkManager ask again with it.
+            if (complete || !request.interactive)
+                replyVpn(request, request.values);
+            else
+                ask(request);
+            return;
+        }
+    });
+}
+
+void NetworkSecretAgent::replyVpn(const Request &request, const QVariantMap &values)
+{
+    QMap<QString, QString> secrets;
+    for (auto it = values.cbegin(); it != values.cend(); ++it) {
+        if (!it.value().toString().isEmpty())
+            secrets.insert(it.key(), it.value().toString());
+    }
+
+    NMVariantMapMap answer;
+    answer[QStringLiteral("vpn")][QStringLiteral("secrets")] = QVariant::fromValue(secrets);
+    reply(request, answer);
 }
 
 void NetworkSecretAgent::cancelGetSecrets(const QString &connectionPath,
@@ -351,6 +448,15 @@ void NetworkSecretAgent::saveSecrets(const NMVariantMapMap &connection, const QD
     // System-owned secrets are NetworkManager's to store; only agent-owned ones come here.
     QList<SecretStore::Entry> entries;
     for (auto setting = connection.cbegin(); setting != connection.cend(); ++setting) {
+        if (setting.key() == QLatin1String("vpn")) {
+            const QMap<QString, QString> data = stringMap(setting->value(QStringLiteral("data")));
+            const QMap<QString, QString> secrets = stringMap(setting->value(QStringLiteral("secrets")));
+            for (auto it = secrets.cbegin(); it != secrets.cend(); ++it) {
+                if (savedByAgent(data.value(it.key() + QLatin1String("-flags")).toUInt()))
+                    entries.append({setting.key(), it.key(), it.value()});
+            }
+            continue;
+        }
         for (auto key = setting->cbegin(); key != setting->cend(); ++key) {
             const QVariant flags = setting->value(flagsKey(key.key()));
             if (!flags.isValid() || key->typeId() != QMetaType::QString || !savedByAgent(flags.toUInt()))
@@ -435,6 +541,27 @@ void NetworkSecretAgent::respond(const QString &secret)
     finish();
 }
 
+void NetworkSecretAgent::respondFields(const QVariantMap &values)
+{
+    if (m_requests.isEmpty() || m_requests.first().kind != VpnSecrets)
+        return;
+
+    Request request = m_requests.first();
+    for (auto it = values.cbegin(); it != values.cend(); ++it)
+        request.values.insert(it.key(), it.value());
+    replyVpn(request, request.values);
+
+    // As for Wi-Fi, typed secrets the agent keeps are the agent's to store.
+    for (const VpnUtils::SecretField &field : std::as_const(request.fields)) {
+        const QString value = values.value(field.key).toString();
+        const uint flags = request.vpnData.value(field.key + QLatin1String("-flags")).toUInt();
+        if (!request.uuid.isEmpty() && !value.isEmpty() && savedByAgent(flags))
+            m_store->save(request.uuid, request.connectionName, QStringLiteral("vpn"), field.key, value);
+    }
+
+    finish();
+}
+
 void NetworkSecretAgent::cancel()
 {
     if (m_requests.isEmpty())
@@ -457,7 +584,8 @@ void NetworkSecretAgent::fail(const Request &request, const QString &error, cons
 
 void NetworkSecretAgent::ask(const Request &request)
 {
-    if (!request.interactive || (request.key.isEmpty() && request.accessPointPath.isEmpty())) {
+    if (!request.interactive
+        || (request.key.isEmpty() && request.fields.isEmpty() && request.accessPointPath.isEmpty())) {
         // Secrets read through Settings.Connection.GetSecrets expect an answer, not an error.
         if (request.noErrors) {
             NMVariantMapMap empty;

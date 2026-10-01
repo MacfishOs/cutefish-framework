@@ -33,6 +33,20 @@ NMVariantMapMap wpaConnection(uint pskFlags = 0)
     return connection;
 }
 
+NMVariantMapMap vpnConnection(const QString &service, const QMap<QString, QString> &data)
+{
+    NMVariantMapMap connection;
+    connection[QStringLiteral("connection")] = {{QStringLiteral("id"), QStringLiteral("Office")},
+                                                {QStringLiteral("uuid"), uuid}};
+    connection[QStringLiteral("vpn")] = {{QStringLiteral("service-type"), service},
+                                         {QStringLiteral("data"), QVariant::fromValue(data)}};
+    return connection;
+}
+
+const QString openvpn = QStringLiteral("org.freedesktop.NetworkManager.openvpn");
+const QMap<QString, QString> passwordData {{QStringLiteral("connection-type"), QStringLiteral("password")},
+                                           {QStringLiteral("password-flags"), QStringLiteral("1")}};
+
 } // namespace
 
 class SecretAgentTest : public QObject
@@ -388,7 +402,58 @@ private slots:
         QDBusConnection::disconnectFromBus(QStringLiteral("stranger"));
     }
 
+    void vpnPasswordIsAskedForAndKept()
+    {
+        QDBusPendingCallWatcher reply(getSecrets(vpnConnection(openvpn, passwordData), QStringLiteral("vpn"),
+                                                 allowInteraction));
+        QTRY_VERIFY(agent->pending());
+        QCOMPARE(agent->kind(), NetworkSecretAgent::VpnSecrets);
+        QCOMPARE(agent->connectionName(), QStringLiteral("Office"));
+        QCOMPARE(agent->fields().size(), 1);
+        QCOMPARE(agent->fields().first().toMap().value(QStringLiteral("key")).toString(), QStringLiteral("password"));
+
+        agent->respondFields({{QStringLiteral("password"), QStringLiteral("s3cret")}});
+        QTRY_VERIFY(reply.isFinished());
+        QVERIFY(!reply.isError());
+        QCOMPARE(vpnSecretsOf(reply).value(QStringLiteral("password")), QStringLiteral("s3cret"));
+
+        QTRY_COMPARE(secrets->items.size(), 1);
+        QCOMPARE(secrets->items.first().attributes.value(QStringLiteral("setting-name")), QStringLiteral("vpn"));
+        QCOMPARE(secrets->items.first().attributes.value(QStringLiteral("setting-key")), QStringLiteral("password"));
+    }
+
+    void vpnAnswersFromTheKeyring()
+    {
+        auto connection = vpnConnection(openvpn, passwordData);
+        connection[QStringLiteral("vpn")][QStringLiteral("secrets")] =
+                QVariant::fromValue(QMap<QString, QString> {{QStringLiteral("password"), QStringLiteral("stored")}});
+        QDBusPendingCallWatcher saved(call(QStringLiteral("SaveSecrets"),
+                                           {QVariant::fromValue(connection), QVariant::fromValue(QDBusObjectPath(connectionPath))}));
+        QTRY_VERIFY(saved.isFinished());
+        QTRY_COMPARE(secrets->items.size(), 1);
+
+        QDBusPendingCallWatcher reply(getSecrets(vpnConnection(openvpn, passwordData), QStringLiteral("vpn"), allowInteraction));
+        QTRY_VERIFY(reply.isFinished());
+        QVERIFY(!reply.isError());
+        QCOMPARE(vpnSecretsOf(reply).value(QStringLiteral("password")), QStringLiteral("stored"));
+        QVERIFY(!agent->pending());
+    }
+
+    void vpnWithoutInteractionStillAnswers()
+    {
+        // An answer without secrets, not an error, has NetworkManager ask again with interaction.
+        QDBusPendingCallWatcher reply(getSecrets(vpnConnection(openvpn, passwordData), QStringLiteral("vpn"), 0));
+        QTRY_VERIFY(reply.isFinished());
+        QVERIFY(!reply.isError());
+        QVERIFY(vpnSecretsOf(reply).isEmpty());
+    }
+
 private:
+    static QMap<QString, QString> vpnSecretsOf(const QDBusPendingCallWatcher &reply)
+    {
+        return qdbus_cast<QMap<QString, QString>>(secretsOf(reply).value(QStringLiteral("vpn")).value(QStringLiteral("secrets")));
+    }
+
     void addWirelessDevice(const QString &device, const QStringList &accessPoints)
     {
         for (const QString &accessPoint : accessPoints) {

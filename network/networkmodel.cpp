@@ -20,6 +20,7 @@
 
 #include "networkmodel.h"
 #include "networkclient.h"
+#include "vpnutils.h"
 #include "wifiutils.h"
 
 #include <QHostAddress>
@@ -130,6 +131,20 @@ NetworkModel::NetworkModel(QObject *parent)
     , m_client(NetworkClient::instance())
 {
     connect(m_client, &NetworkClient::changed, this, &NetworkModel::rebuild);
+    connect(m_client, &NetworkClient::activeStateChanged, this,
+            [this](const QString &active, uint state, uint reason) {
+                const QString profile = NetworkClient::path(
+                        m_client->property(active, activeInterface, QStringLiteral("Connection")));
+                if (!VpnUtils::isVpn(m_client, profile))
+                    return;
+                if (state == ActiveActivating) {
+                    m_vpnFailures.remove(profile);
+                } else if (state == ActiveDeactivated) {
+                    const QString message = VpnUtils::failureMessage(reason);
+                    if (!message.isEmpty())
+                        m_vpnFailures.insert(profile, message);
+                }
+            });
     rebuild();
 }
 
@@ -197,6 +212,16 @@ QVariant NetworkModel::itemData(const Item &item, int role) const
         return item.nameServer;
     case MacAddressRole:
         return item.macAddress;
+    case VpnType:
+        return item.vpnType;
+    case StatusMessageRole:
+        return item.statusMessage;
+    case CanActivateRole:
+        return item.canActivate;
+    case VpnUsesUserNameRole:
+        return item.vpnUsesUserName;
+    case VpnUserNameRole:
+        return item.vpnUserName;
     case RxBytesRole:
     case TxBytesRole:
     case VpnState:
@@ -206,7 +231,6 @@ QVariant NetworkModel::itemData(const Item &item, int role) const
     case LastUsedRole:
     case LastUsedDateOnlyRole:
     case SectionRole:
-    case VpnType:
         return QString();
     default:
         return {};
@@ -249,6 +273,10 @@ QHash<int, QByteArray> NetworkModel::roleNames() const
     roles[GateWayRole] = "gateWay";
     roles[NameServerRole] = "nameServer";
     roles[MacAddressRole] = "macAddress";
+    roles[StatusMessageRole] = "statusMessage";
+    roles[CanActivateRole] = "canActivate";
+    roles[VpnUsesUserNameRole] = "vpnUsesUserName";
+    roles[VpnUserNameRole] = "vpnUserName";
     return roles;
 }
 
@@ -264,6 +292,7 @@ void NetworkModel::rebuild()
             else if (m_client->deviceType(device) == DeviceWifi)
                 addWireless(device, items);
         }
+        addVpns(items);
     }
 
     // A name shown twice, say on two adapters, gets its device added.
@@ -510,6 +539,49 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
         if (!activeAp.isEmpty())
             network.strength = ap(activeAp, "Strength").toInt();
         addItem(network, device + QLatin1Char('|') + profile);
+    }
+}
+
+void NetworkModel::addVpns(QList<Item> &items) const
+{
+    for (const QString &profile : m_client->connections()) {
+        if (!VpnUtils::isVpn(m_client, profile))
+            continue;
+
+        Item item;
+        item.type = Enums::Vpn;
+        item.itemType = AvailableConnection;
+        item.uuid = m_client->setting(profile, connectionSetting, QStringLiteral("uuid")).toString();
+        item.key = QStringLiteral("vpn|") + item.uuid;
+        item.name = m_client->setting(profile, connectionSetting, QStringLiteral("id")).toString();
+        item.connectionPath = profile;
+        item.securityType = Enums::NoneSecurity;
+        item.timestamp = lastUsed(m_client, profile);
+        item.connectionState = VpnUtils::state(m_client, VpnUtils::activeConnection(m_client, profile));
+        item.icon = QStringLiteral("network-vpn");
+
+        const QString kind = VpnUtils::kind(m_client, profile);
+        item.vpnType = VpnUtils::kindLabel(kind);
+        const QString service = m_client->setting(profile, QStringLiteral("vpn"), QStringLiteral("service-type")).toString();
+        const bool installed = kind == QLatin1String("wireguard") || VpnUtils::pluginInstalled(service);
+
+        const QVariantMap data = m_client->setting(profile, QStringLiteral("vpn"), QStringLiteral("data")).toMap();
+        QMap<QString, QString> strings;
+        for (auto it = data.cbegin(); it != data.cend(); ++it)
+            strings.insert(it.key(), it.value().toString());
+        const QString userNameKey = VpnUtils::userNameKey(service, strings);
+        item.vpnUsesUserName = !userNameKey.isEmpty();
+        item.vpnUserName = strings.value(userNameKey);
+        if (!installed) {
+            item.canActivate = false;
+            item.statusMessage = tr("Install %1 to use this VPN.").arg(VpnUtils::package(kind));
+        } else if (kind == QLatin1String("openconnect")) {
+            item.canActivate = false;
+            item.statusMessage = tr("Signing in to OpenConnect VPNs isn't supported yet.");
+        } else {
+            item.statusMessage = m_vpnFailures.value(profile);
+        }
+        items << item;
     }
 }
 

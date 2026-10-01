@@ -123,4 +123,6 @@ void registerNetworkDBusTypes()
     qDBusRegisterMetaType<QList<QDBusObjectPath>>();
     qDBusRegisterMetaType<QMap<QString, QString>>();
     qDBusRegisterMetaType<QList<QByteArray>>();
+    qDBusRegisterMetaType<QList<QVariantMap>>();
+    qDBusRegisterMetaType<QList<uint>>();
 }

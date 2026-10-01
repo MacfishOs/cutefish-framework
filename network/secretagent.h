@@ -2,6 +2,7 @@
 #define CUTEFISH_NETWORK_SECRETAGENT_H
 
 #include "networkdbustypes.h"
+#include "vpnutils.h"
 
 #include <QDBusMessage>
 #include <QList>
@@ -27,6 +28,9 @@ class CUTEFISH_NETWORK_EXPORT NetworkSecretAgent : public QObject
     Q_PROPERTY(Kind kind READ kind NOTIFY requestChanged)
     Q_PROPERTY(QString identity READ identity NOTIFY requestChanged)
     Q_PROPERTY(bool retry READ retry NOTIFY requestChanged)
+    // For a VPN: [{key, label, secret, value}] to ask for, and what its server says.
+    Q_PROPERTY(QVariantList fields READ fields NOTIFY requestChanged)
+    Q_PROPERTY(QString message READ message NOTIFY requestChanged)
 
 public:
     enum Kind {
@@ -35,6 +39,7 @@ public:
         LeapPassword,
         EapPassword,
         PrivateKeyPassword,
+        VpnSecrets,
     };
     Q_ENUM(Kind)
 
@@ -46,8 +51,12 @@ public:
     Kind kind() const;
     QString identity() const;
     bool retry() const;
+    QVariantList fields() const;
+    QString message() const;
 
     Q_INVOKABLE void respond(const QString &secret);
+    // A VPN's secrets by key.
+    Q_INVOKABLE void respondFields(const QVariantMap &values);
     Q_INVOKABLE void cancel();
 
 public Q_SLOTS:
@@ -74,6 +83,11 @@ private:
         bool interactive = false;
         bool retry = false;
         bool noErrors = false;
+        // A VPN asks for several secrets, which its data says how to keep.
+        QList<VpnUtils::SecretField> fields;
+        QMap<QString, QString> vpnData;
+        QVariantMap values;
+        QString serverMessage;
         // A network asked about before anything is added, see ConnectWireless().
         QString devicePath;
         QString accessPointPath;
@@ -81,7 +95,10 @@ private:
     };
 
     void getSecrets(const NMVariantMapMap &connection, const QString &connectionPath,
-                    const QString &settingName, uint flags, const QDBusMessage &message);
+                    const QString &settingName, const QStringList &hints, uint flags,
+                    const QDBusMessage &message);
+    void getVpnSecrets(Request request);
+    void replyVpn(const Request &request, const QVariantMap &values);
     void cancelGetSecrets(const QString &connectionPath, const QString &settingName);
     void saveSecrets(const NMVariantMapMap &connection, const QDBusMessage &message);
     void deleteSecrets(const NMVariantMapMap &connection, const QDBusMessage &message);

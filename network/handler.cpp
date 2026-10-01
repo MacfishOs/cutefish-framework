@@ -21,13 +21,19 @@
 #include "handler.h"
 #include "configuration.h"
 #include "networkclient.h"
+#include "vpnutils.h"
 #include "wifiutils.h"
 
 #include <QDBusConnection>
 #include <QDBusPendingCallWatcher>
 #include <QDebug>
+#include <QFile>
+#include <QFileInfo>
+#include <QProcess>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QUuid>
+
 
 using namespace NetworkDBus;
 
@@ -224,13 +230,15 @@ void Handler::deactivateConnection(const QString &connection, const QString &dev
         const bool vpn = m_client->property(active, activeInterface, QStringLiteral("Vpn")).toBool();
 
         const bool matches = connection.isEmpty() ? devices.contains(device) : profile == connection;
-        if (!matches || (!vpn && !devices.contains(device)))
+        if (!matches)
             continue;
 
-        if (vpn) {
+        // A VPN, or a profile named without a device (WireGuard brings its own), goes down
+        // alone; disconnecting a device also keeps it from connecting again by itself.
+        if (vpn || device.isEmpty()) {
             m_client->call(managerPath, managerInterface, QStringLiteral("DeactivateConnection"),
                            {objectPath(active)}, this, {}, kAuthorizedCallTimeoutMs);
-        } else {
+        } else if (devices.contains(device)) {
             m_client->call(device, deviceInterface, QStringLiteral("Disconnect"), {}, this, {},
                            kAuthorizedCallTimeoutMs);
         }
@@ -409,6 +417,145 @@ void Handler::stopHotspot()
         return;
     m_client->call(managerPath, managerInterface, QStringLiteral("DeactivateConnection"),
                    {objectPath(active)}, this, {}, kAuthorizedCallTimeoutMs);
+}
+
+void Handler::importVpn(const QUrl &file)
+{
+    const QString path = file.isLocalFile() ? file.toLocalFile() : file.toString();
+
+    QFile config(path);
+    if (config.open(QIODevice::ReadOnly | QIODevice::Text) && config.size() < 1024 * 1024) {
+        const QByteArray content = config.readAll();
+        if (VpnUtils::isWireGuardConfig(content)) {
+            QString error;
+            const NMVariantMapMap profile = VpnUtils::wireGuardProfile(content, QFileInfo(path).completeBaseName(), &error);
+            if (profile.isEmpty())
+                Q_EMIT vpnAddFailed(error);
+            else
+                addPrivateVpn(profile);
+            return;
+        }
+    }
+
+    // NetworkManager's own readers, the ones nmcli and both big desktops use; whichever
+    // reads the file first wins.
+    QStringList types;
+
+    QStringList plugins = VpnUtils::installedPlugins();
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    const QString likely = suffix == QLatin1String("ovpn") || suffix == QLatin1String("conf") ? QStringLiteral("openvpn")
+            : suffix == QLatin1String("pcf")                                                 ? QStringLiteral("vpnc")
+                                                                                              : QString();
+    if (plugins.removeAll(likely))
+        plugins.prepend(likely);
+    types += plugins;
+
+    if (types.isEmpty()) {
+        Q_EMIT vpnAddFailed(tr("No VPN plugin can read this file. Install the one for your VPN, "
+                                  "for example network-manager-openvpn for OpenVPN."));
+        return;
+    }
+    importVpnAs(path, types, QString());
+}
+
+void Handler::importVpnAs(const QString &file, QStringList types, const QString &error)
+{
+    if (types.isEmpty()) {
+        Q_EMIT vpnAddFailed(error.isEmpty() ? tr("This file isn't a VPN configuration this system can read.")
+                                               : error);
+        return;
+    }
+
+    const QString type = types.takeFirst();
+
+    // A plugin's reader runs in nmcli: NetworkManager offers no way to call it over D-Bus.
+    auto *process = new QProcess(this);
+    process->setProgram(QStringLiteral("nmcli"));
+    process->setArguments({QStringLiteral("connection"), QStringLiteral("import"), QStringLiteral("type"), type,
+                           QStringLiteral("file"), file});
+    connect(process, &QProcess::finished, this,
+            [this, process, file, types, error](int code, QProcess::ExitStatus status) {
+                process->deleteLater();
+                const QString output = QString::fromUtf8(process->readAllStandardOutput());
+                const QString message = QString::fromUtf8(process->readAllStandardError()).trimmed();
+                if (status == QProcess::NormalExit && code == 0) {
+                    const auto uuid = QRegularExpression(QStringLiteral("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}"))
+                                              .match(output);
+                    Q_EMIT vpnAdded(uuid.captured());
+                    return;
+                }
+                importVpnAs(file, types, message.isEmpty() ? error : message);
+            });
+    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError failure) {
+        if (failure != QProcess::FailedToStart)
+            return;
+        process->deleteLater();
+        Q_EMIT vpnAddFailed(tr("nmcli, which reads VPN files, is not installed."));
+    });
+    process->start();
+}
+
+void Handler::setVpnUserName(const QString &connection, const QString &userName)
+{
+    const QString service = m_client->setting(connection, QStringLiteral("vpn"), QStringLiteral("service-type")).toString();
+    const QVariantMap current = m_client->setting(connection, QStringLiteral("vpn"), QStringLiteral("data")).toMap();
+    QMap<QString, QString> data;
+    for (auto it = current.cbegin(); it != current.cend(); ++it)
+        data.insert(it.key(), it.value().toString());
+
+    const QString key = VpnUtils::userNameKey(service, data);
+    if (key.isEmpty() || data.value(key) == userName)
+        return;
+    if (userName.isEmpty())
+        data.remove(key);
+    else
+        data.insert(key, userName);
+
+    // vpn.data is a{ss}; without secrets in it, the update keeps the stored ones.
+    NMVariantMapMap settings = m_client->settings(connection);
+    settings[QStringLiteral("vpn")].insert(QStringLiteral("data"), QVariant::fromValue(data));
+    m_client->call(connection, connectionInterface, QStringLiteral("Update"), {QVariant::fromValue(settings)}, this,
+                   [](const QDBusMessage &reply) {
+                       if (reply.type() == QDBusMessage::ErrorMessage)
+                           qWarning() << "Cannot save the VPN user name:" << reply.errorMessage();
+                   },
+                   kAuthorizedCallTimeoutMs);
+}
+
+void Handler::addVpn(const QVariantMap &form)
+{
+    QString error;
+    const NMVariantMapMap profile = VpnUtils::manualProfile(form, &error);
+    if (profile.isEmpty())
+        Q_EMIT vpnAddFailed(error);
+    else
+        addPrivateVpn(profile);
+}
+
+QVariantList Handler::vpnKinds() const
+{
+    return VpnUtils::manualKinds();
+}
+
+void Handler::addPrivateVpn(NMVariantMapMap profile)
+{
+    // As GNOME does: the VPN is this user's, which needs no administrator password, and
+    // comes up only when asked to. A WireGuard profile would otherwise connect the moment
+    // it is added, its interface being its own.
+    profile[QStringLiteral("connection")].insert(QStringLiteral("autoconnect"), false);
+    profile[QStringLiteral("connection")].insert(QStringLiteral("permissions"),
+                                                 QStringList {NetworkClient::userPermission()});
+
+    const QString uuid = profile.value(QStringLiteral("connection")).value(QStringLiteral("uuid")).toString();
+    m_client->call(settingsPath, settingsInterface, QStringLiteral("AddConnection"), {QVariant::fromValue(profile)},
+                   this,
+                   [this, uuid](const QDBusMessage &reply) {
+                       if (reply.type() == QDBusMessage::ReplyMessage)
+                           Q_EMIT vpnAdded(uuid);
+                       else
+                           Q_EMIT vpnAddFailed(reply.errorMessage());
+                   },
+                   kAuthorizedCallTimeoutMs);
 }
 
 QString Handler::hotspotActiveConnection() const

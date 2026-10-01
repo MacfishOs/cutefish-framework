@@ -75,7 +75,7 @@ bool AppletProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &source
 
     const int type = value(index, "type").toInt();
     if ((m_type == WiredType && type != Enums::Wired) || (m_type == WirelessType && type != Enums::Wireless)
-        || m_type == UnknownType)
+        || (m_type == VpnType && type != Enums::Vpn) || m_type == UnknownType)
         return false;
 
     const int itemType = value(index, "itemType").toInt();
@@ -90,6 +90,10 @@ bool AppletProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &source
 
 bool AppletProxyModel::lessThan(const QModelIndex &left, const QModelIndex &right) const
 {
+    // A VPN keeps its place, whether it is up or not.
+    if (m_type == VpnType)
+        return QString::localeAwareCompare(value(left, "name").toString(), value(right, "name").toString()) > 0;
+
     // Sorted descending: whatever compares greater comes first.
     const bool leftConnected = value(left, "connectionState").toInt() == NetworkModel::Activated;
     const bool rightConnected = value(right, "connectionState").toInt() == NetworkModel::Activated;

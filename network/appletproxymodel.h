@@ -42,7 +42,8 @@ public:
     enum Type {
         UnknownType = 0,
         WiredType,
-        WirelessType
+        WirelessType,
+        VpnType
     };
     Q_ENUM(Type)
 

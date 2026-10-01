@@ -21,10 +21,13 @@
 #ifndef CUTEFISH_NETWORK_HANDLER_H
 #define CUTEFISH_NETWORK_HANDLER_H
 
+#include "networkdbustypes.h"
+
 #include <network_export.h>
 
 #include <QHash>
 #include <QObject>
+#include <QUrl>
 #include <QtQml/qqmlregistration.h>
 
 class NetworkClient;
@@ -70,7 +73,20 @@ public Q_SLOTS:
     void createHotspot();
     void stopHotspot();
 
+    // Adds the VPN a provider's configuration file describes: WireGuard's .conf, or anything
+    // an installed NetworkManager plugin can read, such as OpenVPN's .ovpn.
+    void importVpn(const QUrl &file);
+    // Adds a VPN filled in by hand; see VpnUtils::manualProfile() for the fields.
+    void addVpn(const QVariantMap &form);
+    // What addVpn() can set up: {kind, label, installed, package}.
+    QVariantList vpnKinds() const;
+    // The user name a VPN signs in with, which lives in its profile rather than with the
+    // passwords.
+    void setVpnUserName(const QString &connection, const QString &userName);
+
 Q_SIGNALS:
+    void vpnAdded(const QString &uuid);
+    void vpnAddFailed(const QString &message);
     void hotspotSupportedChanged(bool hotspotSupported);
     void hotspotActiveChanged();
 
@@ -78,6 +94,8 @@ private:
     void addAndActivateWireless(const QString &device, const QString &specificObject,
                                 const QString &password, bool askForPassword);
     void forgetUnlessActivated(const QString &connection, const QString &active);
+    void importVpnAs(const QString &file, QStringList types, const QString &error);
+    void addPrivateVpn(NMVariantMapMap profile);
     void activeStateChanged(const QString &active, uint state);
     void update();
     QString hotspotActiveConnection() const;

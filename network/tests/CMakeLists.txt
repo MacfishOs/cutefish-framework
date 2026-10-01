@@ -8,6 +8,10 @@ add_executable(tst_wifiutils tst_wifiutils.cpp)
 target_link_libraries(tst_wifiutils PRIVATE cutefish-framework-network Qt6::Test)
 add_test(NAME network-wifiutils COMMAND tst_wifiutils)
 
+add_executable(tst_vpnutils tst_vpnutils.cpp)
+target_link_libraries(tst_vpnutils PRIVATE cutefish-framework-network Qt6::Test)
+add_test(NAME network-vpnutils COMMAND tst_vpnutils)
+
 add_executable(tst_networkclient tst_networkclient.cpp fakenetworkmanager.h fixture.h)
 target_link_libraries(tst_networkclient PRIVATE cutefish-framework-network Qt6::Test)
 add_test(NAME network-client COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_networkclient>)

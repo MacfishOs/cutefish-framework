@@ -3,6 +3,7 @@
 #include <QTimer>
 #include <QDBusArgument>
 #include <QDBusConnection>
+#include <QDBusError>
 #include <QDBusMetaType>
 #include <QDBusPendingCallWatcher>
 #include <QDBusVariant>
@@ -271,11 +272,20 @@ void SecretStore::remove(const QString &uuid, std::function<void()> done)
 void SecretStore::call(const QString &path, const QString &interface, const QString &method,
                        const QVariantList &arguments, Reply done)
 {
+    // Without a session bus, Qt hands back a call that never finishes, which would leave
+    // NetworkManager waiting on the agent for good.
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) {
+        QTimer::singleShot(0, this, [done = std::move(done)] {
+            done(QDBusMessage::createError(QDBusError::Disconnected, QStringLiteral("There is no session bus")));
+        });
+        return;
+    }
+
     auto message = QDBusMessage::createMethodCall(service, path, interface, method);
     message.setArguments(arguments);
 
-    auto *watcher = new QDBusPendingCallWatcher(
-            QDBusConnection::sessionBus().asyncCall(message), this);
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(message), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             [done = std::move(done)](QDBusPendingCallWatcher *watcher) {
                 const QDBusMessage reply = watcher->reply();
