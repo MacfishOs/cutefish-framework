@@ -46,15 +46,15 @@ See [audio integration and tests](audio/README.md) for details.
 
 ## Dependencies
 
-The framework uses Qt 6 and a C++20 compiler. NetworkManagerQt is the only
-KDE Frameworks dependency; it is used by the network module.
+The framework uses Qt 6 and a C++20 compiler. The network module talks to
+NetworkManager over D-Bus, and the Bluetooth module to BlueZ.
 
 ### Debian/Ubuntu
 
 ```shell
 sudo apt install cmake pkg-config build-essential \
     qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-tools-dev-tools \
-    libkf6networkmanagerqt-dev bluez \
+    network-manager bluez \
     libpipewire-0.3-dev libspa-0.2-dev pipewire wireplumber
 ```
 
@@ -62,7 +62,7 @@ sudo apt install cmake pkg-config build-essential \
 
 ```shell
 sudo pacman -S --needed base-devel cmake pkgconf \
-    qt6-base qt6-declarative bluez networkmanager-qt \
+    qt6-base qt6-declarative networkmanager bluez \
     pipewire wireplumber
 ```
 
