@@ -45,6 +45,8 @@ void WaylandWindowHints::global(void *data, wl_registry *registry, uint32_t name
     self->m_manager = static_cast<cutefish_window_hints_v1 *>(
             wl_registry_bind(registry, name, &cutefish_window_hints_v1_interface, 1));
     self->m_name = name;
+    static const cutefish_window_hints_v1_listener listener = {handleInteractiveResize};
+    cutefish_window_hints_v1_add_listener(self->m_manager, &listener, self);
     Q_EMIT self->availableChanged();
 }
 
@@ -57,6 +59,12 @@ void WaylandWindowHints::globalRemove(void *data, wl_registry *, uint32_t name)
     self->m_manager = nullptr;
     self->m_name = 0;
     Q_EMIT self->availableChanged();
+}
+
+void WaylandWindowHints::handleInteractiveResize(void *data, cutefish_window_hints_v1 *,
+                                                 wl_surface *surface, uint32_t active)
+{
+    Q_EMIT static_cast<WaylandWindowHints *>(data)->interactiveResize(surface, active != 0);
 }
 
 void WaylandWindowHints::setSkipTaskbar(wl_surface *surface, bool skip)
@@ -84,6 +92,15 @@ void WaylandWindowHints::setResizeAroundCenter(wl_surface *surface, bool center)
     cutefish_window_hints_v1_set_resize_anchor(m_manager, surface,
             center ? CUTEFISH_WINDOW_HINTS_V1_RESIZE_ANCHOR_CENTER
                    : CUTEFISH_WINDOW_HINTS_V1_RESIZE_ANCHOR_TOP_LEFT);
+    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+    wl_display_flush(native->display());
+}
+
+void WaylandWindowHints::setServerResize(wl_surface *surface, bool enabled)
+{
+    if (!m_manager || !surface)
+        return;
+    cutefish_window_hints_v1_set_server_resize(m_manager, surface, enabled);
     auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
     wl_display_flush(native->display());
 }

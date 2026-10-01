@@ -6,6 +6,8 @@
 #include <QWindow>
 #include <QtQml/qqml.h>
 
+struct wl_surface;
+
 namespace Cutefish {
 
 class WindowHints : public QObject
@@ -16,6 +18,10 @@ class WindowHints : public QObject
     // When the window resizes itself, keep its centre rather than its top-left corner.
     Q_PROPERTY(bool resizeAroundCenter READ resizeAroundCenter WRITE setResizeAroundCenter
                        NOTIFY resizeAroundCenterChanged)
+    // The compositor owns the resize handles along the window's edges.
+    Q_PROPERTY(bool serverResize READ serverResize WRITE setServerResize NOTIFY serverResizeChanged)
+    // True while the user resizes the window by an edge or corner.
+    Q_PROPERTY(bool interactiveResize READ interactiveResize NOTIFY interactiveResizeChanged)
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
 
 public:
@@ -29,12 +35,17 @@ public:
     void setAlwaysOnTop(bool alwaysOnTop);
     bool resizeAroundCenter() const { return m_resizeAroundCenter; }
     void setResizeAroundCenter(bool center);
+    bool serverResize() const { return m_serverResize; }
+    void setServerResize(bool enabled);
+    bool interactiveResize() const { return m_interactiveResize; }
     bool available() const;
 
 Q_SIGNALS:
     void skipTaskbarChanged();
     void alwaysOnTopChanged();
     void resizeAroundCenterChanged();
+    void serverResizeChanged();
+    void interactiveResizeChanged();
     void availableChanged();
 
 protected:
@@ -43,6 +54,8 @@ protected:
 private:
     void watchSurface();
     void apply();
+    wl_surface *surface() const;
+    void setInteractiveResize(bool active);
 
     QPointer<QWindow> m_window;
     QMetaObject::Connection m_createdConnection;
@@ -50,6 +63,8 @@ private:
     bool m_skipTaskbar = false;
     bool m_alwaysOnTop = false;
     bool m_resizeAroundCenter = false;
+    bool m_serverResize = false;
+    bool m_interactiveResize = false;
     bool m_surfaceDying = false;
 };
 

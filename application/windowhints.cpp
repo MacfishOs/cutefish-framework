@@ -20,6 +20,11 @@ WindowHints::WindowHints(QObject *parent)
                 Q_EMIT availableChanged();
                 apply();
             });
+    connect(WaylandWindowHints::instance(), &WaylandWindowHints::interactiveResize,
+            this, [this](wl_surface *surface, bool active) {
+                if (surface && surface == this->surface())
+                    setInteractiveResize(active);
+            });
     m_window->installEventFilter(this);
     watchSurface();
 }
@@ -62,6 +67,23 @@ void WindowHints::setResizeAroundCenter(bool center)
     Q_EMIT resizeAroundCenterChanged();
 }
 
+void WindowHints::setServerResize(bool enabled)
+{
+    if (m_serverResize == enabled)
+        return;
+    m_serverResize = enabled;
+    apply();
+    Q_EMIT serverResizeChanged();
+}
+
+void WindowHints::setInteractiveResize(bool active)
+{
+    if (m_interactiveResize == active)
+        return;
+    m_interactiveResize = active;
+    Q_EMIT interactiveResizeChanged();
+}
+
 bool WindowHints::available() const
 {
     return m_window && WaylandWindowHints::instance()->available();
@@ -97,21 +119,32 @@ bool WindowHints::eventFilter(QObject *object, QEvent *event)
         if (!m_surfaceDying) {
             watchSurface();
             apply();
+        } else {
+            // A new surface starts outside any resize.
+            setInteractiveResize(false);
         }
     }
     return QObject::eventFilter(object, event);
 }
 
-void WindowHints::apply()
+wl_surface *WindowHints::surface() const
 {
     if (!available() || m_surfaceDying || !m_window->handle())
-        return;
+        return nullptr;
     auto *native = qGuiApp->platformNativeInterface();
-    auto *surface = static_cast<wl_surface *>(
+    return static_cast<wl_surface *>(
             native->nativeResourceForWindow(QByteArrayLiteral("surface"), m_window));
+}
+
+void WindowHints::apply()
+{
+    wl_surface *surface = this->surface();
+    if (!surface)
+        return;
     WaylandWindowHints::instance()->setSkipTaskbar(surface, m_skipTaskbar);
     WaylandWindowHints::instance()->setAlwaysOnTop(surface, m_alwaysOnTop);
     WaylandWindowHints::instance()->setResizeAroundCenter(surface, m_resizeAroundCenter);
+    WaylandWindowHints::instance()->setServerResize(surface, m_serverResize);
 }
 
 } // namespace Cutefish

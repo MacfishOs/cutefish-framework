@@ -34,12 +34,19 @@ private slots:
         hints->setResizeAroundCenter(true);
         hints->setResizeAroundCenter(true);
         QCOMPARE(anchorChanged.count(), 1);
+        QVERIFY(!hints->serverResize());
+        QSignalSpy serverResizeChanged(hints, &Cutefish::WindowHints::serverResizeChanged);
+        hints->setServerResize(true);
+        hints->setServerResize(true);
+        QCOMPARE(serverResizeChanged.count(), 1);
+        QVERIFY(!hints->interactiveResize());
         window.create();
         window.destroy();
         window.create();
         QVERIFY(hints->skipTaskbar());
         QVERIFY(hints->alwaysOnTop());
         QVERIFY(hints->resizeAroundCenter());
+        QVERIFY(hints->serverResize());
     }
 
     void qmlAndCppShareHintsAcrossSurfaceRecreation()
@@ -56,6 +63,7 @@ private slots:
                 WindowHints.skipTaskbar: true
                 WindowHints.alwaysOnTop: true
                 WindowHints.resizeAroundCenter: true
+                WindowHints.serverResize: true
                 property bool skipped: WindowHints.skipTaskbar
                 property bool onTop: WindowHints.alwaysOnTop
             }
@@ -75,6 +83,7 @@ private slots:
         QVERIFY(hints->skipTaskbar());
         QVERIFY(hints->alwaysOnTop());
         QVERIFY(hints->resizeAroundCenter());
+        QVERIFY(hints->serverResize());
         hints->setSkipTaskbar(false);
         QCOMPARE(object->property("skipped").toBool(), false);
         hints->setAlwaysOnTop(false);
