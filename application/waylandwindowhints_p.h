@@ -20,6 +20,7 @@ public:
     bool available() const { return m_manager != nullptr; }
     void setSkipTaskbar(wl_surface *surface, bool skip);
     void setAlwaysOnTop(wl_surface *surface, bool alwaysOnTop);
+    void setResizeAroundCenter(wl_surface *surface, bool center);
 
 Q_SIGNALS:
     void availableChanged();

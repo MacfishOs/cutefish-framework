@@ -53,6 +53,15 @@ void WindowHints::setAlwaysOnTop(bool alwaysOnTop)
     Q_EMIT alwaysOnTopChanged();
 }
 
+void WindowHints::setResizeAroundCenter(bool center)
+{
+    if (m_resizeAroundCenter == center)
+        return;
+    m_resizeAroundCenter = center;
+    apply();
+    Q_EMIT resizeAroundCenterChanged();
+}
+
 bool WindowHints::available() const
 {
     return m_window && WaylandWindowHints::instance()->available();
@@ -102,6 +111,7 @@ void WindowHints::apply()
             native->nativeResourceForWindow(QByteArrayLiteral("surface"), m_window));
     WaylandWindowHints::instance()->setSkipTaskbar(surface, m_skipTaskbar);
     WaylandWindowHints::instance()->setAlwaysOnTop(surface, m_alwaysOnTop);
+    WaylandWindowHints::instance()->setResizeAroundCenter(surface, m_resizeAroundCenter);
 }
 
 } // namespace Cutefish

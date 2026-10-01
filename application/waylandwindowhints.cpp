@@ -77,4 +77,15 @@ void WaylandWindowHints::setAlwaysOnTop(wl_surface *surface, bool alwaysOnTop)
     wl_display_flush(native->display());
 }
 
+void WaylandWindowHints::setResizeAroundCenter(wl_surface *surface, bool center)
+{
+    if (!m_manager || !surface)
+        return;
+    cutefish_window_hints_v1_set_resize_anchor(m_manager, surface,
+            center ? CUTEFISH_WINDOW_HINTS_V1_RESIZE_ANCHOR_CENTER
+                   : CUTEFISH_WINDOW_HINTS_V1_RESIZE_ANCHOR_TOP_LEFT);
+    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+    wl_display_flush(native->display());
+}
+
 } // namespace Cutefish

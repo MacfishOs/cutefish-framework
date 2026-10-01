@@ -13,6 +13,9 @@ class WindowHints : public QObject
     Q_OBJECT
     Q_PROPERTY(bool skipTaskbar READ skipTaskbar WRITE setSkipTaskbar NOTIFY skipTaskbarChanged)
     Q_PROPERTY(bool alwaysOnTop READ alwaysOnTop WRITE setAlwaysOnTop NOTIFY alwaysOnTopChanged)
+    // When the window resizes itself, keep its centre rather than its top-left corner.
+    Q_PROPERTY(bool resizeAroundCenter READ resizeAroundCenter WRITE setResizeAroundCenter
+                       NOTIFY resizeAroundCenterChanged)
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
 
 public:
@@ -24,11 +27,14 @@ public:
     void setSkipTaskbar(bool skip);
     bool alwaysOnTop() const { return m_alwaysOnTop; }
     void setAlwaysOnTop(bool alwaysOnTop);
+    bool resizeAroundCenter() const { return m_resizeAroundCenter; }
+    void setResizeAroundCenter(bool center);
     bool available() const;
 
 Q_SIGNALS:
     void skipTaskbarChanged();
     void alwaysOnTopChanged();
+    void resizeAroundCenterChanged();
     void availableChanged();
 
 protected:
@@ -43,6 +49,7 @@ private:
     QMetaObject::Connection m_destroyedConnection;
     bool m_skipTaskbar = false;
     bool m_alwaysOnTop = false;
+    bool m_resizeAroundCenter = false;
     bool m_surfaceDying = false;
 };
 
