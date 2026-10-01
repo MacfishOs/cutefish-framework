@@ -15,6 +15,8 @@ class TestHardware : public QObject
     Q_OBJECT
     Q_PROPERTY(bool available READ available CONSTANT)
     Q_PROPERTY(bool wirelessHwEnabled READ available CONSTANT)
+    Q_PROPERTY(bool ready READ available NOTIFY readyChanged)
+    Q_PROPERTY(bool hotspotCapable READ available NOTIFY hotspotSupportedChanged)
 public:
     explicit TestHardware(QObject *parent = nullptr)
         : QObject(parent)
@@ -22,6 +24,10 @@ public:
     }
 
     bool available() const { return true; }
+
+Q_SIGNALS:
+    void readyChanged();
+    void hotspotSupportedChanged();
 };
 
 // Stands in for the network models the sidebar watches for a wired device.
@@ -80,6 +86,7 @@ private slots:
         qmlRegisterType<TestHardware>("Cutefish.Settings", 1, 0, "Touchpad");
         qmlRegisterType<TestHardware>("Cutefish.Settings", 1, 0, "Touchscreen");
         qmlRegisterType<TestHardware>("Cutefish.Network", 1, 0, "EnabledConnections");
+        qmlRegisterType<TestHardware>("Cutefish.Network", 1, 0, "Handler");
         qmlRegisterType<TestNetworkModel>("Cutefish.Network", 1, 0, "NetworkModel");
         qmlRegisterType<TestNetworkModel>("Cutefish.Network", 1, 0, "AppletProxyModel");
         qmlRegisterType<TestNetworkModel>("Cutefish.Settings", 1, 0, "NetworkMockModel");
