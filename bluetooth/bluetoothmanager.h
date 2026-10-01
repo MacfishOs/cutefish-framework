@@ -17,6 +17,8 @@ class BluetoothManager : public QObject
     QML_SINGLETON
     Q_PROPERTY(bool operational READ operational NOTIFY changed)
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
+    // BlueZ has been read, or found absent; until then available reads false either way.
+    Q_PROPERTY(bool ready READ ready NOTIFY readyChanged)
     Q_PROPERTY(bool bluetoothOperational READ enabled NOTIFY enabledChanged)
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
     Q_PROPERTY(bool bluetoothBlocked READ blocked WRITE setBlocked NOTIFY enabledChanged)
@@ -41,6 +43,8 @@ public:
     bool operational() const { return m_operational; }
 
     bool available() const { return m_operational && !adapters().isEmpty(); }
+
+    bool ready() const { return m_ready; }
 
     bool enabled() const;
     bool blocked() const;
@@ -92,6 +96,7 @@ signals:
     void changed();
     void enabledChanged();
     void availableChanged();
+    void readyChanged();
     void adaptersChanged();
     void devicesChanged();
     void errorChanged();
@@ -110,6 +115,7 @@ private:
     friend class BluetoothAgent;
     void reset();
     void load(const QString &owner);
+    void setReady();
     void syncDiscovery();
     void registerAgent();
     void finishPrompt(const QString &error = QString());
@@ -126,6 +132,7 @@ private:
     QTimer m_retryTimer;
     quint64 m_generation = 0;
     bool m_operational = false;
+    bool m_ready = false;
     bool m_lastEnabled = false;
     bool m_lastAvailable = false;
     bool m_loading = false;

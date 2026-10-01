@@ -88,6 +88,7 @@ void BluetoothManager::refresh()
         return;
     if (!m_bus.isConnected()) {
         fail(tr("The system D-Bus connection is unavailable."));
+        setReady();
         return;
     }
     auto message = QDBusMessage::createMethodCall(
@@ -104,11 +105,20 @@ void BluetoothManager::refresh()
         if (reply.isError()) {
             if (m_operational)
                 reset();
+            setReady();
             return;
         }
         if (!m_operational)
             load(reply.value());
     });
+}
+
+void BluetoothManager::setReady()
+{
+    if (m_ready)
+        return;
+    m_ready = true;
+    emit readyChanged();
 }
 
 void BluetoothManager::ownerChanged(const QString &, const QString &, const QString &newOwner)
@@ -175,6 +185,7 @@ void BluetoothManager::load(const QString &owner)
              if (reply.type() == QDBusMessage::ErrorMessage) {
                  reset();
                  m_retryTimer.start();
+                 setReady();
                  return;
              }
              const auto objects = qdbus_cast<BluetoothObjects>(reply.arguments().value(0));
@@ -186,6 +197,7 @@ void BluetoothManager::load(const QString &owner)
                  event();
              m_operational = true;
              emit changed();
+             setReady();
              registerAgent();
              syncDiscovery();
          });
