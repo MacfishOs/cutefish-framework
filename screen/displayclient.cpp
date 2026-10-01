@@ -5,9 +5,8 @@
 // Upstream: chromium/src/ash/display/cros_display_config.cc
 // Revision: 7acd40ddefff49c9d36144999aafdbb674dbd07a
 //
-// Adapted for Cutefish: service-owner watching and pending D-Bus replies
-// replace synchronous KScreen operations and reconnect after compositor
-// restarts.
+// Adapted for Cutefish: asynchronous D-Bus calls, service-owner watching and
+// reconnecting after compositor restarts.
 
 #include "displayclient.h"
 

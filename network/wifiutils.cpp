@@ -237,7 +237,7 @@ QByteArray ssidKey(const QByteArray &ssid)
 Enums::SecurityType security(uint deviceCapabilities, uint apFlags, uint wpaFlags, uint rsnFlags,
                              uint mode)
 {
-    // In NetworkManager-Qt's order: security level first, then how common each is.
+    // Security level first, then how common each is.
     static const Enums::SecurityType order[] = {
         Enums::Wpa3SuiteB192, Enums::SAE, Enums::Wpa2Eap, Enums::Wpa2Psk, Enums::WpaEap, Enums::WpaPsk,
         Enums::StaticWep, Enums::DynamicWep, Enums::Leap, Enums::OWE, Enums::NoneSecurity,

@@ -5,7 +5,7 @@
 // Upstream: chromium/src/ash/display/cros_display_config.cc
 // Revision: 7acd40ddefff49c9d36144999aafdbb674dbd07a
 //
-// Adapted for Cutefish: stable native display requests replace KScreen state.
+// Adapted for Cutefish: built on the compositor's native display requests.
 
 #include "outputmodel.h"
 
