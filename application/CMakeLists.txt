@@ -9,6 +9,8 @@ add_library(cutefish-framework-application SHARED
     languageenvironment.h
     keyfile.cpp
     keyfile.h
+    mimeapps.cpp
+    mimeapps.h
     preferences.cpp
     preferences.h
     proxysettings.cpp
@@ -52,6 +54,7 @@ install(FILES
     cutefishapplication.h
     languageenvironment.h
     keyfile.h
+    mimeapps.h
     preferences.h
     proxysettings.h
     applicationlauncher.h
@@ -94,6 +97,10 @@ if(BUILD_TESTING)
     add_executable(tst_proxysettings tests/tst_proxysettings.cpp)
     target_link_libraries(tst_proxysettings PRIVATE Cutefish::Application Qt6::Test)
     add_test(NAME proxysettings COMMAND tst_proxysettings)
+
+    add_executable(tst_mimeapps tests/tst_mimeapps.cpp)
+    target_link_libraries(tst_mimeapps PRIVATE Cutefish::Application Qt6::Test)
+    add_test(NAME mimeapps COMMAND tst_mimeapps)
 
     add_executable(tst_applicationregistry tests/tst_applicationregistry.cpp)
     target_link_libraries(tst_applicationregistry PRIVATE Cutefish::Application Qt6::Test)
