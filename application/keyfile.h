@@ -7,7 +7,7 @@
 #include <QVariant>
 
 // Line-preserving access to INI-style files that several programs share, such as GLib's
-// GSettings keyfile and KDE's kioslaverc. Lines this code does not touch stay byte-identical.
+// GSettings keyfile. Lines this code does not touch stay byte-identical.
 namespace KeyFile
 {
 using Group = QMap<QString, QString>;
