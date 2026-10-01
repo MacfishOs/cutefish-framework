@@ -78,7 +78,6 @@ qt_add_qml_module(cutefish-framework-application-qml
     NO_PLUGIN_OPTIONAL
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Cutefish/Application"
     SOURCES
-        qmlregistration.cpp
         qmlregistration.h
 )
 target_link_libraries(cutefish-framework-application-qml PRIVATE
