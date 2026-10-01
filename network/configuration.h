@@ -43,6 +43,12 @@ public:
     QString hotspotPassword() const;
     void setHotspotPassword(const QString &password);
 
+    // 1 to 32 bytes, the SSID limit.
+    Q_INVOKABLE bool hotspotNameValid(const QString &name) const;
+    // A WPA passphrase: 8 to 63 bytes, or 64 hex digits.
+    Q_INVOKABLE bool hotspotPasswordValid(const QString &password) const;
+    Q_INVOKABLE QString generatePassword() const;
+
 Q_SIGNALS:
     void hotspotChanged();
 };

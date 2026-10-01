@@ -159,4 +159,20 @@ void Configuration::setHotspotPassword(const QString &password)
     HotspotSettings::instance()->setPassword(password);
 }
 
+bool Configuration::hotspotNameValid(const QString &name) const
+{
+    const qsizetype size = name.toUtf8().size();
+    return size > 0 && size <= 32;
+}
+
+bool Configuration::hotspotPasswordValid(const QString &password) const
+{
+    return WifiUtils::pskValid(password);
+}
+
+QString Configuration::generatePassword() const
+{
+    return WifiUtils::generatedPassword();
+}
+
 #include "configuration.moc"

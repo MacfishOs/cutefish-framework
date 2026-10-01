@@ -78,7 +78,7 @@ Handler::Handler(QObject *parent)
             [this](const QString &active, uint state, uint) { activeStateChanged(active, state); });
     connect(m_client, &NetworkClient::objectRemoved, this, [this](const QString &path) {
         // Gone without a final state: the activation never made it.
-        if (m_forget.contains(path))
+        if (m_forget.contains(path) || path == m_hotspotActivation)
             activeStateChanged(path, ActiveDeactivated);
     });
     connect(m_client, &NetworkClient::readyChanged, this, [this] {
@@ -208,6 +208,16 @@ void Handler::forgetUnlessActivated(const QString &connection, const QString &ac
 
 void Handler::activeStateChanged(const QString &active, uint state)
 {
+    if (!m_hotspotActivation.isEmpty() && active == m_hotspotActivation) {
+        if (state == ActiveDeactivated) {
+            m_hotspotActivation.clear();
+            Q_EMIT hotspotFailed(tr("The hotspot could not be started. The Wi-Fi adapter may not "
+                                    "support it on this channel or with this password."));
+        } else if (state == ActiveActivated) {
+            m_hotspotActivation.clear();
+        }
+    }
+
     const auto it = m_forget.constFind(active);
     if (it == m_forget.cend())
         return;
@@ -331,25 +341,10 @@ void Handler::enableWwan(bool enable)
 
 void Handler::createHotspot()
 {
-    // An idle adapter that can run an access point is best; one in use gets disconnected.
-    QString device;
     uint capabilities = 0;
-    for (const QString &candidate : m_client->devices()) {
-        if (m_client->deviceType(candidate) != DeviceWifi)
-            continue;
-        const uint caps = m_client->property(candidate, wirelessInterface,
-                                             QStringLiteral("WirelessCapabilities")).toUInt();
-        const bool idle = m_client->activeConnection(candidate).isEmpty();
-        const bool better = device.isEmpty() || ((caps & CapAp) && !(capabilities & CapAp))
-                || (bool(caps & CapAp) == bool(capabilities & CapAp) && idle
-                    && !m_client->activeConnection(device).isEmpty());
-        if (better) {
-            device = candidate;
-            capabilities = caps;
-        }
-    }
+    const QString device = hotspotDevice(&capabilities);
     if (device.isEmpty()) {
-        qWarning() << "Failed to create hotspot: missing wireless device";
+        Q_EMIT hotspotFailed(tr("No Wi-Fi adapter can run a hotspot."));
         return;
     }
 
@@ -396,22 +391,47 @@ void Handler::createHotspot()
     if (existing.isEmpty()) {
         m_client->call(managerPath, managerInterface, QStringLiteral("AddAndActivateConnection"),
                        {QVariant::fromValue(settings), objectPath(device), objectPath(QString())}, this,
-                       {}, kAuthorizedCallTimeoutMs);
+                       [this](const QDBusMessage &reply) { hotspotRequestFinished(reply, 1); },
+                       kAuthorizedCallTimeoutMs);
         return;
     }
 
     m_client->call(existing, connectionInterface, QStringLiteral("Update"), {QVariant::fromValue(settings)},
                    this, [this, existing, device](const QDBusMessage &reply) {
-                       if (reply.type() == QDBusMessage::ReplyMessage)
-                           activateConnection(existing, device, QString());
-                       else
-                           qWarning() << "Cannot update the hotspot:" << reply.errorMessage();
+                       if (reply.type() != QDBusMessage::ReplyMessage) {
+                           hotspotRequestFinished(reply, 0);
+                           return;
+                       }
+                       m_client->call(managerPath, managerInterface, QStringLiteral("ActivateConnection"),
+                                      {objectPath(existing), objectPath(device), objectPath(QString())}, this,
+                                      [this](const QDBusMessage &reply) { hotspotRequestFinished(reply, 0); },
+                                      kAuthorizedCallTimeoutMs);
                    },
                    kAuthorizedCallTimeoutMs);
 }
 
+void Handler::hotspotRequestFinished(const QDBusMessage &reply, int activePathArgument)
+{
+    if (reply.type() != QDBusMessage::ReplyMessage) {
+        // Cancelling the administrator password prompt is no failure to report.
+        if (reply.errorName() != QLatin1String("org.freedesktop.NetworkManager.PermissionDenied"))
+            Q_EMIT hotspotFailed(reply.errorMessage());
+        return;
+    }
+
+    const QString active = reply.arguments().value(activePathArgument).value<QDBusObjectPath>().path();
+    const uint state = m_client->property(active, activeInterface, QStringLiteral("State")).toUInt();
+    if (state == ActiveActivated)
+        return;
+    m_hotspotActivation = active;
+    // Its state may have changed before this reply arrived.
+    if (state == ActiveDeactivated || state == ActiveDeactivating)
+        activeStateChanged(active, ActiveDeactivated);
+}
+
 void Handler::stopHotspot()
 {
+    m_hotspotActivation.clear();
     const QString active = hotspotActiveConnection();
     if (active.isEmpty())
         return;
@@ -572,29 +592,62 @@ QString Handler::hotspotActiveConnection() const
     return {};
 }
 
+QString Handler::hotspotDevice(uint *capabilities) const
+{
+    // An idle adapter that can run an access point is best; one in use gets disconnected.
+    QString device;
+    uint deviceCapabilities = 0;
+    for (const QString &candidate : m_client->devices()) {
+        if (m_client->deviceType(candidate) != DeviceWifi
+            || !m_client->property(candidate, deviceInterface, QStringLiteral("Managed")).toBool())
+            continue;
+        const uint caps = m_client->property(candidate, wirelessInterface,
+                                             QStringLiteral("WirelessCapabilities")).toUInt();
+        if (!(caps & (CapAp | CapAdhoc)))
+            continue;
+        const bool idle = m_client->activeConnection(candidate).isEmpty();
+        const bool better = device.isEmpty() || ((caps & CapAp) && !(deviceCapabilities & CapAp))
+                || (bool(caps & CapAp) == bool(deviceCapabilities & CapAp) && idle
+                    && !m_client->activeConnection(device).isEmpty());
+        if (better) {
+            device = candidate;
+            deviceCapabilities = caps;
+        }
+    }
+    if (capabilities)
+        *capabilities = deviceCapabilities;
+    return device;
+}
+
 void Handler::update()
 {
-    bool wifi = false;
-    bool idle = false;
-    for (const QString &device : m_client->devices()) {
-        if (m_client->deviceType(device) != DeviceWifi)
-            continue;
-        wifi = true;
-        idle |= m_client->deviceState(device) == DeviceDisconnected;
+    const QString device = hotspotDevice();
+    const bool capable = !device.isEmpty();
+
+    // Polkit answers "auth" when an administrator password would do; an unread answer
+    // doesn't block either.
+    const QString permission = m_client->permission(QStringLiteral("org.freedesktop.NetworkManager.wifi.share.protected"));
+    const bool allowed = m_client->manager(QStringLiteral("WirelessEnabled")).toBool()
+            && permission != QLatin1String("no");
+
+    // The network this adapter is on goes when the hotspot takes it over.
+    QString replaces;
+    const QString active = capable ? m_client->activeConnection(device) : QString();
+    if (!active.isEmpty()
+        && NetworkClient::path(m_client->property(active, activeInterface, QStringLiteral("Connection")))
+                != m_client->hotspotConnection())
+        replaces = m_client->property(active, activeInterface, QStringLiteral("Id")).toString();
+
+    if (capable != m_hotspotCapable || allowed != m_hotspotAllowed || replaces != m_hotspotReplaces) {
+        m_hotspotCapable = capable;
+        m_hotspotAllowed = allowed;
+        m_hotspotReplaces = replaces;
+        Q_EMIT hotspotSupportedChanged();
     }
 
-    // A hotspot on the adapter that carries the internet connection would cut it off.
-    const bool supported = wifi && m_client->manager(QStringLiteral("WirelessEnabled")).toBool()
-            && (idle || m_client->manager(QStringLiteral("PrimaryConnectionType")).toString()
-                        != QLatin1String("802-11-wireless"));
-    if (supported != m_hotspotSupported) {
-        m_hotspotSupported = supported;
-        Q_EMIT hotspotSupportedChanged(supported);
-    }
-
-    const bool active = !hotspotActiveConnection().isEmpty();
-    if (active != m_hotspotActive) {
-        m_hotspotActive = active;
+    const bool hotspot = !hotspotActiveConnection().isEmpty();
+    if (hotspot != m_hotspotActive) {
+        m_hotspotActive = hotspot;
         Q_EMIT hotspotActiveChanged();
     }
 }

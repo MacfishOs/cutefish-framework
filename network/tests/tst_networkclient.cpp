@@ -1,3 +1,4 @@
+#include "../configuration.h"
 #include "../enums.h"
 #include "../handler.h"
 #include "../networkclient.h"
@@ -200,6 +201,94 @@ private slots:
         QCOMPARE(nm->count(QStringLiteral("RequestScan")), 1);
     }
 
+    void hotspotKeepsOneProfile()
+    {
+        Handler handler;
+        QTRY_VERIFY(handler.hotspotCapable());
+        QVERIFY(handler.hotspotSupported());
+        QVERIFY(handler.hotspotReplaces().isEmpty());
+        QVERIFY(!handler.hotspotActive());
+
+        Configuration configuration;
+        configuration.setHotspotName(QStringLiteral("Desk"));
+        configuration.setHotspotPassword(QStringLiteral("good password"));
+        handler.createHotspot();
+        QTRY_COMPARE(nm->count(QStringLiteral("AddAndActivateConnection")), 1);
+
+        const QDBusMessage call = nm->last(QStringLiteral("AddAndActivateConnection"));
+        QCOMPARE(call.arguments().value(1).value<QDBusObjectPath>().path(), wifiDevice);
+        const auto settings = qdbus_cast<NMVariantMapMap>(call.arguments().value(0));
+        QCOMPARE(settings.value(QStringLiteral("802-11-wireless")).value(QStringLiteral("mode")).toString(),
+                 QStringLiteral("ap"));
+        QCOMPARE(settings.value(QStringLiteral("802-11-wireless")).value(QStringLiteral("ssid")).toByteArray(),
+                 QByteArray("Desk"));
+        QCOMPARE(settings.value(QStringLiteral("802-11-wireless-security")).value(QStringLiteral("psk")).toString(),
+                 QStringLiteral("good password"));
+        QCOMPARE(settings.value(QStringLiteral("ipv4")).value(QStringLiteral("method")).toString(),
+                 QStringLiteral("shared"));
+        QTRY_VERIFY(handler.hotspotActive());
+
+        // The next start updates that profile rather than adding another.
+        QString active;
+        for (const QString &path : NetworkClient::instance()->activeConnections()) {
+            if (path != wiredActive)
+                active = path;
+        }
+        nm->remove(active);
+        QTRY_VERIFY(!handler.hotspotActive());
+        configuration.setHotspotName(QStringLiteral("Desk 2"));
+        handler.createHotspot();
+        QTRY_COMPARE(nm->count(QStringLiteral("ActivateConnection")), 1);
+        QCOMPARE(nm->count(QStringLiteral("AddAndActivateConnection")), 1);
+        const auto updated = qdbus_cast<NMVariantMapMap>(nm->last(QStringLiteral("Update")).arguments().value(0));
+        QCOMPARE(updated.value(QStringLiteral("802-11-wireless")).value(QStringLiteral("ssid")).toByteArray(),
+                 QByteArray("Desk 2"));
+        QCOMPARE(nm->last(QStringLiteral("ActivateConnection")).arguments().value(0).value<QDBusObjectPath>().path(),
+                 nm->last(QStringLiteral("Update")).path());
+        QTRY_VERIFY(handler.hotspotActive());
+    }
+
+    void hotspotThatNeverComesUpIsReported()
+    {
+        Handler handler;
+        QSignalSpy failed(&handler, &Handler::hotspotFailed);
+        handler.createHotspot();
+        QTRY_COMPARE(NetworkClient::instance()->activeConnections().size(), 2);
+        QString active;
+        for (const QString &path : NetworkClient::instance()->activeConnections()) {
+            if (path != wiredActive)
+                active = path;
+        }
+
+        // NM_ACTIVE_CONNECTION_STATE_DEACTIVATED for DEVICE_DISCONNECTED.
+        QTest::qWait(100);
+        nm->emitSignal(active, FakeNM::active, QStringLiteral("StateChanged"), {4u, 3u});
+        QTRY_COMPARE(failed.size(), 1);
+    }
+
+    void hotspotNamesTheNetworkItWouldEnd()
+    {
+        Handler handler;
+        QTRY_VERIFY(handler.hotspotCapable());
+
+        nm->add(homeActive, {{FakeNM::active,
+                              {{QStringLiteral("Connection"), FakeNM::path(homeProfile)},
+                               {QStringLiteral("Id"), QStringLiteral("Home")},
+                               {QStringLiteral("Devices"), FakeNM::paths({wifiDevice})},
+                               {QStringLiteral("State"), 2u},
+                               {QStringLiteral("Type"), QStringLiteral("802-11-wireless")},
+                               {QStringLiteral("Vpn"), false}}}});
+        nm->set(wifiDevice, FakeNM::device, QStringLiteral("ActiveConnection"), FakeNM::path(homeActive));
+        QTRY_COMPARE(handler.hotspotReplaces(), QStringLiteral("Home"));
+        QVERIFY(handler.hotspotSupported());
+
+        nm->permissions[QStringLiteral("org.freedesktop.NetworkManager.wifi.share.protected")] = QStringLiteral("no");
+        nm->emitSignal(FakeNM::managerPath, FakeNM::manager, QStringLiteral("CheckPermissions"), {});
+        QTRY_VERIFY(!handler.hotspotAllowed());
+        QVERIFY(!handler.hotspotSupported());
+        QVERIFY(handler.hotspotCapable());
+    }
+
     void vpnRowsFollowTheirState()
     {
         NetworkModel model;
@@ -379,6 +468,7 @@ private:
         nm->add(path, {{FakeNM::connection, {{QStringLiteral("Flags"), 0u}}}});
     }
 
+    const QString homeActive = FakeNM::managerPath + QStringLiteral("/ActiveConnection/2");
     const QString officeVpn = FakeNM::managerPath + QStringLiteral("/Settings/30");
     const QString branchVpn = FakeNM::managerPath + QStringLiteral("/Settings/31");
     const QString homeVpn = FakeNM::managerPath + QStringLiteral("/Settings/32");

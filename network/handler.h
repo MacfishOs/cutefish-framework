@@ -25,6 +25,7 @@
 
 #include <network_export.h>
 
+#include <QDBusMessage>
 #include <QHash>
 #include <QObject>
 #include <QUrl>
@@ -38,13 +39,23 @@ class CUTEFISH_NETWORK_EXPORT Handler : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
+    // A Wi-Fi adapter can run an access point, or at least an ad-hoc network.
+    Q_PROPERTY(bool hotspotCapable READ hotspotCapable NOTIFY hotspotSupportedChanged)
+    // Wi-Fi is on and system policy lets this user share a connection.
+    Q_PROPERTY(bool hotspotAllowed READ hotspotAllowed NOTIFY hotspotSupportedChanged)
+    // createHotspot() can start one now.
     Q_PROPERTY(bool hotspotSupported READ hotspotSupported NOTIFY hotspotSupportedChanged)
+    // The Wi-Fi network that starting the hotspot would disconnect from, if any.
+    Q_PROPERTY(QString hotspotReplaces READ hotspotReplaces NOTIFY hotspotSupportedChanged)
     Q_PROPERTY(bool hotspotActive READ hotspotActive NOTIFY hotspotActiveChanged)
 
 public:
     explicit Handler(QObject *parent = nullptr);
 
-    bool hotspotSupported() const { return m_hotspotSupported; }
+    bool hotspotCapable() const { return m_hotspotCapable; }
+    bool hotspotAllowed() const { return m_hotspotAllowed; }
+    bool hotspotSupported() const { return m_hotspotCapable && m_hotspotAllowed; }
+    QString hotspotReplaces() const { return m_hotspotReplaces; }
     bool hotspotActive() const { return m_hotspotActive; }
 
 public Q_SLOTS:
@@ -87,8 +98,10 @@ public Q_SLOTS:
 Q_SIGNALS:
     void vpnAdded(const QString &uuid);
     void vpnAddFailed(const QString &message);
-    void hotspotSupportedChanged(bool hotspotSupported);
+    void hotspotSupportedChanged();
     void hotspotActiveChanged();
+    // A hotspot this Handler started failed to come up.
+    void hotspotFailed(const QString &message);
 
 private:
     void addAndActivateWireless(const QString &device, const QString &specificObject,
@@ -99,12 +112,18 @@ private:
     void activeStateChanged(const QString &active, uint state);
     void update();
     QString hotspotActiveConnection() const;
+    QString hotspotDevice(uint *capabilities = nullptr) const;
+    void hotspotRequestFinished(const QDBusMessage &reply, int activePathArgument);
 
     NetworkClient *m_client;
     bool m_scanRequested = false;
     QString m_scanInterface;
-    bool m_hotspotSupported = false;
+    bool m_hotspotCapable = false;
+    bool m_hotspotAllowed = false;
+    QString m_hotspotReplaces;
     bool m_hotspotActive = false;
+    // The hotspot activation this Handler started, until it is up or has failed.
+    QString m_hotspotActivation;
     // New profiles by the active connection of their first activation.
     QHash<QString, QString> m_forget;
 };
