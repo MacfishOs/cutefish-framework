@@ -20,6 +20,7 @@ The framework provides these CMake targets and C++ aliases:
 - `cutefish-framework-display` / `Cutefish::Display`
 - `cutefish-framework-media` / `Cutefish::Media`
 - `cutefish-framework-network` / `Cutefish::Network`
+- `cutefish-framework-power` / `Cutefish::Power`
 - `cutefish-framework-protocols` / `Cutefish::Protocols`
 - `cutefish-framework-screen` / `Cutefish::Screen`
 
@@ -36,6 +37,9 @@ offers it only to the trusted shell and allowlisted programs.
 `com.cutefish.DisplayConfig1` D-Bus interface. Use it rather than `QScreen` for
 facts about the hardware, such as internal and external panels, mirroring or
 power. `QScreen` still decides where a window goes.
+
+`Cutefish::Power` holds `BatteryStatus`, the battery as cutefish-services
+reports it, read asynchronously so its getters never block.
 
 The QML modules are `Cutefish.Application`, `Cutefish.Accounts`, `Cutefish.Appearance`,
 `Cutefish.Audio`, `Cutefish.Bluetooth`, `Cutefish.Media`,

@@ -51,6 +51,7 @@ add_subdirectory(bluetooth)
 add_subdirectory(media)
 add_subdirectory(network)
 add_subdirectory(screen)
+add_subdirectory(power)
 add_subdirectory(appearance)
 add_subdirectory(audio)
 
