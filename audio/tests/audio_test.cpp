@@ -1,6 +1,5 @@
 #include "audiomodel.h"
 #include "backend.h"
-#include "soundplayer.h"
 #include "volumemonitor.h"
 #include "fakeaudiodevice.h"
 #include "teststream.h"
@@ -47,7 +46,7 @@ private Q_SLOTS:
     void hotplug();
     void hardwareRoutes();
     void streamRouting();
-    void feedbackAndMonitor();
+    void monitor();
     void qmlModelsAndControls();
     void settingsMultipleDevices();
     void reconnect();
@@ -448,29 +447,23 @@ void AudioTest::streamRouting()
     QTRY_COMPARE(m_backend->defaultNode(AudioObject::Source), find("test-input"));
 }
 
-void AudioTest::feedbackAndMonitor()
+void AudioTest::monitor()
 {
     AudioObject *sink = find("test-output-a");
     sink->setVolume(1.0);
     QTRY_VERIFY(std::abs(sink->volume() - 1.0) < 0.0001);
     VolumeMonitor monitor;
     monitor.setTarget(sink);
-    SoundPlayer player(m_backend);
-    QSignalSpy finished(&player, &SoundPlayer::finished);
-    QSignalSpy failures(&player, &SoundPlayer::failed);
     double peak = 0.0;
     connect(&monitor, &VolumeMonitor::volumeChanged, this, [&] { peak = std::max(peak, monitor.volume()); });
-    player.play(sink, "front-left");
+    TestStream tone(m_backend->core(), "test-tone",
+        sink->properties().value(PW_KEY_OBJECT_SERIAL).toString().toUtf8(), false, 0.5f);
+    QVERIFY(tone.connected);
     QTRY_VERIFY_WITH_TIMEOUT(monitor.isAvailable(), 2000);
     QTRY_VERIFY_WITH_TIMEOUT(peak > 0.01, 2000);
-    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 2000);
-    QCOMPARE(failures.count(), 0);
     monitor.setTarget(nullptr);
     QCOMPARE(monitor.volume(), 0.0);
     QVERIFY(!monitor.isAvailable());
-    player.play(nullptr);
-    player.play(sink, "not-a-channel");
-    QCOMPARE(finished.count(), 1);
 }
 
 void AudioTest::qmlModelsAndControls()
@@ -489,13 +482,6 @@ void AudioTest::qmlModelsAndControls()
             property alias slider: slider
             SinkModel { id: sinks }
             SourceModel { id: sources }
-            AudioObjectFilterModel {
-                id: filtered
-                sourceModel: sinks
-                sortRole: "SortByDefault"
-                sortOrder: Qt.DescendingOrder
-                filterOutInactiveDevices: true
-            }
             FishUI.Slider {
                 id: slider
                 from: PipeWire.MinimalVolume
@@ -504,11 +490,9 @@ void AudioTest::qmlModelsAndControls()
                 onMoved: if (sinks.defaultSink) sinks.defaultSink.volume = value
             }
             Repeater {
-                model: filtered
+                model: sinks
                 delegate: Text { text: Description + ": " + Math.round(Volume * 100) }
             }
-            VolumeFeedback {}
-            SpeakerTest {}
             VolumeMonitor {}
         }
     )", QUrl("file:///audio-test.qml"));
@@ -656,8 +640,6 @@ void AudioTest::reconnect()
     QPointer<AudioObject> previous = find("test-output-a");
     VolumeMonitor monitor;
     monitor.setTarget(previous);
-    SoundPlayer player(m_backend);
-    player.play(previous, "front-right");
     stopServers();
     QTRY_VERIFY_WITH_TIMEOUT(!m_backend->isConnected(), 5000);
     QCOMPARE(sinks.rowCount(), 0);

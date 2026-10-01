@@ -46,7 +46,6 @@ The QML modules are `Cutefish.Application`, `Cutefish.Accounts`, `Cutefish.Appea
 `Cutefish.Network`, and `Cutefish.Screen`.
 
 The audio module uses native PipeWire with WirePlumber session policy.
-See [audio integration and tests](audio/README.md) for details.
 
 ## Dependencies
 

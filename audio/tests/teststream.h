@@ -3,7 +3,6 @@
 #include <QByteArray>
 
 #include <algorithm>
-#include <cstring>
 
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
@@ -11,8 +10,12 @@
 class TestStream
 {
 public:
-    TestStream(pw_core *core, const QByteArray &name, const QByteArray &target, bool capture = false)
+    // A playback stream plays a constant level, which a volume monitor reads back. Each
+    // stream is its own application, so WirePlumber restores no other stream's volume onto it.
+    TestStream(pw_core *core, const QByteArray &name, const QByteArray &target, bool capture = false,
+               float level = 0.0f)
         : m_capture(capture)
+        , m_level(level)
     {
         // Controls must use a different client connection from the exported stream.
         m_core = pw_context_connect(pw_core_get_context(core), nullptr, 0);
@@ -20,7 +23,7 @@ public:
             return;
         auto *properties = pw_properties_new(PW_KEY_NODE_NAME, name.constData(),
             PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, capture ? "Capture" : "Playback",
-            PW_KEY_APP_NAME, "Test Application", PW_KEY_TARGET_OBJECT, target.constData(), nullptr);
+            PW_KEY_APP_NAME, name.constData(), PW_KEY_TARGET_OBJECT, target.constData(), nullptr);
         m_stream = pw_stream_new(m_core, name.constData(), properties);
         if (!m_stream)
             return;
@@ -56,6 +59,7 @@ private:
     pw_stream *m_stream = nullptr;
     spa_hook m_listener {};
     bool m_capture;
+    float m_level;
 
     inline static const pw_stream_events events = [] {
         pw_stream_events events {};
@@ -74,7 +78,7 @@ private:
                     constexpr uint32_t stride = 2 * sizeof(float);
                     const uint32_t frames = buffer->requested
                         ? std::min<uint64_t>(buffer->requested, data.maxsize / stride) : data.maxsize / stride;
-                    std::memset(data.data, 0, frames * stride);
+                    std::fill_n(static_cast<float *>(data.data), frames * 2, self->m_level);
                     data.chunk->offset = 0;
                     data.chunk->size = frames * stride;
                     data.chunk->stride = stride;

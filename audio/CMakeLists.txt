@@ -10,13 +10,8 @@ set(CUTEFISH_AUDIO_SOURCES
     audiomodel.h
     backend.cpp
     backend.h
-    soundplayer.cpp
-    soundplayer.h
     volumemonitor.cpp
     volumemonitor.h
-    model/sortfiltermodel.cpp
-    model/audiofiltermodel.cpp
-    model/audiofiltermodel.h
     qml/plugin.cpp
 )
 

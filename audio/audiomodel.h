@@ -55,25 +55,4 @@ public:
     explicit SourceModel(QObject *parent = nullptr);
 };
 
-class SinkInputModel : public AudioModel
-{
-    Q_OBJECT
-public:
-    explicit SinkInputModel(QObject *parent = nullptr);
-};
-
-class SourceOutputModel : public AudioModel
-{
-    Q_OBJECT
-public:
-    explicit SourceOutputModel(QObject *parent = nullptr);
-};
-
-class CardModel : public AudioModel
-{
-    Q_OBJECT
-public:
-    explicit CardModel(QObject *parent = nullptr);
-};
-
 }

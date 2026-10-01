@@ -126,19 +126,4 @@ SourceModel::SourceModel(QObject *parent)
 {
 }
 
-SinkInputModel::SinkInputModel(QObject *parent)
-    : AudioModel(AudioObject::Playback, Backend::instance(), parent)
-{
-}
-
-SourceOutputModel::SourceOutputModel(QObject *parent)
-    : AudioModel(AudioObject::Capture, Backend::instance(), parent)
-{
-}
-
-CardModel::CardModel(QObject *parent)
-    : AudioModel(AudioObject::Card, Backend::instance(), parent)
-{
-}
-
 }
