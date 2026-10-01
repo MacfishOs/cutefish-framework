@@ -10,6 +10,7 @@
 
 #include "displayclient.h"
 
+#include <algorithm>
 #include <utility>
 
 #include <QDBusConnectionInterface>
@@ -238,6 +239,22 @@ bool DisplayClient::setDockedLidClosed(bool closed, Completion done)
     if (!m_interface || !m_interface->isValid())
         return false;
     return sendRequest(m_interface->SetDockedLidClosed(closed), std::move(done));
+}
+
+bool DisplayClient::setNightLight(double strength, uint durationMs)
+{
+    if (!m_interface || !m_interface->isValid())
+        return false;
+    m_interface->SetNightLight(strength, durationMs);
+    return true;
+}
+
+bool DisplayClient::nightLightAvailable() const
+{
+    return std::any_of(m_state.physical.begin(), m_state.physical.end(),
+                       [](const ipc::PhysicalDisplay &display) {
+                           return display.capabilities & ipc::ColorTransformCapability;
+                       });
 }
 
 bool DisplayClient::sendRequest(const QDBusPendingCall &call, Completion done)

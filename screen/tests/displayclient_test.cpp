@@ -1,5 +1,6 @@
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -33,6 +34,7 @@ public:
     ErrorCode error = ErrorCode::None;
     QList<bool> dockedRequests;
     QList<uint> powerRequests;
+    QList<std::pair<double, uint>> nightLightRequests;
 
 public slots:
     QString SetDockedLidClosed(bool closed)
@@ -45,6 +47,11 @@ public slots:
     {
         powerRequests.append(state);
         return finish(true, ErrorCode::None);
+    }
+
+    void SetNightLight(double strength, uint durationMs)
+    {
+        nightLightRequests.append({strength, durationMs});
     }
 
 signals:
@@ -129,6 +136,18 @@ private slots:
             QFAIL("a request that was never sent must not complete");
         }));
         QVERIFY(!client.setDisplayPower(false));
+        QVERIFY(!client.setNightLight(0.5, 1000));
+    }
+
+    void sendsTheNightLight()
+    {
+        Service service;
+        QVERIFY(service.start());
+        DisplayClient client;
+        QVERIFY(client.setNightLight(0.25, 60000));
+        QTRY_COMPARE(service.fake.nightLightRequests.size(), 1);
+        QCOMPARE(service.fake.nightLightRequests.first().first, 0.25);
+        QCOMPARE(service.fake.nightLightRequests.first().second, 60000u);
     }
 
     void completesWhenTheOperationFinishesAfterTheReply()

@@ -83,6 +83,10 @@ struct PhysicalDisplay {
     QList<Mode> modes;
 };
 
+// The capabilities bit for a display the night light can tint, the
+// compositor's DisplayCapability::ColorTransform.
+inline constexpr uint ColorTransformCapability = 1u << 7;
+
 struct LogicalDisplay {
     QString id;
     QString waylandName;

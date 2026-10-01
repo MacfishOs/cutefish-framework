@@ -66,6 +66,13 @@ public:
     // Closing fails with NoEnabledOutput when no external display is in use.
     bool setDockedLidClosed(bool closed, Completion done = {});
 
+    // Moves the night light to `strength`, 0 for off to 1 for the warmest, over
+    // `durationMs`. False when the compositor is not on the bus.
+    bool setNightLight(double strength, uint durationMs);
+
+    // Whether a display in the current state can be tinted.
+    bool nightLightAvailable() const;
+
 signals:
     void availabilityChanged();
     void stateChanged();

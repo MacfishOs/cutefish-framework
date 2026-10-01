@@ -39,6 +39,8 @@ install(EXPORT CutefishFrameworkDisplayTargets
 )
 
 set(CUTEFISH_SCREEN_SOURCES
+    nightlight.cpp
+    nightlight.h
     output.cpp
     output.h
     outputmodel.cpp
