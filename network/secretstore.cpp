@@ -154,24 +154,34 @@ void SecretStore::load(const QString &uuid, const QString &settingName,
 }
 
 void SecretStore::save(const QString &uuid, const QString &connectionName,
-                       const QString &settingName, const QString &key, const QString &value)
+                       const QString &settingName, const QString &key, const QString &value,
+                       std::function<void()> done)
 {
+    const auto finish = [done](const QString &session, SecretStore *store) {
+        if (!session.isEmpty())
+            store->closeSession(session);
+        if (done)
+            done();
+    };
+
     openSession([=, this](const QString &session) {
-        if (session.isEmpty())
+        if (session.isEmpty()) {
+            finish(session, this);
             return;
+        }
 
         call(servicePath, serviceInterface, QStringLiteral("ReadAlias"), {QStringLiteral("default")},
              [=, this](const QDBusMessage &reply) {
                  const auto collection = reply.arguments().value(0).value<QDBusObjectPath>();
                  if (reply.type() != QDBusMessage::ReplyMessage || collection.path() == noPrompt) {
                      qWarning() << "Secret Service has no default collection to store" << key << "in";
-                     closeSession(session);
+                     finish(session, this);
                      return;
                  }
 
                  unlock({collection}, [=, this](const Paths &unlocked) {
                      if (unlocked.isEmpty()) {
-                         closeSession(session);
+                         finish(session, this);
                          return;
                      }
 
@@ -200,26 +210,59 @@ void SecretStore::save(const QString &uuid, const QString &connectionName,
                               if (reply.type() == QDBusMessage::ReplyMessage
                                   && promptPath.path() != noPrompt)
                                   prompt(promptPath, [=, this](bool, const QVariant &) {
-                                      closeSession(session);
+                                      finish(session, this);
                                   });
                               else
-                                  closeSession(session);
+                                  finish(session, this);
                           });
                  });
              });
     });
 }
 
-void SecretStore::remove(const QString &uuid)
+void SecretStore::replace(const QString &uuid, const QString &connectionName,
+                          const QList<Entry> &entries, std::function<void()> done)
 {
-    search({{QStringLiteral("connection-uuid"), uuid}}, [this](const Paths &items) {
+    remove(uuid, [=, this] {
+        if (entries.isEmpty()) {
+            if (done)
+                done();
+            return;
+        }
+
+        auto pending = std::make_shared<int>(entries.size());
+        for (const Entry &entry : entries) {
+            save(uuid, connectionName, entry.setting, entry.key, entry.value, [pending, done] {
+                if (--*pending == 0 && done)
+                    done();
+            });
+        }
+    });
+}
+
+void SecretStore::remove(const QString &uuid, std::function<void()> done)
+{
+    search({{QStringLiteral("connection-uuid"), uuid}}, [this, done](const Paths &items) {
+        if (items.isEmpty()) {
+            if (done)
+                done();
+            return;
+        }
+
+        auto pending = std::make_shared<int>(items.size());
+        const auto settle = [pending, done] {
+            if (--*pending == 0 && done)
+                done();
+        };
         for (const QDBusObjectPath &item : items) {
             call(item.path(), itemInterface, QStringLiteral("Delete"), {},
-                 [this](const QDBusMessage &reply) {
+                 [this, settle](const QDBusMessage &reply) {
                      const auto promptPath = reply.arguments().value(0).value<QDBusObjectPath>();
                      if (reply.type() == QDBusMessage::ReplyMessage
                          && promptPath.path() != noPrompt)
-                         prompt(promptPath, [](bool, const QVariant &) {});
+                         prompt(promptPath, [settle](bool, const QVariant &) { settle(); });
+                     else
+                         settle();
                  });
         }
     });

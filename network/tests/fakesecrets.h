@@ -107,18 +107,3 @@ public:
     int lastItem = 0;
     int closedSessions = 0;
 };
-
-// Just enough of NetworkManager for NetworkManagerQt to register its agent.
-class FakeAgentManager : public QDBusVirtualObject
-{
-public:
-    QString introspect(const QString &) const override { return {}; }
-
-    bool handleMessage(const QDBusMessage &message, const QDBusConnection &connection) override
-    {
-        if (message.interface() != QStringLiteral("org.freedesktop.NetworkManager.AgentManager"))
-            return false;
-        connection.send(message.createReply());
-        return true;
-    }
-};

@@ -18,55 +18,33 @@
     License along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef PLASMA_NM_CONFIGURATION_H
-#define PLASMA_NM_CONFIGURATION_H
+#ifndef CUTEFISH_NETWORK_CONFIGURATION_H
+#define CUTEFISH_NETWORK_CONFIGURATION_H
+
+#include <network_export.h>
 
 #include <QObject>
 #include <QtQml/qqmlregistration.h>
 
-#include <NetworkManagerQt/Manager>
-
-class Q_DECL_EXPORT Configuration : public QObject
+// The hotspot's name and password. Every instance in a process shows the same values,
+// which live in NetworkManager's hotspot profile once it exists.
+class CUTEFISH_NETWORK_EXPORT Configuration : public QObject
 {
-    Q_PROPERTY(bool unlockModemOnDetection READ unlockModemOnDetection WRITE setUnlockModemOnDetection)
-    Q_PROPERTY(bool manageVirtualConnections READ manageVirtualConnections WRITE setManageVirtualConnections)
-    Q_PROPERTY(bool airplaneModeEnabled READ airplaneModeEnabled WRITE setAirplaneModeEnabled)
-    Q_PROPERTY(QString hotspotName READ hotspotName WRITE setHotspotName)
-    Q_PROPERTY(QString hotspotPassword READ hotspotPassword WRITE setHotspotPassword)
-    Q_PROPERTY(QString hotspotConnectionPath READ hotspotConnectionPath WRITE setHotspotConnectionPath)
-
-    //Readonly constant property, as this value should only be set by the platform
-    Q_PROPERTY(bool showPasswordDialog READ showPasswordDialog CONSTANT)
     Q_OBJECT
     QML_ELEMENT
+    Q_PROPERTY(QString hotspotName READ hotspotName WRITE setHotspotName NOTIFY hotspotChanged)
+    Q_PROPERTY(QString hotspotPassword READ hotspotPassword WRITE setHotspotPassword NOTIFY hotspotChanged)
 
 public:
-    Configuration();
+    explicit Configuration(QObject *parent = nullptr);
 
-    bool unlockModemOnDetection();
-    void setUnlockModemOnDetection(bool unlock);
-
-    bool manageVirtualConnections();
-    void setManageVirtualConnections(bool manage);
-
-    bool airplaneModeEnabled();
-    void setAirplaneModeEnabled(bool enabled);
-
-    QString hotspotName();
+    QString hotspotName() const;
     void setHotspotName(const QString &name);
-
-    QString hotspotPassword();
+    QString hotspotPassword() const;
     void setHotspotPassword(const QString &password);
 
-    QString hotspotConnectionPath();
-    void setHotspotConnectionPath(const QString &path);
-
-    bool showPasswordDialog();
-
-    static Configuration &self();
-
-private:
-    QString m_userName;
+Q_SIGNALS:
+    void hotspotChanged();
 };
 
-#endif // PLAMA_NM_CONFIGURATION_H
+#endif // CUTEFISH_NETWORK_CONFIGURATION_H

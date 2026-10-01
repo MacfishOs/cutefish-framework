@@ -3,11 +3,12 @@
 
 #include <network_export.h>
 
-#include <QtCore/QObject>
+#include <QObject>
 #include <QtQml/qqmlregistration.h>
 
-#include <NetworkManagerQt/Connection>
+class NetworkClient;
 
+// One saved profile's name and switches, written back to NetworkManager as they change.
 class CUTEFISH_NETWORK_EXPORT WirelessItemSettings : public QObject
 {
     Q_OBJECT
@@ -18,37 +19,33 @@ class CUTEFISH_NETWORK_EXPORT WirelessItemSettings : public QObject
     Q_PROPERTY(bool availableToOtherUsers READ availableToOtherUsers WRITE setAvailableToOtherUsers NOTIFY availableToOtherUsersChanged)
 
 public:
-    WirelessItemSettings(QObject *parent = nullptr);
+    explicit WirelessItemSettings(QObject *parent = nullptr);
 
-    QString path() const;
+    QString path() const { return m_path; }
     void setPath(const QString &path);
 
     QString name() const;
     void setName(const QString &name);
-
     bool autoConnect() const;
     void setAutoConnect(bool value);
-
     bool availableToOtherUsers() const;
     void setAvailableToOtherUsers(bool value);
 
 Q_SIGNALS:
     void pathChanged();
-    void settingsAvailable();
     void nameChanged();
     void autoConnectChanged();
     void availableToOtherUsersChanged();
 
-protected:
-    NetworkManager::Connection::Ptr m_connection;
-    NetworkManager::ConnectionSettings::Ptr m_settings;
-
-    void updateSettings(const QString &type, const QVariantMap &map);
-
 private:
-    QString m_path;
+    void update(const QString &key, const QVariant &value);
+    void refresh();
 
-    QString getCurrentUserName() const;
+    NetworkClient *m_client;
+    QString m_path;
+    QString m_name;
+    bool m_autoConnect = true;
+    bool m_availableToOtherUsers = false;
 };
 
 #endif // WIRELESSITEMSETTINGS_H

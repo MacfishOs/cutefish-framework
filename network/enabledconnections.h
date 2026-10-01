@@ -18,67 +18,44 @@
     License along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef PLASMA_NM_ENABLED_CONNECTIONS_H
-#define PLASMA_NM_ENABLED_CONNECTIONS_H
+#ifndef CUTEFISH_NETWORK_ENABLED_CONNECTIONS_H
+#define CUTEFISH_NETWORK_ENABLED_CONNECTIONS_H
+
+#include <network_export.h>
 
 #include <QObject>
 #include <QtQml/qqmlregistration.h>
 
-#include <NetworkManagerQt/Manager>
+class NetworkClient;
 
-class EnabledConnections : public QObject
+class CUTEFISH_NETWORK_EXPORT EnabledConnections : public QObject
 {
-/**
- * Indicates if overall networking is currently enabled or not
- */
-Q_PROPERTY(bool networkingEnabled READ isNetworkingEnabled NOTIFY networkingEnabled)
-/**
- * Indicates if wireless is currently enabled or not
- */
-Q_PROPERTY(bool wirelessEnabled READ isWirelessEnabled NOTIFY wirelessEnabled)
-/**
- * Indicates if the wireless hardware is currently enabled, i.e. the state of the RF kill switch
- */
-Q_PROPERTY(bool wirelessHwEnabled READ isWirelessHwEnabled NOTIFY wirelessHwEnabled)
-/**
- * Indicates if mobile broadband devices are currently enabled or not.
- */
-Q_PROPERTY(bool wwanEnabled READ isWwanEnabled NOTIFY wwanEnabled)
-/**
- * Indicates if the mobile broadband hardware is currently enabled, i.e. the state of the RF kill switch.
- */
-Q_PROPERTY(bool wwanHwEnabled READ isWwanHwEnabled NOTIFY wwanHwEnabled)
-/**
- * Indicates if there is a managed Ethernet device
- */
-Q_PROPERTY(bool wiredAvailable READ isWiredAvailable NOTIFY wiredChanged)
-/**
- * Indicates if any managed Ethernet device may connect, i.e. it is active or allowed to autoconnect
- */
-Q_PROPERTY(bool wiredEnabled READ isWiredEnabled NOTIFY wiredChanged)
+    Q_OBJECT
+    QML_ELEMENT
+    // NetworkManager has been read; until then every switch reads off.
+    Q_PROPERTY(bool ready READ isReady NOTIFY readyChanged)
+    Q_PROPERTY(bool networkingEnabled READ isNetworkingEnabled NOTIFY networkingEnabled)
+    Q_PROPERTY(bool wirelessEnabled READ isWirelessEnabled NOTIFY wirelessEnabled)
+    Q_PROPERTY(bool wirelessHwEnabled READ isWirelessHwEnabled NOTIFY wirelessHwEnabled)
+    Q_PROPERTY(bool wwanEnabled READ isWwanEnabled NOTIFY wwanEnabled)
+    Q_PROPERTY(bool wwanHwEnabled READ isWwanHwEnabled NOTIFY wwanHwEnabled)
+    Q_PROPERTY(bool wiredAvailable READ isWiredAvailable NOTIFY wiredChanged)
+    Q_PROPERTY(bool wiredEnabled READ isWiredEnabled NOTIFY wiredChanged)
 
-Q_OBJECT
-QML_ELEMENT
 public:
-    explicit EnabledConnections(QObject* parent = nullptr);
-    ~EnabledConnections() override;
+    explicit EnabledConnections(QObject *parent = nullptr);
 
-    bool isNetworkingEnabled() const;
-    bool isWirelessEnabled() const;
-    bool isWirelessHwEnabled() const;
-    bool isWwanEnabled() const;
-    bool isWwanHwEnabled() const;
-    bool isWiredAvailable() const;
-    bool isWiredEnabled() const;
-
-public Q_SLOTS:
-    void onNetworkingEnabled(bool enabled);
-    void onWirelessEnabled(bool enabled);
-    void onWirelessHwEnabled(bool enabled);
-    void onWwanEnabled(bool enabled);
-    void onWwanHwEnabled(bool enabled);
+    bool isReady() const { return m_ready; }
+    bool isNetworkingEnabled() const { return m_networkingEnabled; }
+    bool isWirelessEnabled() const { return m_wirelessEnabled; }
+    bool isWirelessHwEnabled() const { return m_wirelessHwEnabled; }
+    bool isWwanEnabled() const { return m_wwanEnabled; }
+    bool isWwanHwEnabled() const { return m_wwanHwEnabled; }
+    bool isWiredAvailable() const { return m_wiredAvailable; }
+    bool isWiredEnabled() const { return m_wiredEnabled; }
 
 Q_SIGNALS:
+    void readyChanged();
     void networkingEnabled(bool enabled);
     void wirelessEnabled(bool enabled);
     void wirelessHwEnabled(bool enabled);
@@ -87,16 +64,17 @@ Q_SIGNALS:
     void wiredChanged();
 
 private:
-    void watchWiredDevice(const QString &uni);
-    void updateWired();
+    void update();
 
-    bool m_networkingEnabled;
-    bool m_wirelessEnabled;
-    bool m_wirelessHwEnabled;
-    bool m_wwanEnabled;
-    bool m_wwanHwEnabled;
+    NetworkClient *m_client;
+    bool m_ready = false;
+    bool m_networkingEnabled = false;
+    bool m_wirelessEnabled = false;
+    bool m_wirelessHwEnabled = false;
+    bool m_wwanEnabled = false;
+    bool m_wwanHwEnabled = false;
     bool m_wiredAvailable = false;
     bool m_wiredEnabled = false;
 };
 
-#endif // PLASMA_NM_ENABLED_CONNECTIONS_H
+#endif // CUTEFISH_NETWORK_ENABLED_CONNECTIONS_H

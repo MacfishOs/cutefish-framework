@@ -1,13 +1,19 @@
 find_package(Qt6 REQUIRED COMPONENTS Core DBus Qml Test)
 find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
 
-add_executable(tst_secretagent tst_secretagent.cpp fakesecrets.h)
+# network_export.h
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/..)
+
+add_executable(tst_wifiutils tst_wifiutils.cpp)
+target_link_libraries(tst_wifiutils PRIVATE cutefish-framework-network Qt6::Test)
+add_test(NAME network-wifiutils COMMAND tst_wifiutils)
+
+add_executable(tst_networkclient tst_networkclient.cpp fakenetworkmanager.h fixture.h)
+target_link_libraries(tst_networkclient PRIVATE cutefish-framework-network Qt6::Test)
+add_test(NAME network-client COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_networkclient>)
+set_tests_properties(network-client PROPERTIES TIMEOUT 60)
+
+add_executable(tst_secretagent tst_secretagent.cpp fakenetworkmanager.h fakesecrets.h)
 target_link_libraries(tst_secretagent PRIVATE cutefish-framework-network Qt6::Test)
 add_test(NAME network-secretagent COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_secretagent>)
 set_tests_properties(network-secretagent PROPERTIES TIMEOUT 60)
-
-add_executable(tst_networkmanager tst_networkmanager.cpp fakenetworkmanager.h)
-target_include_directories(tst_networkmanager PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/..)
-target_link_libraries(tst_networkmanager PRIVATE cutefish-framework-network Qt6::Test)
-add_test(NAME network-manager COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_networkmanager>)
-set_tests_properties(network-manager PROPERTIES TIMEOUT 60)

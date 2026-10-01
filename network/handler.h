@@ -18,160 +18,77 @@
     License along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef PLASMA_NM_HANDLER_H
-#define PLASMA_NM_HANDLER_H
+#ifndef CUTEFISH_NETWORK_HANDLER_H
+#define CUTEFISH_NETWORK_HANDLER_H
 
-#include <QDBusInterface>
-#include <QTimer>
+#include <network_export.h>
+
+#include <QHash>
+#include <QObject>
 #include <QtQml/qqmlregistration.h>
 
-#include <NetworkManagerQt/Connection>
-#include <NetworkManagerQt/ConnectionSettings>
-#include <NetworkManagerQt/Settings>
-#include <NetworkManagerQt/Utils>
+class NetworkClient;
 
-class Q_DECL_EXPORT Handler : public QObject
+// Actions on NetworkManager. Each returns at once; the result shows up in the models as
+// NetworkManager reports it.
+class CUTEFISH_NETWORK_EXPORT Handler : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
+    Q_PROPERTY(bool hotspotSupported READ hotspotSupported NOTIFY hotspotSupportedChanged)
+    Q_PROPERTY(bool hotspotActive READ hotspotActive NOTIFY hotspotActiveChanged)
 
 public:
-    enum HandlerAction {
-        ActivateConnection,
-        AddAndActivateConnection,
-        AddConnection,
-        DeactivateConnection,
-        RemoveConnection,
-        RequestScan,
-        UpdateConnection,
-        CreateHotspot,
-    };
-
     explicit Handler(QObject *parent = nullptr);
-    ~Handler() override;
 
-    Q_PROPERTY(bool hotspotSupported READ hotspotSupported NOTIFY hotspotSupportedChanged);
-
-public:
-    bool hotspotSupported() const { return m_hotspotSupported; };
+    bool hotspotSupported() const { return m_hotspotSupported; }
+    bool hotspotActive() const { return m_hotspotActive; }
 
 public Q_SLOTS:
-    /**
-     * Activates given connection
-     * @connection - d-bus path of the connection you want to activate
-     * @device - d-bus path of the device where the connection should be activated
-     * @specificParameter - d-bus path of the specific object you want to use for this activation,
-     * i.e access point
-     */
     void activateConnection(const QString &connection, const QString &device,
-                            const QString &specificParameter);
+                            const QString &specificObject);
     /**
-     * Adds and activates a new wireless connection
-     * @device - d-bus path of the wireless device where the connection should be activated
-     * @specificParameter - d-bus path of the accesspoint you want to connect to
-     * @password - pre-filled password which should be used for the new wireless connection
-     * @autoConnect - boolean value whether this connection should be activated automatically when
-     * it's available
-     *
-     * Works automatically for wireless connections with WEP/WPA security, for wireless connections
-     * with WPA/WPA it will open the connection editor for advanced configuration.
-     *
-     * Without a password, a network that needs one has it asked for by the session's
-     * secret agent before anything is added, and a new connection that never gets to
-     * connect is removed again.
-     * */
-    void addAndActivateConnection(const QString &device, const QString &specificParameter,
+     * Joins the access point `specificObject` with a new profile. Without a password, a
+     * network that needs one has it asked for by the session's secret agent before anything
+     * is added, and a new profile that never gets to connect is removed again.
+     */
+    void addAndActivateConnection(const QString &device, const QString &specificObject,
                                   const QString &password = QString());
-
-    /**
-     * Returns a code that includes the credentials to a said wifi connection
-     * Here's some information on how this information is created, it's generally used to put in QR
-     * codes to share.
-     * https://github.com/zxing/zxing/wiki/Barcode-Contents#wi-fi-network-config-android-ios-11
-     *
-     * @param connectionPath the d-bus path to the connection we want to read
-     * @param ssid the name of the network being displayed
-     * @param securityType the authentication protocol used for this specific ssid
-     */
-    QString wifiCode(const QString &connectionPath, const QString &ssid,
-                     /*NetworkManager::WirelessSecurityType*/ int securityType) const;
-
-    /**
-     * Adds a new connection
-     * @map - NMVariantMapMap with connection settings
-     */
-    void addConnection(const NMVariantMapMap &map);
-    /**
-     * Deactivates given connection
-     * @connection - d-bus path of the connection you want to deactivate
-     * @device - d-bus path of the connection where the connection is activated
-     */
     void deactivateConnection(const QString &connection, const QString &device);
-    /**
-     * Disconnects all connections
-     */
-    void disconnectAll();
-    void enableAirplaneMode(bool enable);
+    void removeConnection(const QString &connection);
+    void requestScan(const QString &interface = QString());
+
     void enableNetworking(bool enable);
     void enableWireless(bool enable);
     /**
      * Connects or disconnects every managed Ethernet device and keeps it that way,
-     * as NetworkManager has no global switch for wired networking
+     * as NetworkManager has no global switch for wired networking.
      */
     void enableWired(bool enable);
-
     void enableWwan(bool enable);
-
-    /**
-     * Removes given connection
-     * @connection - d-bus path of the connection you want to edit
-     */
-    void removeConnection(const QString &connection);
-    /**
-     * Updates given connection
-     * @connection - connection which should be updated
-     * @map - NMVariantMapMap with new connection settings
-     */
-    void updateConnection(const NetworkManager::Connection::Ptr &connection,
-                          const NMVariantMapMap &map);
-    void requestScan(const QString &interface = QString());
 
     void createHotspot();
     void stopHotspot();
 
+Q_SIGNALS:
+    void hotspotSupportedChanged(bool hotspotSupported);
+    void hotspotActiveChanged();
+
 private:
     void addAndActivateWireless(const QString &device, const QString &specificObject,
                                 const QString &password, bool askForPassword);
-    void forgetUnlessActivated(const QString &connectionPath, const QString &activePath);
+    void forgetUnlessActivated(const QString &connection, const QString &active);
+    void activeStateChanged(const QString &active, uint state);
+    void update();
+    QString hotspotActiveConnection() const;
 
-private Q_SLOTS:
-    void secretAgentError(const QString &connectionPath, const QString &message);
-    void replyFinished(QDBusPendingCallWatcher *watcher);
-    void hotspotCreated(QDBusPendingCallWatcher *watcher);
-    void primaryConnectionTypeChanged(NetworkManager::ConnectionSettings::ConnectionType type);
-
-Q_SIGNALS:
-    void connectionActivationFailed(const QString &connectionPath, const QString &message);
-    void hotspotCreated();
-    void hotspotDisabled();
-    void hotspotSupportedChanged(bool hotspotSupported);
-
-private:
-    QString m_userName;
-    bool m_hotspotSupported;
-    bool m_tmpWirelessEnabled;
-    bool m_tmpWwanEnabled;
-    QString m_tmpConnectionUuid;
-    QString m_tmpDevicePath;
-    QString m_tmpSpecificPath;
-    QMap<QString, bool> m_bluetoothAdapters;
-    QMap<QString, QTimer *> m_wirelessScanRetryTimer;
-
-    void enableBluetooth(bool enable);
-    void scanRequestFailed(const QString &interface);
-    bool checkRequestScanRateLimit(const NetworkManager::WirelessDevice::Ptr &wifiDevice);
-    bool checkHotspotSupported();
-    void scheduleRequestScan(const QString &interface, int timeout);
+    NetworkClient *m_client;
+    bool m_scanRequested = false;
+    QString m_scanInterface;
+    bool m_hotspotSupported = false;
+    bool m_hotspotActive = false;
+    // New profiles by the active connection of their first activation.
+    QHash<QString, QString> m_forget;
 };
 
-#endif // PLASMA_NM_HANDLER_H
+#endif // CUTEFISH_NETWORK_HANDLER_H

@@ -1,29 +1,26 @@
-find_package(Qt6 REQUIRED COMPONENTS Core DBus Gui Quick)
+find_package(Qt6 REQUIRED COMPONENTS Core DBus Qml)
 
 set(CUTEFISH_NETWORK_SOURCES
+    networkdbustypes.cpp
+    networkdbustypes.h
+
+    networkclient.cpp
+    networkclient.h
+
+    wifiutils.cpp
+    wifiutils.h
+
+    networkmodel.cpp
+    networkmodel.h
+
     appletproxymodel.cpp
     appletproxymodel.h
 
     activeconnection.cpp
     activeconnection.h
 
-    networkitemslist.cpp
-    networkitemslist.h
-
-    networkmodel.cpp
-    networkmodel.h
-
-    networkmodelitem.cpp
-    networkmodelitem.h
-
-    wirelessitemsettings.cpp
-    wirelessitemsettings.h
-
-    uiutils.cpp
-    uiutils.h
-
-    identitymodel.cpp
-    identitymodel.h
+    enabledconnections.cpp
+    enabledconnections.h
 
     handler.cpp
     handler.h
@@ -37,20 +34,18 @@ set(CUTEFISH_NETWORK_SOURCES
     configuration.cpp
     configuration.h
 
-    enabledconnections.cpp
-    enabledconnections.h
+    wifisettings.cpp
+    wifisettings.h
+
+    wirelessitemsettings.cpp
+    wirelessitemsettings.h
 
     enums.cpp
     enums.h
 
-    wifisettings.cpp
-    wifisettings.h
-
     qmlplugins.cpp
     qmlplugins.h
 )
-
-find_package(KF6NetworkManagerQt REQUIRED)
 
 add_library(cutefish-framework-network SHARED ${CUTEFISH_NETWORK_SOURCES})
 generate_export_header(cutefish-framework-network EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/network_export.h BASE_NAME Cutefish_Network)
@@ -70,13 +65,8 @@ add_library(Cutefish::Network ALIAS cutefish-framework-network)
 target_link_libraries(cutefish-framework-network
     PUBLIC
         Qt6::Core
-        Qt6::Quick
-        Qt6::Gui
         Qt6::DBus
-
-        KF6::NetworkManagerQt
-    PRIVATE
-        Cutefish::Application
+        Qt6::Qml
 )
 
 cutefish_install_qml_module(cutefish-framework-network)

@@ -19,148 +19,144 @@
 */
 
 #include "configuration.h"
+#include "networkclient.h"
+#include "wifiutils.h"
 
-#include <QSettings>
-#include <preferences.h>
-#include <pwd.h>
-#include <sys/types.h>
+#include <QCoreApplication>
+#include <QPointer>
+#include <QSysInfo>
 
-static bool propManageVirtualConnectionsInitialized = false;
-static bool propManageVirtualConnections = false;
+using namespace NetworkDBus;
 
-Configuration::Configuration()
+namespace {
+
+class HotspotSettings : public QObject
 {
-    ::passwd *pw = ::getpwuid(::getuid());
-    m_userName = QString::fromLocal8Bit(pw->pw_name);
-}
+    Q_OBJECT
 
-Configuration &Configuration::self()
-{
-    static Configuration c;
-    return c;
-}
-
-bool Configuration::unlockModemOnDetection()
-{
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-
-    return config.value("UnlockModemOnDetection", true).toBool();
-}
-
-void Configuration::setUnlockModemOnDetection(bool unlock)
-{
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-    config.setValue(QLatin1String("UnlockModemOnDetection"), unlock);
-}
-
-bool Configuration::manageVirtualConnections()
-{
-    // Avoid reading from the config file over and over
-    if (propManageVirtualConnectionsInitialized) {
-        return propManageVirtualConnections;
+public:
+    static HotspotSettings *instance()
+    {
+        static QPointer<HotspotSettings> settings;
+        if (!settings)
+            settings = new HotspotSettings(QCoreApplication::instance());
+        return settings;
     }
 
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-
-    propManageVirtualConnections =
-            config.value(QLatin1String("ManageVirtualConnections"), false).toBool();
-    propManageVirtualConnectionsInitialized = true;
-
-    return propManageVirtualConnections;
-}
-
-void Configuration::setManageVirtualConnections(bool manage)
-{
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-
-    config.setValue(QLatin1String("ManageVirtualConnections"), manage);
-    propManageVirtualConnections = manage;
-}
-
-bool Configuration::airplaneModeEnabled()
-{
-    // Check whether other devices are disabled to assume airplane mode is enabled
-    // after suspend
-    const bool isWifiDisabled =
-            !NetworkManager::isWirelessEnabled() || !NetworkManager::isWirelessHardwareEnabled();
-    const bool isWwanDisabled =
-            !NetworkManager::isWwanEnabled() || !NetworkManager::isWwanHardwareEnabled();
-
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-
-    if (config.value(QLatin1String("AirplaneModeEnabled"), false).toBool()) {
-        // We can assume that airplane mode is still activated after resume
-        if (isWifiDisabled && isWwanDisabled)
-            return true;
-        else {
-            setAirplaneModeEnabled(false);
+    QString name() const
+    {
+        if (!m_name.isEmpty())
+            return m_name;
+        const QString profile = connection();
+        if (!profile.isEmpty()) {
+            return WifiUtils::ssidLabel(
+                    m_client->setting(profile, QStringLiteral("802-11-wireless"), QStringLiteral("ssid")).toByteArray());
         }
+        const QString host = QSysInfo::machineHostName();
+        return host.isEmpty() || host == QLatin1String("localhost") ? QObject::tr("Hotspot") : host;
     }
 
-    return false;
+    QString password() const
+    {
+        if (!m_password.isEmpty())
+            return m_password;
+        return m_profilePassword.isEmpty() ? m_generatedPassword : m_profilePassword;
+    }
+
+    void setName(const QString &name)
+    {
+        if (name == this->name())
+            return;
+        m_name = name;
+        Q_EMIT changed();
+    }
+
+    void setPassword(const QString &password)
+    {
+        if (password == this->password())
+            return;
+        m_password = password;
+        Q_EMIT changed();
+    }
+
+Q_SIGNALS:
+    void changed();
+
+private:
+    explicit HotspotSettings(QObject *parent)
+        : QObject(parent)
+        , m_client(NetworkClient::instance())
+        , m_generatedPassword(WifiUtils::generatedPassword())
+    {
+        connect(m_client, &NetworkClient::readyChanged, this, &HotspotSettings::load);
+        load();
+    }
+
+    QString connection() const
+    {
+        return m_client->hotspotConnection();
+    }
+
+    // The profile keeps its password with NetworkManager, which reads it out only on request.
+    void load()
+    {
+        const QString profile = connection();
+        if (profile.isEmpty())
+            return;
+
+        Q_EMIT changed();
+        m_client->call(profile, connectionInterface, QStringLiteral("GetSecrets"),
+                       {QStringLiteral("802-11-wireless-security")}, this,
+                       [this](const QDBusMessage &reply) {
+                           if (reply.type() != QDBusMessage::ReplyMessage)
+                               return;
+                           const QVariantMap security = NetworkDBus::plain(reply.arguments().value(0))
+                                                                .toMap()
+                                                                .value(QStringLiteral("802-11-wireless-security"))
+                                                                .toMap();
+                           const QString password = security.value(QStringLiteral("psk"),
+                                                                   security.value(QStringLiteral("wep-key0")))
+                                                            .toString();
+                           if (password.isEmpty() || password == m_profilePassword)
+                               return;
+                           m_profilePassword = password;
+                           Q_EMIT changed();
+                       });
+    }
+
+    NetworkClient *m_client;
+    QString m_name;
+    QString m_password;
+    QString m_profilePassword;
+    const QString m_generatedPassword;
+};
+
+} // namespace
+
+Configuration::Configuration(QObject *parent)
+    : QObject(parent)
+{
+    connect(HotspotSettings::instance(), &HotspotSettings::changed, this, &Configuration::hotspotChanged);
 }
 
-void Configuration::setAirplaneModeEnabled(bool enabled)
+QString Configuration::hotspotName() const
 {
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-    config.setValue(QLatin1String("AirplaneModeEnabled"), enabled);
-}
-
-QString Configuration::hotspotName()
-{
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-
-    const QString defaultName = m_userName + QLatin1String("-hotspot");
-
-    return config.value(QLatin1String("HotspotName"), defaultName).toString();
+    return HotspotSettings::instance()->name();
 }
 
 void Configuration::setHotspotName(const QString &name)
 {
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-    config.setValue(QLatin1String("HotspotName"), name);
+    HotspotSettings::instance()->setName(name);
 }
 
-QString Configuration::hotspotPassword()
+QString Configuration::hotspotPassword() const
 {
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-    return config.value(QLatin1String("HotspotPassword"), QString()).toString();
+    return HotspotSettings::instance()->password();
 }
 
 void Configuration::setHotspotPassword(const QString &password)
 {
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-    config.setValue(QLatin1String("HotspotPassword"), password);
+    HotspotSettings::instance()->setPassword(password);
 }
 
-QString Configuration::hotspotConnectionPath()
-{
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-    return config.value(QLatin1String("HotspotConnectionPath"), QString()).toString();
-}
-
-void Configuration::setHotspotConnectionPath(const QString &path)
-{
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-    config.setValue(QLatin1String("HotspotConnectionPath"), path);
-}
-
-bool Configuration::showPasswordDialog()
-{
-    QSettings config(Preferences::ownFile(), QSettings::IniFormat);
-    config.beginGroup(QLatin1String("Network"));
-
-    return config.value(QLatin1String("ShowPasswordDialog"), true).toBool();
-}
+#include "configuration.moc"

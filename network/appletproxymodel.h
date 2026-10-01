@@ -23,21 +23,21 @@
 #define APPLETPROXYMODEL_H
 
 #include <network_export.h>
+
 #include <QSortFilterProxyModel>
 #include <QtQml/qqmlregistration.h>
 
-#include "networkmodelitem.h"
-
+// One type of NetworkModel's rows, sorted for a list. Roles are found by name, so
+// any model with NetworkModel's role names will do as the source.
 class CUTEFISH_NETWORK_EXPORT AppletProxyModel : public QSortFilterProxyModel
 {
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(Type type READ type WRITE setType NOTIFY typeChanged)
-    Q_PROPERTY(QAbstractItemModel * sourceModel READ sourceModel WRITE setSourceModel)
+    Q_PROPERTY(QAbstractItemModel *sourceModel READ sourceModel WRITE setSourceModel)
 
 public:
     explicit AppletProxyModel(QObject *parent = nullptr);
-    ~AppletProxyModel() override;
 
     enum Type {
         UnknownType = 0,
@@ -49,15 +49,20 @@ public:
     Type type() const;
     void setType(Type type);
 
-signals:
+    void setSourceModel(QAbstractItemModel *model) override;
+
+Q_SIGNALS:
     void typeChanged();
 
 protected:
-    bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override;
+    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
     bool lessThan(const QModelIndex &left, const QModelIndex &right) const override;
 
 private:
+    QVariant value(const QModelIndex &index, const QByteArray &role) const;
+
     Type m_type = UnknownType;
+    QHash<QByteArray, int> m_roles;
 };
 
 #endif // APPLETPROXYMODEL_H

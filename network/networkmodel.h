@@ -18,24 +18,20 @@
     License along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef NETWORKMODEL_H
-#define NETWORKMODEL_H
+#ifndef CUTEFISH_NETWORK_NETWORKMODEL_H
+#define CUTEFISH_NETWORK_NETWORKMODEL_H
 
 #include <network_export.h>
 
 #include <QAbstractListModel>
-#include <QLoggingCategory>
+#include <QDateTime>
 #include <QtQml/qqmlregistration.h>
 
-#include "networkitemslist.h"
+class NetworkClient;
 
-#include <NetworkManagerQt/Manager>
-#include <NetworkManagerQt/Utils>
-#include <NetworkManagerQt/VpnConnection>
-#include <NetworkManagerQt/WirelessDevice>
-
-Q_DECLARE_LOGGING_CATEGORY(gLcNm)
-
+// The wired profiles and Wi-Fi networks of every managed device. Rows are worked out
+// again from NetworkClient's cache after each change and only the differences are
+// reported, so a row stays put while its access points come and go.
 class CUTEFISH_NETWORK_EXPORT NetworkModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -43,7 +39,6 @@ class CUTEFISH_NETWORK_EXPORT NetworkModel : public QAbstractListModel
 
 public:
     explicit NetworkModel(QObject *parent = nullptr);
-    ~NetworkModel() override;
 
     enum ItemRole {
         ConnectionDetailsRole = Qt::UserRole + 1,
@@ -74,115 +69,68 @@ public:
         VpnType,
         RxBytesRole,
         TxBytesRole,
-
         IpAddressRole,
         IpV6AddressRole,
         GateWayRole,
         NameServerRole,
         MacAddressRole,
     };
-    Q_ENUMS(ItemRole)
+    Q_ENUM(ItemRole)
 
     enum ConnectionStatus {
         UnknownState = 0,
         Activating,
         Activated,
         Deactivating,
-        Deactivated
+        Deactivated,
     };
-    Q_ENUMS(ConnectionStatus)
+    Q_ENUM(ConnectionStatus)
 
-    enum ConnectionType {
-        UnknownConnectionType = 0,
-        Adsl,
-        Bluetooth,
-        Bond,
-        Bridge,
-        Cdma,
-        Gsm,
-        Infiniband,
-        OLPCMesh,
-        Pppoe,
-        Vlan,
-        Vpn,
-        Wimax,
-        Wired,
-        Wireless
+    enum ItemType {
+        UnavailableConnection = 0,
+        AvailableConnection,
+        AvailableAccessPoint,
     };
-    Q_ENUMS(ConnectionType)
+    Q_ENUM(ItemType)
 
-    enum SecurityType {
-        UnknownSecurity = -1,
-        NoneSecurity = 0,
-        StaticWep,
-        DynamicWep,
-        Leap,
-        WpaPsk,
-        WpaEap,
-        Wpa2Psk,
-        Wpa2Eap,
-        SAE
-    };
-    Q_ENUMS(SecurityType)
-
-    int rowCount(const QModelIndex &parent) const override;
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-public Q_SLOTS:
-    void onItemUpdated();
-    void setDeviceStatisticsRefreshRateMs(const QString &devicePath, uint refreshRate);
-
-private Q_SLOTS:
-    void accessPointSignalStrengthChanged(int signal);
-    void activeConnectionAdded(const QString &activeConnection);
-    void activeConnectionRemoved(const QString &activeConnection);
-    void activeConnectionStateChanged(NetworkManager::ActiveConnection::State state);
-    void activeVpnConnectionStateChanged(NetworkManager::VpnConnection::State state,
-                                         NetworkManager::VpnConnection::StateChangeReason reason);
-    void availableConnectionAppeared(const QString &connection);
-    void availableConnectionDisappeared(const QString &connection);
-    void connectionAdded(const QString &connection);
-    void connectionRemoved(const QString &connection);
-    void connectionUpdated();
-    void deviceAdded(const QString &device);
-    void deviceRemoved(const QString &device);
-    void deviceStateChanged(NetworkManager::Device::State state,
-                            NetworkManager::Device::State oldState,
-                            NetworkManager::Device::StateChangeReason reason);
-    void ipConfigChanged();
-    void ipInterfaceChanged();
-    void statusChanged(NetworkManager::Status status);
-    void wirelessNetworkAppeared(const QString &ssid);
-    void wirelessNetworkDisappeared(const QString &ssid);
-    void wirelessNetworkSignalChanged(int signal);
-    void wirelessNetworkReferenceApChanged(const QString &accessPoint);
-
-    void initialize();
-
 private:
-    NetworkItemsList m_list;
+    struct Item {
+        QString key;
+        int type = 0;
+        int itemType = UnavailableConnection;
+        QString name;
+        QString uniqueName;
+        QString ssid;
+        QString uuid;
+        QString connectionPath;
+        QString devicePath;
+        QString deviceName;
+        uint deviceState = 0;
+        QString specificPath;
+        int connectionState = Deactivated;
+        int securityType = -1;
+        int signal = 0;
+        QDateTime timestamp;
+        QString icon;
+        QString ipV4Address;
+        QString ipV6Address;
+        QString gateway;
+        QString nameServer;
+        QString macAddress;
+    };
 
-    void addActiveConnection(const NetworkManager::ActiveConnection::Ptr &activeConnection);
-    void addAvailableConnection(const QString &connection,
-                                const NetworkManager::Device::Ptr &device);
-    void addConnection(const NetworkManager::Connection::Ptr &connection);
-    void addDevice(const NetworkManager::Device::Ptr &device);
-    void addWirelessNetwork(const NetworkManager::WirelessNetwork::Ptr &network,
-                            const NetworkManager::WirelessDevice::Ptr &device);
-    void checkAndCreateDuplicate(const QString &connection, const QString &deviceUni);
-    void initializeSignals();
-    void initializeSignals(const NetworkManager::ActiveConnection::Ptr &activeConnection);
-    void initializeSignals(const NetworkManager::Connection::Ptr &connection);
-    void initializeSignals(const NetworkManager::Device::Ptr &device);
-    void initializeSignals(const NetworkManager::WirelessNetwork::Ptr &network);
-    void updateItem(NetworkModelItem *item);
-    void updateFromWirelessNetwork(NetworkModelItem *item,
-                                   const NetworkManager::WirelessNetwork::Ptr &network,
-                                   const NetworkManager::WirelessDevice::Ptr &device);
+    void rebuild();
+    void addWired(const QString &device, QList<Item> &items) const;
+    void addWireless(const QString &device, QList<Item> &items) const;
+    void fillDetails(Item &item) const;
+    QVariant itemData(const Item &item, int role) const;
 
-    NetworkManager::WirelessSecurityType
-    alternativeWirelessSecurity(const NetworkManager::WirelessSecurityType type);
+    NetworkClient *m_client;
+    QList<Item> m_items;
 };
 
-#endif // NETWORKMODEL_H
+#endif // CUTEFISH_NETWORK_NETWORKMODEL_H

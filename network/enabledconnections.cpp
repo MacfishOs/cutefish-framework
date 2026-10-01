@@ -18,141 +18,63 @@
     License along with this library.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-
 #include "enabledconnections.h"
+#include "networkclient.h"
 
-EnabledConnections::EnabledConnections(QObject* parent)
+using namespace NetworkDBus;
+
+EnabledConnections::EnabledConnections(QObject *parent)
     : QObject(parent)
-    , m_networkingEnabled(NetworkManager::isNetworkingEnabled())
-    , m_wirelessEnabled(NetworkManager::isWirelessEnabled())
-    , m_wirelessHwEnabled(NetworkManager::isWirelessHardwareEnabled())
-    , m_wwanEnabled(NetworkManager::isWwanEnabled())
-    , m_wwanHwEnabled(NetworkManager::isWwanHardwareEnabled())
+    , m_client(NetworkClient::instance())
 {
-    connect(NetworkManager::notifier(), &NetworkManager::Notifier::networkingEnabledChanged, this, &EnabledConnections::onNetworkingEnabled);
-    connect(NetworkManager::notifier(), &NetworkManager::Notifier::wirelessEnabledChanged, this, &EnabledConnections::onWirelessEnabled);
-    connect(NetworkManager::notifier(), &NetworkManager::Notifier::wirelessHardwareEnabledChanged, this, &EnabledConnections::onWirelessHwEnabled);
-    connect(NetworkManager::notifier(), &NetworkManager::Notifier::wwanEnabledChanged, this, &EnabledConnections::onWwanEnabled);
-    connect(NetworkManager::notifier(), &NetworkManager::Notifier::wwanHardwareEnabledChanged, this, &EnabledConnections::onWwanHwEnabled);
-
-    connect(NetworkManager::notifier(), &NetworkManager::Notifier::deviceAdded, this, [this](const QString &uni) {
-        watchWiredDevice(uni);
-        updateWired();
-    });
-    connect(NetworkManager::notifier(), &NetworkManager::Notifier::deviceRemoved, this, &EnabledConnections::updateWired);
-
-    for (const NetworkManager::Device::Ptr &device : NetworkManager::networkInterfaces()) {
-        watchWiredDevice(device->uni());
-    }
-    updateWired();
+    connect(m_client, &NetworkClient::changed, this, &EnabledConnections::update);
+    update();
 }
 
-EnabledConnections::~EnabledConnections()
+void EnabledConnections::update()
 {
-}
+    const auto set = [](bool &field, bool value, auto emitter) {
+        if (field == value)
+            return;
+        field = value;
+        emitter(value);
+    };
 
-bool EnabledConnections::isNetworkingEnabled() const
-{
-    return m_networkingEnabled;
-}
+    const bool ready = m_client->ready();
+    set(m_networkingEnabled, ready && m_client->manager(QStringLiteral("NetworkingEnabled")).toBool(),
+        [this](bool value) { Q_EMIT networkingEnabled(value); });
+    set(m_wirelessEnabled, ready && m_client->manager(QStringLiteral("WirelessEnabled")).toBool(),
+        [this](bool value) { Q_EMIT wirelessEnabled(value); });
+    set(m_wirelessHwEnabled, ready && m_client->manager(QStringLiteral("WirelessHardwareEnabled")).toBool(),
+        [this](bool value) { Q_EMIT wirelessHwEnabled(value); });
+    set(m_wwanEnabled, ready && m_client->manager(QStringLiteral("WwanEnabled")).toBool(),
+        [this](bool value) { Q_EMIT wwanEnabled(value); });
+    set(m_wwanHwEnabled, ready && m_client->manager(QStringLiteral("WwanHardwareEnabled")).toBool(),
+        [this](bool value) { Q_EMIT wwanHwEnabled(value); });
 
-bool EnabledConnections::isWirelessEnabled() const
-{
-    return m_wirelessEnabled;
-}
-
-bool EnabledConnections::isWirelessHwEnabled() const
-{
-    return m_wirelessHwEnabled;
-}
-
-bool EnabledConnections::isWwanEnabled() const
-{
-    return m_wwanEnabled;
-}
-
-bool EnabledConnections::isWwanHwEnabled() const
-{
-    return m_wwanHwEnabled;
-}
-
-bool EnabledConnections::isWiredAvailable() const
-{
-    return m_wiredAvailable;
-}
-
-bool EnabledConnections::isWiredEnabled() const
-{
-    return m_wiredEnabled;
-}
-
-void EnabledConnections::onNetworkingEnabled(bool enabled)
-{
-    m_networkingEnabled = enabled;
-    Q_EMIT networkingEnabled(enabled);
-}
-
-void EnabledConnections::onWirelessEnabled(bool enabled)
-{
-    m_wirelessEnabled = enabled;
-    Q_EMIT wirelessEnabled(enabled);
-}
-
-void EnabledConnections::onWirelessHwEnabled(bool enabled)
-{
-    m_wirelessHwEnabled = enabled;
-    Q_EMIT wirelessHwEnabled(enabled);
-}
-
-void EnabledConnections::onWwanEnabled(bool enabled)
-{
-    m_wwanEnabled = enabled;
-    Q_EMIT wwanEnabled(enabled);
-}
-
-void EnabledConnections::onWwanHwEnabled(bool enabled)
-{
-    m_wwanHwEnabled = enabled;
-    Q_EMIT wwanHwEnabled(enabled);
-}
-
-void EnabledConnections::watchWiredDevice(const QString &uni)
-{
-    NetworkManager::Device::Ptr device = NetworkManager::findNetworkInterface(uni);
-    if (!device || device->type() != NetworkManager::Device::Ethernet) {
-        return;
-    }
-
-    connect(device.data(), &NetworkManager::Device::autoconnectChanged, this, &EnabledConnections::updateWired);
-    connect(device.data(), &NetworkManager::Device::managedChanged, this, &EnabledConnections::updateWired);
-    connect(device.data(), &NetworkManager::Device::stateChanged, this, &EnabledConnections::updateWired);
-}
-
-void EnabledConnections::updateWired()
-{
     bool available = false;
     bool enabled = false;
-
-    for (const NetworkManager::Device::Ptr &device : NetworkManager::networkInterfaces()) {
-        if (device->type() != NetworkManager::Device::Ethernet || !device->managed()) {
+    for (const QString &device : m_client->devices()) {
+        if (m_client->deviceType(device) != DeviceEthernet
+            || !m_client->property(device, deviceInterface, QStringLiteral("Managed")).toBool())
             continue;
-        }
 
         available = true;
 
         // Disconnecting a device clears its autoconnect flag, so this tracks the user's switch.
-        const NetworkManager::Device::State state = device->state();
-        if (device->autoconnect()
-            || (state >= NetworkManager::Device::Preparing && state <= NetworkManager::Device::Activated)) {
+        const uint state = m_client->deviceState(device);
+        if (m_client->property(device, deviceInterface, QStringLiteral("Autoconnect")).toBool()
+            || (state >= DevicePrepare && state <= DeviceActivated))
             enabled = true;
-        }
+    }
+    if (available != m_wiredAvailable || enabled != m_wiredEnabled) {
+        m_wiredAvailable = available;
+        m_wiredEnabled = enabled;
+        Q_EMIT wiredChanged();
     }
 
-    if (available == m_wiredAvailable && enabled == m_wiredEnabled) {
-        return;
+    if (ready != m_ready) {
+        m_ready = ready;
+        Q_EMIT readyChanged();
     }
-
-    m_wiredAvailable = available;
-    m_wiredEnabled = enabled;
-    Q_EMIT wiredChanged();
 }

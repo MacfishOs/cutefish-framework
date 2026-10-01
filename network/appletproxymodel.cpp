@@ -20,24 +20,11 @@
 */
 
 #include "appletproxymodel.h"
+#include "enums.h"
 #include "networkmodel.h"
-#include "uiutils.h"
+#include "wifiutils.h"
 
-static NetworkManager::ConnectionSettings::ConnectionType convertType(AppletProxyModel::Type type)
-{
-    switch (type) {
-    case AppletProxyModel::UnknownType:
-        return NetworkManager::ConnectionSettings::ConnectionType::Unknown;
-    case AppletProxyModel::WiredType:
-        return NetworkManager::ConnectionSettings::ConnectionType::Wired;
-    case AppletProxyModel::WirelessType:
-        return NetworkManager::ConnectionSettings::ConnectionType::Wireless;
-    default:
-        break;
-    }
-
-    return NetworkManager::ConnectionSettings::ConnectionType::Unknown;
-}
+#include <QDateTime>
 
 AppletProxyModel::AppletProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
@@ -45,10 +32,6 @@ AppletProxyModel::AppletProxyModel(QObject *parent)
     setDynamicSortFilter(true);
     setFilterCaseSensitivity(Qt::CaseInsensitive);
     sort(0, Qt::DescendingOrder);
-}
-
-AppletProxyModel::~AppletProxyModel()
-{
 }
 
 AppletProxyModel::Type AppletProxyModel::type() const
@@ -62,111 +45,77 @@ void AppletProxyModel::setType(Type type)
         return;
     m_type = type;
     Q_EMIT typeChanged();
-
-    if (type == UnknownType)
-        setFilterRole(0);
-    else
-        setFilterRole(NetworkModel::TypeRole);
+    invalidateFilter();
 }
 
-bool AppletProxyModel::filterAcceptsRow(int source_row, const QModelIndex &source_parent) const
+void AppletProxyModel::setSourceModel(QAbstractItemModel *model)
 {
-    const QModelIndex index = sourceModel()->index(source_row, 0, source_parent);
-
-    // slaves are filtered-out when not searching for a connection (makes the state of search results clear)
-    const bool isSlave = sourceModel()->data(index, NetworkModel::SlaveRole).toBool();
-    if (isSlave && filterRegularExpression().pattern().isEmpty()) {
-        return false;
+    m_roles.clear();
+    if (model) {
+        const QHash<int, QByteArray> names = model->roleNames();
+        for (auto it = names.cbegin(); it != names.cend(); ++it)
+            m_roles.insert(it.value(), it.key());
     }
+    QSortFilterProxyModel::setSourceModel(model);
+}
 
-    const NetworkManager::ConnectionSettings::ConnectionType type = (NetworkManager::ConnectionSettings::ConnectionType) sourceModel()->data(index, NetworkModel::TypeRole).toUInt();
-    if (!UiUtils::isConnectionTypeSupported(type)) {
+QVariant AppletProxyModel::value(const QModelIndex &index, const QByteArray &role) const
+{
+    const auto it = m_roles.constFind(role);
+    return it == m_roles.cend() ? QVariant() : sourceModel()->data(index, it.value());
+}
+
+bool AppletProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
+{
+    const QModelIndex index = sourceModel()->index(sourceRow, 0, sourceParent);
+
+    // Ports are filtered out when not searching, which keeps the state of results clear.
+    if (value(index, "slave").toBool() && filterRegularExpression().pattern().isEmpty())
         return false;
-    }
 
-    // Type Filter
-    if (m_type == UnknownType || type != convertType(m_type))
+    const int type = value(index, "type").toInt();
+    if ((m_type == WiredType && type != Enums::Wired) || (m_type == WirelessType && type != Enums::Wireless)
+        || m_type == UnknownType)
         return false;
 
-    NetworkModelItem::ItemType itemType = (NetworkModelItem::ItemType)sourceModel()->data(index, NetworkModel::ItemTypeRole).toUInt();
-
-    if (itemType != NetworkModelItem::AvailableConnection &&
-        itemType != NetworkModelItem::AvailableAccessPoint) {
+    const int itemType = value(index, "itemType").toInt();
+    if (itemType != NetworkModel::AvailableConnection && itemType != NetworkModel::AvailableAccessPoint)
         return false;
-    }
 
-    if (filterRegularExpression().pattern().isEmpty()) {
+    if (filterRegularExpression().pattern().isEmpty())
         return true;
-    }
 
-    return sourceModel()->data(index, NetworkModel::ItemUniqueNameRole).toString().contains(filterRegularExpression().pattern());
+    return value(index, "itemUniqueName").toString().contains(filterRegularExpression().pattern());
 }
 
 bool AppletProxyModel::lessThan(const QModelIndex &left, const QModelIndex &right) const
 {
-    const bool leftAvailable = (NetworkModelItem::ItemType)sourceModel()->data(left, NetworkModel::ItemTypeRole).toUInt() != NetworkModelItem::UnavailableConnection;
-    const bool leftConnected = sourceModel()->data(left, NetworkModel::ConnectionStateRole).toUInt() == NetworkManager::ActiveConnection::Activated;
-    const int leftConnectionState = sourceModel()->data(left, NetworkModel::ConnectionStateRole).toUInt();
-    const QString leftName = sourceModel()->data(left, NetworkModel::NameRole).toString();
-    const UiUtils::SortedConnectionType leftType = UiUtils::connectionTypeToSortedType((NetworkManager::ConnectionSettings::ConnectionType) sourceModel()->data(left, NetworkModel::TypeRole).toUInt());
-    const QString leftUuid = sourceModel()->data(left, NetworkModel::UuidRole).toString();
-    const int leftSignal = sourceModel()->data(left, NetworkModel::SignalRole).toInt();
-    const QDateTime leftDate = sourceModel()->data(left, NetworkModel::TimeStampRole).toDateTime();
+    // Sorted descending: whatever compares greater comes first.
+    const bool leftConnected = value(left, "connectionState").toInt() == NetworkModel::Activated;
+    const bool rightConnected = value(right, "connectionState").toInt() == NetworkModel::Activated;
+    if (leftConnected != rightConnected)
+        return rightConnected;
 
-    const bool rightAvailable = (NetworkModelItem::ItemType)sourceModel()->data(right, NetworkModel::ItemTypeRole).toUInt() != NetworkModelItem::UnavailableConnection;
-    const bool rightConnected = sourceModel()->data(right, NetworkModel::ConnectionStateRole).toUInt() == NetworkManager::ActiveConnection::Activated;
-    const int rightConnectionState = sourceModel()->data(right, NetworkModel::ConnectionStateRole).toUInt();
-    const QString rightName = sourceModel()->data(right, NetworkModel::NameRole).toString();
-    const UiUtils::SortedConnectionType rightType = UiUtils::connectionTypeToSortedType((NetworkManager::ConnectionSettings::ConnectionType) sourceModel()->data(right, NetworkModel::TypeRole).toUInt());
-    const QString rightUuid = sourceModel()->data(right, NetworkModel::UuidRole).toString();
-    const int rightSignal = sourceModel()->data(right, NetworkModel::SignalRole).toInt();
-    const QDateTime rightDate = sourceModel()->data(right, NetworkModel::TimeStampRole).toDateTime();
+    const int leftState = value(left, "connectionState").toInt();
+    const int rightState = value(right, "connectionState").toInt();
+    if (leftState != rightState)
+        return leftState > rightState;
 
-    if (leftAvailable < rightAvailable) {
-        return true;
-    } else if (leftAvailable > rightAvailable) {
-        return false;
-    }
+    const bool leftSaved = !value(left, "uuid").toString().isEmpty();
+    const bool rightSaved = !value(right, "uuid").toString().isEmpty();
+    if (leftSaved != rightSaved)
+        return rightSaved;
 
-    if (leftConnected < rightConnected) {
-        return true;
-    } else if (leftConnected > rightConnected) {
-        return false;
-    }
+    const QDateTime leftDate = value(left, "timeStamp").toDateTime();
+    const QDateTime rightDate = value(right, "timeStamp").toDateTime();
+    if (leftDate != rightDate)
+        return leftDate < rightDate;
 
-    if (leftConnectionState > rightConnectionState) {
-        return true;
-    } else if (leftConnectionState < rightConnectionState) {
-        return false;
-    }
+    // By the icon's step, so rows move only when what they show changes.
+    const int leftSignal = WifiUtils::strengthStep(value(left, "signal").toInt());
+    const int rightSignal = WifiUtils::strengthStep(value(right, "signal").toInt());
+    if (leftSignal != rightSignal)
+        return leftSignal < rightSignal;
 
-    if (leftUuid.isEmpty() && !rightUuid.isEmpty()) {
-        return true;
-    } else if (!leftUuid.isEmpty() && rightUuid.isEmpty()) {
-        return false;
-    }
-
-    if (leftType < rightType) {
-        return false;
-    } else if (leftType > rightType) {
-        return true;
-    }
-
-    if (leftDate > rightDate) {
-        return false;
-    } else if (leftDate < rightDate) {
-        return true;
-    }
-
-    if (leftSignal < rightSignal) {
-        return true;
-    } else if (leftSignal > rightSignal) {
-        return false;
-    }
-
-    if (QString::localeAwareCompare(leftName, rightName) > 0) {
-        return true;
-    } else {
-        return false;
-    }
+    return QString::localeAwareCompare(value(left, "name").toString(), value(right, "name").toString()) > 0;
 }

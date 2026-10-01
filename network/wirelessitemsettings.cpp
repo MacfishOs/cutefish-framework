@@ -1,131 +1,109 @@
-#include <NetworkManagerQt/Settings>
-#include <NetworkManagerQt/WiredSetting>
+#include "wirelessitemsettings.h"
+#include "networkclient.h"
+
 #include <QDebug>
 
-#include "wirelessitemsettings.h"
+using namespace NetworkDBus;
 
-#include <sys/types.h>
-#include <unistd.h>
-#include <pwd.h>
+namespace {
+
+const QString connectionSetting = QStringLiteral("connection");
+
+} // namespace
 
 WirelessItemSettings::WirelessItemSettings(QObject *parent)
     : QObject(parent)
+    , m_client(NetworkClient::instance())
 {
-}
-
-QString WirelessItemSettings::path() const
-{
-    return m_path;
+    connect(m_client, &NetworkClient::changed, this, &WirelessItemSettings::refresh);
 }
 
 void WirelessItemSettings::setPath(const QString &path)
 {
     if (m_path == path)
         return;
-
     m_path = path;
-
-    m_connection = NetworkManager::findConnection(m_path);
-    if (m_connection) {
-        m_settings = m_connection->settings();
-        Q_EMIT nameChanged();
-        Q_EMIT autoConnectChanged();
-        Q_EMIT availableToOtherUsersChanged();
-        Q_EMIT settingsAvailable();
-    } else {
-        m_settings.reset();
-    }
-
     Q_EMIT pathChanged();
+    refresh();
 }
 
 QString WirelessItemSettings::name() const
 {
-    if (m_settings)
-        return m_settings->id();
-    else
-        qWarning("NetworkManager settings are invalid");
-
-    return QString();
+    return m_name;
 }
 
 void WirelessItemSettings::setName(const QString &name)
 {
-    if (m_settings) {
-        if (this->name() == name)
-            return;
-        m_settings->setId(name);
-        m_connection->update(m_settings->toMap());
-        Q_EMIT nameChanged();
-    } else {
-        qWarning("NetworkManager settings are invalid");
-    }
+    if (name == m_name || !m_client->readable(m_path))
+        return;
+    m_name = name;
+    update(QStringLiteral("id"), name);
+    Q_EMIT nameChanged();
 }
 
 bool WirelessItemSettings::autoConnect() const
 {
-    if (m_settings)
-        return m_settings->autoconnect();
-    else
-        qWarning("NetworkManager settings are invalid");
-    return false;
+    return m_autoConnect;
 }
 
 void WirelessItemSettings::setAutoConnect(bool value)
 {
-    if (m_settings) {
-        if (this->autoConnect() == value)
-            return;
-        m_settings->setAutoconnect(value);
-        m_connection->update(m_settings->toMap());
-        Q_EMIT autoConnectChanged();
-    } else {
-        qWarning("NetworkManager settings are invalid");
-    }
+    if (value == m_autoConnect || !m_client->readable(m_path))
+        return;
+    m_autoConnect = value;
+    update(QStringLiteral("autoconnect"), value);
+    Q_EMIT autoConnectChanged();
 }
 
 bool WirelessItemSettings::availableToOtherUsers() const
 {
-    if (m_settings)
-        return m_settings->permissions().isEmpty();
-    else
-        qWarning("NetworkManager settings are invalid");
-    return false;
+    return m_availableToOtherUsers;
 }
 
 void WirelessItemSettings::setAvailableToOtherUsers(bool value)
 {
-    if (m_settings) {
-        bool availableToOtherUsers = m_settings->permissions().isEmpty();
-        if (availableToOtherUsers == value)
-            return;
-
-        if (value)
-            m_settings->setPermissions(QHash<QString, QString>());
-        else
-            m_settings->addToPermissions(getCurrentUserName(), QString());
-        m_connection->update(m_settings->toMap());
-        Q_EMIT availableToOtherUsersChanged();
-    } else {
-        qWarning("NetworkManager settings are invalid");
-    }
+    if (value == m_availableToOtherUsers || !m_client->readable(m_path))
+        return;
+    m_availableToOtherUsers = value;
+    update(QStringLiteral("permissions"),
+           value ? QStringList() : QStringList {NetworkClient::userPermission()});
+    Q_EMIT availableToOtherUsersChanged();
 }
 
-void WirelessItemSettings::updateSettings(const QString &type, const QVariantMap &map)
+void WirelessItemSettings::update(const QString &key, const QVariant &value)
 {
-    if (!m_settings)
+    // Without secrets in it, an update keeps the ones NetworkManager and the keyring hold.
+    NMVariantMapMap settings = m_client->settings(m_path);
+    settings[connectionSetting].insert(key, value);
+    m_client->call(m_path, connectionInterface, QStringLiteral("Update"), {QVariant::fromValue(settings)}, this,
+                   [](const QDBusMessage &reply) {
+                       if (reply.type() == QDBusMessage::ErrorMessage)
+                           qWarning() << "Cannot update the network:" << reply.errorMessage();
+                   },
+                   2 * 60 * 1000);
+}
+
+void WirelessItemSettings::refresh()
+{
+    if (!m_client->readable(m_path))
         return;
 
-    NMVariantMapMap settings = m_settings->toMap();
-    settings.insert(type, map);
-    m_connection->update(settings);
-}
+    const QString name = m_client->setting(m_path, connectionSetting, QStringLiteral("id")).toString();
+    const QVariant autoConnect = m_client->setting(m_path, connectionSetting, QStringLiteral("autoconnect"));
+    const bool available = m_client->setting(m_path, connectionSetting, QStringLiteral("permissions")).toStringList().isEmpty();
 
-QString WirelessItemSettings::getCurrentUserName() const
-{
-    uid_t uid = ::geteuid();
-    struct passwd *pw = ::getpwuid(uid);
-    if (pw)
-        return QString::fromLocal8Bit(pw->pw_name);
-    return QString();
+    if (name != m_name) {
+        m_name = name;
+        Q_EMIT nameChanged();
+    }
+    // NetworkManager leaves out a value that is the default.
+    const bool automatic = !autoConnect.isValid() || autoConnect.toBool();
+    if (automatic != m_autoConnect) {
+        m_autoConnect = automatic;
+        Q_EMIT autoConnectChanged();
+    }
+    if (available != m_availableToOtherUsers) {
+        m_availableToOtherUsers = available;
+        Q_EMIT availableToOtherUsersChanged();
+    }
 }

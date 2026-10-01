@@ -1,34 +1,16 @@
-/*
- * Copyright (C) 2021 CutefishOS Team.
- *
- * Author:     cutefishos <cutefishos@foxmail.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+#ifndef CUTEFISH_NETWORK_ACTIVECONNECTION_H
+#define CUTEFISH_NETWORK_ACTIVECONNECTION_H
 
-#ifndef ACTIVECONNECTION_H
-#define ACTIVECONNECTION_H
+#include <network_export.h>
 
 #include <QObject>
 #include <QtQml/qqmlregistration.h>
 
-#include <NetworkManagerQt/ActiveConnection>
-#include <NetworkManagerQt/Connection>
-#include <NetworkManagerQt/Settings>
-#include <NetworkManagerQt/WirelessDevice>
+class NetworkClient;
 
-class ActiveConnection : public QObject
+// The Wi-Fi network in use, for the status bar: its name and signal icon, both empty
+// while no Wi-Fi connection is up.
+class CUTEFISH_NETWORK_EXPORT ActiveConnection : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
@@ -38,23 +20,19 @@ class ActiveConnection : public QObject
 public:
     explicit ActiveConnection(QObject *parent = nullptr);
 
-    QString wirelessName() { return m_wirelessName; }
-    QString wirelessIcon() { return m_wirelessIcon; }
+    QString wirelessName() const { return m_wirelessName; }
+    QString wirelessIcon() const { return m_wirelessIcon; }
 
-signals:
+Q_SIGNALS:
     void wirelessNameChanged();
     void wirelessIconChanged();
 
-private slots:
-    void statusChanged(NetworkManager::Status status);
-    void updateWirelessIcon(NetworkManager::Device::Ptr device);
-    void updateWirelessIconForSignalStrength(int strength);
-
 private:
+    void update();
+
+    NetworkClient *m_client;
     QString m_wirelessName;
     QString m_wirelessIcon;
-
-    NetworkManager::WirelessNetwork::Ptr m_wirelessNetwork;
 };
 
-#endif // ACTIVECONNECTION_H
+#endif // CUTEFISH_NETWORK_ACTIVECONNECTION_H

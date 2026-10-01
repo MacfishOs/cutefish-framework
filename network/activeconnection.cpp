@@ -1,89 +1,59 @@
-/*
- * Copyright (C) 2021 CutefishOS Team.
- *
- * Author:     cutefishos <cutefishos@foxmail.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
-
 #include "activeconnection.h"
+#include "networkclient.h"
+#include "wifiutils.h"
+
+using namespace NetworkDBus;
 
 ActiveConnection::ActiveConnection(QObject *parent)
     : QObject(parent)
-    , m_wirelessNetwork(nullptr)
+    , m_client(NetworkClient::instance())
 {
-    statusChanged(NetworkManager::status());
-    connect(NetworkManager::notifier(), &NetworkManager::Notifier::statusChanged, this, &ActiveConnection::statusChanged);
+    connect(m_client, &NetworkClient::changed, this, &ActiveConnection::update);
+    update();
 }
 
-void ActiveConnection::statusChanged(NetworkManager::Status status)
+void ActiveConnection::update()
 {
-    if (status == NetworkManager::Connected) {
-        NetworkManager::ActiveConnection::Ptr activeConnection = NetworkManager::primaryConnection();
-
-        if (activeConnection) {
-            NetworkManager::ConnectionSettings::ConnectionType type = activeConnection->type();
-            if ((type == NetworkManager::ConnectionSettings::Wireless) && activeConnection->isValid()) {
-                NetworkManager::Connection::Ptr selectedConnection = activeConnection->connection();
-                m_wirelessName = selectedConnection->name();
-                emit wirelessNameChanged();
-
-                updateWirelessIcon(NetworkManager::findNetworkInterface(activeConnection->devices().first()));
-            }
+    // The Wi-Fi connection that is up, the primary one if there are several; a hotspot
+    // is not a network this machine is on.
+    const QString primary = NetworkClient::path(m_client->manager(QStringLiteral("PrimaryConnection")));
+    QString chosen;
+    QString device;
+    for (const QString &active : m_client->activeConnections()) {
+        const auto property = [&](const char *name) {
+            return m_client->property(active, activeInterface, QLatin1String(name));
+        };
+        const QStringList devices = property("Devices").toStringList();
+        if (property("Type").toString() != QLatin1String("802-11-wireless")
+            || property("State").toUInt() != ActiveActivated || devices.isEmpty()
+            || m_client->property(devices.first(), wirelessInterface, QStringLiteral("Mode")).toUInt() == ModeAp)
+            continue;
+        if (chosen.isEmpty() || active == primary) {
+            chosen = active;
+            device = devices.first();
         }
-
-    } else {
-        m_wirelessName.clear();
-        emit wirelessNameChanged();
-    }
-}
-
-void ActiveConnection::updateWirelessIcon(NetworkManager::Device::Ptr device)
-{
-    if (!device)
-        return;
-
-    // clear
-    if (m_wirelessNetwork) {
-        disconnect(m_wirelessNetwork.data());
     }
 
-    NetworkManager::WirelessDevice::Ptr wifiDevice = device.objectCast<NetworkManager::WirelessDevice>();
-    NetworkManager::AccessPoint::Ptr ap = wifiDevice->activeAccessPoint();
-
-    m_wirelessNetwork = wifiDevice->findNetwork(m_wirelessName);
-
-    if (m_wirelessNetwork) {
-        updateWirelessIconForSignalStrength(m_wirelessNetwork->signalStrength());
-        connect(m_wirelessNetwork.data(), &NetworkManager::WirelessNetwork::signalStrengthChanged,
-                this, &ActiveConnection::updateWirelessIconForSignalStrength, Qt::UniqueConnection);
+    QString name;
+    QString icon;
+    if (!chosen.isEmpty()) {
+        const QString accessPoint = NetworkClient::path(
+                m_client->property(device, wirelessInterface, QStringLiteral("ActiveAccessPoint")));
+        const QByteArray ssid = m_client->property(accessPoint, accessPointInterface, QStringLiteral("Ssid")).toByteArray();
+        // A hidden network's access point has no name of its own; its profile does.
+        name = WifiUtils::ssidHidden(ssid)
+                ? m_client->property(chosen, activeInterface, QStringLiteral("Id")).toString()
+                : WifiUtils::ssidLabel(ssid);
+        icon = WifiUtils::strengthIcon(
+                m_client->property(accessPoint, accessPointInterface, QStringLiteral("Strength")).toInt());
     }
-}
 
-void ActiveConnection::updateWirelessIconForSignalStrength(int strength)
-{
-    int iconStrength = 0;
-
-    if (strength == 0)
-        iconStrength = 0;
-    else if (strength <= 33)
-        iconStrength = 33;
-    else if (strength <= 66)
-        iconStrength = 66;
-    else
-        iconStrength = 100;
-
-    m_wirelessIcon = QString("network-wireless-connected-%1").arg(iconStrength, 2, 10, QLatin1Char('0'));
-    emit wirelessIconChanged();
+    if (name != m_wirelessName) {
+        m_wirelessName = name;
+        Q_EMIT wirelessNameChanged();
+    }
+    if (icon != m_wirelessIcon) {
+        m_wirelessIcon = icon;
+        Q_EMIT wirelessIconChanged();
+    }
 }

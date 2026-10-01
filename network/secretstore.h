@@ -23,9 +23,18 @@ public:
     /** Hands over key → value for one setting of a connection; empty when none are stored. */
     void load(const QString &uuid, const QString &settingName,
               std::function<void(const QVariantMap &)> done);
+    struct Entry {
+        QString setting;
+        QString key;
+        QString value;
+    };
+
     void save(const QString &uuid, const QString &connectionName, const QString &settingName,
-              const QString &key, const QString &value);
-    void remove(const QString &uuid);
+              const QString &key, const QString &value, std::function<void()> done = {});
+    // Drops every item of the connection first, so a key it no longer has goes too.
+    void replace(const QString &uuid, const QString &connectionName, const QList<Entry> &entries,
+                 std::function<void()> done = {});
+    void remove(const QString &uuid, std::function<void()> done = {});
 
 private:
     using Reply = std::function<void(const QDBusMessage &)>;

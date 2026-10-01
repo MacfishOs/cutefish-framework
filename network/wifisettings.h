@@ -20,31 +20,28 @@
 #ifndef WIFISETTINGS_H
 #define WIFISETTINGS_H
 
+#include <network_export.h>
+
 #include <QObject>
 #include <QtQml/qqmlregistration.h>
 
-class WifiSettings : public QObject
+class NetworkClient;
+
+class CUTEFISH_NETWORK_EXPORT WifiSettings : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
 
 public:
-    WifiSettings(QObject *parent = nullptr);
-    Q_INVOKABLE QVariantMap getConnectionSettings(const QString &connection, const QString &type);
-    Q_INVOKABLE QVariantMap getActiveConnectionInfo(const QString &connection);
-    Q_INVOKABLE void addConnectionFromQML(const QVariantMap &QMLmap);
-    Q_INVOKABLE void updateConnectionFromQML(const QString &path, const QVariantMap &map);
-    Q_INVOKABLE QString getAccessPointDevice();
-    Q_INVOKABLE QString getAccessPointConnection();
+    explicit WifiSettings(QObject *parent = nullptr);
 
-    // type: none, wep, wpa, wpa2-wpa3, wpa3, wpa-eap, wpa2-eap or wpa3-eap.
-    Q_INVOKABLE bool addOtherConnection(const QString ssid, const QString userName,
-                                        const QString pwd, const QString type);
-
-    virtual ~WifiSettings();
+    // Joins a network that doesn't broadcast its name. `type` is one of "none", "wep",
+    // "wpa", "wpa2-wpa3", "wpa3", "wpa-eap", "wpa2-eap" and "wpa3-eap".
+    Q_INVOKABLE bool addOtherConnection(const QString &ssid, const QString &userName,
+                                        const QString &password, const QString &type);
 
 private:
-    QString m_userName;
+    NetworkClient *m_client;
 };
 
 #endif // WIFISETTINGS_H

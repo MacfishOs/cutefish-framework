@@ -1,4 +1,6 @@
+#include "../networkclient.h"
 #include "../secretagent.h"
+#include "fakenetworkmanager.h"
 #include "fakesecrets.h"
 
 #include <QDBusPendingCallWatcher>
@@ -15,9 +17,11 @@ const QString connectionPath = QStringLiteral("/org/freedesktop/NetworkManager/S
 const QString uuid = QStringLiteral("5e3c1b64-3b43-4a2c-9d53-0d6c1a1f4f10");
 const QString wirelessSecurity = QStringLiteral("802-11-wireless-security");
 
-// SecretAgent::GetSecretsFlag
+// NMSecretAgentGetSecretsFlags
 constexpr uint allowInteraction = 0x1;
 constexpr uint requestNew = 0x2;
+constexpr uint userRequested = 0x4;
+constexpr uint noErrors = 0x40000000;
 
 NMVariantMapMap wpaConnection(uint pskFlags = 0)
 {
@@ -38,33 +42,40 @@ class SecretAgentTest : public QObject
 private slots:
     void init()
     {
+        // Separate connections: NetworkManager's objects fill /org/freedesktop.
+        keyring = std::make_unique<QDBusConnection>(QDBusConnection::connectToBus(
+                QDBusConnection::SessionBus, QStringLiteral("fake-secrets")));
         server = std::make_unique<QDBusConnection>(QDBusConnection::connectToBus(
                 QDBusConnection::SessionBus, QStringLiteral("fake-services")));
+        QVERIFY(keyring->isConnected());
         QVERIFY(server->isConnected());
         secrets = std::make_unique<FakeSecretService>();
-        networkManager = std::make_unique<FakeAgentManager>();
-        QVERIFY(server->registerVirtualObject(QStringLiteral("/org/freedesktop/secrets"),
-                                              secrets.get(), QDBusConnection::SubPath));
-        QVERIFY(server->registerVirtualObject(
-                QStringLiteral("/org/freedesktop/NetworkManager/AgentManager"),
-                networkManager.get()));
-        QVERIFY(server->registerService(QStringLiteral("org.freedesktop.secrets")));
+        networkManager = std::make_unique<FakeNetworkManager>(*server);
+        QVERIFY(keyring->registerVirtualObject(QStringLiteral("/org/freedesktop/secrets"),
+                                               secrets.get(), QDBusConnection::SubPath));
+        QVERIFY(server->registerVirtualObject(QStringLiteral("/org/freedesktop"), networkManager.get(),
+                                              QDBusConnection::SubPath));
+        QVERIFY(keyring->registerService(QStringLiteral("org.freedesktop.secrets")));
         QVERIFY(server->registerService(QStringLiteral("org.freedesktop.NetworkManager")));
+        QTRY_VERIFY(NetworkClient::instance()->ready());
 
         agent = std::make_unique<NetworkSecretAgent>();
+        QTRY_COMPARE(networkManager->count(QStringLiteral("RegisterWithCapabilities")), 1);
     }
 
     void cleanup()
     {
         agent.reset();
-        server->unregisterService(QStringLiteral("org.freedesktop.secrets"));
+        keyring->unregisterService(QStringLiteral("org.freedesktop.secrets"));
         server->unregisterService(QStringLiteral("org.freedesktop.NetworkManager"));
-        server->unregisterObject(QStringLiteral("/org/freedesktop/secrets"),
-                                 QDBusConnection::UnregisterTree);
-        server->unregisterObject(QStringLiteral("/org/freedesktop/NetworkManager/AgentManager"));
+        keyring->unregisterObject(QStringLiteral("/org/freedesktop/secrets"), QDBusConnection::UnregisterTree);
+        server->unregisterObject(QStringLiteral("/org/freedesktop"), QDBusConnection::UnregisterTree);
+        QTRY_VERIFY(!NetworkClient::instance()->ready());
         networkManager.reset();
         secrets.reset();
+        keyring.reset();
         server.reset();
+        QDBusConnection::disconnectFromBus(QStringLiteral("fake-secrets"));
         QDBusConnection::disconnectFromBus(QStringLiteral("fake-services"));
     }
 
@@ -163,7 +174,8 @@ private slots:
 
         QDBusPendingCallWatcher first(getSecrets(wpaConnection(), wirelessSecurity, allowInteraction));
         QTRY_VERIFY(agent->pending());
-        QDBusPendingCallWatcher second(getSecrets(wep, wirelessSecurity, allowInteraction));
+        QDBusPendingCallWatcher second(getSecrets(wep, wirelessSecurity, allowInteraction,
+                                                  QStringLiteral("/org/freedesktop/NetworkManager/Settings/8")));
         QTest::qWait(100);
         QCOMPARE(agent->connectionName(), QStringLiteral("Cafe"));
 
@@ -207,6 +219,9 @@ private slots:
 
     void asksBeforeANetworkIsAdded()
     {
+        addWirelessDevice(QStringLiteral("/org/freedesktop/NetworkManager/Devices/3"),
+                          {QStringLiteral("/org/freedesktop/NetworkManager/AccessPoint/9")});
+
         auto connect = [this] {
             auto message = QDBusMessage::createMethodCall(
                     QStringLiteral("com.cutefish.SecretAgent"), QStringLiteral("/SecretAgent"),
@@ -236,6 +251,10 @@ private slots:
 
     void anotherNetworkTakesThePromptOver()
     {
+        addWirelessDevice(QStringLiteral("/org/freedesktop/NetworkManager/Devices/3"),
+                          {QStringLiteral("/org/freedesktop/NetworkManager/AccessPoint/1"),
+                           QStringLiteral("/org/freedesktop/NetworkManager/AccessPoint/2")});
+
         auto connect = [this](const QString &accessPoint, const QString &name) {
             auto message = QDBusMessage::createMethodCall(
                     QStringLiteral("com.cutefish.SecretAgent"), QStringLiteral("/SecretAgent"),
@@ -277,20 +296,125 @@ private slots:
         QTRY_VERIFY(secrets->items.isEmpty());
     }
 
+    void savesWhatTheUserTyped()
+    {
+        QDBusPendingCallWatcher reply(
+                getSecrets(wpaConnection(1), wirelessSecurity, allowInteraction | requestNew));
+        QTRY_VERIFY(agent->pending());
+        agent->respond(QStringLiteral("new password"));
+        QTRY_VERIFY(reply.isFinished());
+        QVERIFY(!reply.isError());
+
+        // NetworkManager never hands it back for saving: the next login needs it from the keyring.
+        QTRY_COMPARE(secrets->items.size(), 1);
+        QCOMPARE(secrets->items.first().value, QByteArray("new password"));
+        QCOMPARE(secrets->items.first().attributes.value(QStringLiteral("setting-key")), QStringLiteral("psk"));
+    }
+
+    void keepsSystemOwnedSecretsOutOfTheKeyring()
+    {
+        QDBusPendingCallWatcher reply(getSecrets(wpaConnection(0), wirelessSecurity, allowInteraction));
+        QTRY_VERIFY(agent->pending());
+        agent->respond(QStringLiteral("shared password"));
+        QTRY_VERIFY(reply.isFinished());
+        QTest::qWait(100);
+        QVERIFY(secrets->items.isEmpty());
+    }
+
+    void newerRequestReplacesTheOlder()
+    {
+        QDBusPendingCallWatcher first(getSecrets(wpaConnection(), wirelessSecurity, allowInteraction));
+        QTRY_VERIFY(agent->pending());
+        QDBusPendingCallWatcher second(
+                getSecrets(wpaConnection(), wirelessSecurity, allowInteraction | requestNew));
+        QTRY_VERIFY(first.isFinished());
+        QCOMPARE(first.error().name(),
+                 QStringLiteral("org.freedesktop.NetworkManager.SecretAgent.AgentCanceled"));
+        QTRY_VERIFY(agent->retry());
+
+        agent->respond(QStringLiteral("only once"));
+        QTRY_VERIFY(second.isFinished());
+        QVERIFY(!second.isError());
+        QVERIFY(!agent->pending());
+    }
+
+    void savingReplacesWhatWasStored()
+    {
+        saveSecrets(QStringLiteral("old password"));
+        QTRY_COMPARE(secrets->items.size(), 1);
+
+        auto wep = wpaConnection();
+        wep[wirelessSecurity] = {{QStringLiteral("key-mgmt"), QStringLiteral("none")},
+                                 {QStringLiteral("wep-key0"), QStringLiteral("abcde")},
+                                 {QStringLiteral("wep-key-flags"), 1u}};
+        QDBusPendingCallWatcher reply(call(QStringLiteral("SaveSecrets"),
+                                           {QVariant::fromValue(wep), QVariant::fromValue(QDBusObjectPath(connectionPath))}));
+        QTRY_VERIFY(reply.isFinished());
+        QVERIFY(!reply.isError());
+        QCOMPARE(secrets->items.size(), 1);
+        QCOMPARE(secrets->items.first().attributes.value(QStringLiteral("setting-key")), QStringLiteral("wep-key0"));
+    }
+
+    void readingWithoutErrorsGetsAnEmptyAnswer()
+    {
+        QDBusPendingCallWatcher reply(getSecrets(wpaConnection(1), wirelessSecurity, userRequested | noErrors));
+        QTRY_VERIFY(reply.isFinished());
+        QVERIFY(!reply.isError());
+        QVERIFY(secretsOf(reply).value(wirelessSecurity).isEmpty());
+    }
+
+    void registersWithEveryNetworkManager()
+    {
+        server->unregisterService(QStringLiteral("org.freedesktop.NetworkManager"));
+        QTRY_VERIFY(!NetworkClient::instance()->ready());
+        QVERIFY(server->registerService(QStringLiteral("org.freedesktop.NetworkManager")));
+        QTRY_COMPARE(networkManager->count(QStringLiteral("RegisterWithCapabilities")), 2);
+        const QDBusMessage registration = networkManager->last(QStringLiteral("RegisterWithCapabilities"));
+        QCOMPARE(registration.arguments().value(0).toString(), QStringLiteral("com.cutefish.network"));
+    }
+
+    void onlyNetworkManagerMayAsk()
+    {
+        auto message = QDBusMessage::createMethodCall(QDBusConnection::systemBus().baseService(),
+                                                      agentPath, agentInterface, QStringLiteral("GetSecrets"));
+        message.setArguments({QVariant::fromValue(wpaConnection()), QVariant::fromValue(QDBusObjectPath(connectionPath)),
+                              wirelessSecurity, QStringList(), allowInteraction});
+        auto stranger = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("stranger"));
+        QDBusPendingCallWatcher reply(stranger.asyncCall(message));
+        QTRY_VERIFY(reply.isFinished());
+        QCOMPARE(reply.error().name(),
+                 QStringLiteral("org.freedesktop.NetworkManager.SecretAgent.PermissionDenied"));
+        QVERIFY(!agent->pending());
+        QDBusConnection::disconnectFromBus(QStringLiteral("stranger"));
+    }
+
 private:
+    void addWirelessDevice(const QString &device, const QStringList &accessPoints)
+    {
+        for (const QString &accessPoint : accessPoints) {
+            networkManager->add(accessPoint, {{FakeNM::accessPoint, {{QStringLiteral("Ssid"), QByteArray("Station")}}}});
+        }
+        networkManager->add(device, {{FakeNM::device, {{QStringLiteral("DeviceType"), 2u},
+                                                       {QStringLiteral("ActiveConnection"), FakeNM::path({})}}},
+                                     {FakeNM::wireless, {{QStringLiteral("AccessPoints"), FakeNM::paths(accessPoints)}}}});
+        QTRY_VERIFY(NetworkClient::instance()->has(device, NetworkDBus::deviceInterface));
+    }
+
     QDBusPendingCall call(const QString &method, const QVariantList &arguments)
     {
-        // The agent lives on the "system" bus, which the test points at the session bus.
+        // The agent lives on the "system" bus, which the test points at the session bus, and
+        // answers only the connection that owns NetworkManager's name.
         auto message = QDBusMessage::createMethodCall(QDBusConnection::systemBus().baseService(),
                                                       agentPath, agentInterface, method);
         message.setArguments(arguments);
         return server->asyncCall(message);
     }
 
-    QDBusPendingCall getSecrets(const NMVariantMapMap &connection, const QString &setting, uint flags)
+    QDBusPendingCall getSecrets(const NMVariantMapMap &connection, const QString &setting, uint flags,
+                                const QString &path = connectionPath)
     {
         return call(QStringLiteral("GetSecrets"),
-                    {QVariant::fromValue(connection), QVariant::fromValue(QDBusObjectPath(connectionPath)),
+                    {QVariant::fromValue(connection), QVariant::fromValue(QDBusObjectPath(path)),
                      setting, QStringList(), flags});
     }
 
@@ -310,9 +434,10 @@ private:
         return qdbus_cast<NMVariantMapMap>(reply.reply().arguments().value(0));
     }
 
+    std::unique_ptr<QDBusConnection> keyring;
     std::unique_ptr<QDBusConnection> server;
     std::unique_ptr<FakeSecretService> secrets;
-    std::unique_ptr<FakeAgentManager> networkManager;
+    std::unique_ptr<FakeNetworkManager> networkManager;
     std::unique_ptr<NetworkSecretAgent> agent;
 };
 
