@@ -150,11 +150,7 @@ private slots:
         handler.addAndActivateConnection(wifiDevice, office, QStringLiteral("wrong pass"));
         QTRY_COMPARE(nm->count(QStringLiteral("AddAndActivateConnection")), 1);
         QTRY_COMPARE(NetworkClient::instance()->activeConnections().size(), 2);
-        QString active;
-        for (const QString &path : NetworkClient::instance()->activeConnections()) {
-            if (path != wiredActive)
-                active = path;
-        }
+        const QString active = otherActive();
         QVERIFY(!active.isEmpty());
 
         // NM_ACTIVE_CONNECTION_STATE_DEACTIVATED for NO_SECRETS.
@@ -229,11 +225,7 @@ private slots:
         QTRY_VERIFY(handler.hotspotActive());
 
         // The next start updates that profile rather than adding another.
-        QString active;
-        for (const QString &path : NetworkClient::instance()->activeConnections()) {
-            if (path != wiredActive)
-                active = path;
-        }
+        const QString active = otherActive();
         nm->remove(active);
         QTRY_VERIFY(!handler.hotspotActive());
         configuration.setHotspotName(QStringLiteral("Desk 2"));
@@ -254,11 +246,7 @@ private slots:
         QSignalSpy failed(&handler, &Handler::hotspotFailed);
         handler.createHotspot();
         QTRY_COMPARE(NetworkClient::instance()->activeConnections().size(), 2);
-        QString active;
-        for (const QString &path : NetworkClient::instance()->activeConnections()) {
-            if (path != wiredActive)
-                active = path;
-        }
+        const QString active = otherActive();
 
         // NM_ACTIVE_CONNECTION_STATE_DEACTIVATED for DEVICE_DISCONNECTED.
         QTest::qWait(100);
@@ -482,6 +470,16 @@ private:
                 return index;
         }
         return {};
+    }
+
+    static QString otherActive()
+    {
+        QString active;
+        for (const QString &path : NetworkClient::instance()->activeConnections()) {
+            if (path != wiredActive)
+                active = path;
+        }
+        return active;
     }
 
     std::unique_ptr<QDBusConnection> server;

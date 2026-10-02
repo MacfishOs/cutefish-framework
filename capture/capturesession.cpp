@@ -102,6 +102,8 @@ struct CaptureSessionListeners {
     static void sessionStopped(void *data, ext_image_copy_capture_session_v1 *)
     {
         auto *self = static_cast<CaptureSession *>(data);
+        if (self->m_stopped)
+            return;
         self->m_stopped = true;
         emit self->stopped();
     }
@@ -154,8 +156,10 @@ struct CaptureSessionListeners {
             self->freeBuffer(id);
         qCDebug(cfCapture) << "frame failed, reason" << reason;
         if (reason == EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_STOPPED) {
-            self->m_stopped = true;
-            emit self->stopped();
+            if (!self->m_stopped) {
+                self->m_stopped = true;
+                emit self->stopped();
+            }
         } else {
             // Unknown failures are retryable, and a buffer that no longer fits
             // is replaced once the new constraints arrive.
@@ -239,18 +243,15 @@ bool CaptureSession::capture()
     if (m_stopped || m_frame || m_size.isEmpty())
         return false;
 
-    int id = -1;
-    for (const auto &[candidate, buffer] : m_buffers) {
-        if (!buffer->held && !buffer->retired) {
-            id = candidate;
-            break;
-        }
-    }
-    if (id < 0)
+    const auto it = std::find_if(m_buffers.begin(), m_buffers.end(),
+                                 [](const auto &entry) {
+                                     return !entry.second->held && !entry.second->retired;
+                                 });
+    if (it == m_buffers.end())
         return false;
 
-    Buffer *buffer = m_buffers.at(id).get();
-    m_frameBuffer = id;
+    Buffer *buffer = it->second.get();
+    m_frameBuffer = it->first;
     m_frameTransform = 0;
     m_framePresentedNs = 0;
     m_frame = ext_image_copy_capture_session_v1_create_frame(m_session);

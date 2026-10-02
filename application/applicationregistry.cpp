@@ -1,6 +1,7 @@
 #include "applicationregistry.h"
 
 #include <QCollator>
+#include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDir>
 #include <QDirIterator>
@@ -63,10 +64,9 @@ public:
             }
         }
 
-        QPointer<ApplicationRegistry> registry = m_registry;
         QMetaObject::invokeMethod(
-                m_registry,
-                [registry, results]() {
+                QCoreApplication::instance(),
+                [registry = m_registry, results]() {
                     if (registry)
                         registry->applyScan(results);
                 },
@@ -74,7 +74,7 @@ public:
     }
 
 private:
-    ApplicationRegistry *m_registry;
+    QPointer<ApplicationRegistry> m_registry;
     QString m_language;
 };
 
@@ -382,16 +382,13 @@ void ApplicationRegistry::onLanguageChanged()
 
 void ApplicationRegistry::startScan()
 {
-    if (m_scanInProgress) {
+    if (m_loading) {
         m_scanQueued = true;
         return;
     }
 
-    m_scanInProgress = true;
-    if (!m_loading) {
-        m_loading = true;
-        emit loadingChanged();
-    }
+    m_loading = true;
+    emit loadingChanged();
     m_language = DesktopEntry::displayLanguage();
     QThreadPool::globalInstance()->start(new DesktopEntryScanner(this, m_language));
 }
@@ -400,7 +397,6 @@ void ApplicationRegistry::applyScan(const QList<DesktopEntryData> &results)
 {
     const bool wasLoading = m_loading;
     m_loading = false;
-    m_scanInProgress = false;
 
     QHash<QString, DesktopEntry *> oldEntries = m_entriesById;
     QHash<QString, DesktopEntry *> newEntries;
@@ -451,7 +447,9 @@ void ApplicationRegistry::applyScan(const QList<DesktopEntryData> &results)
 
 void ApplicationRegistry::monitorPaths()
 {
-    for (const QString &rootPath : desktopPaths()) {
+    const QStringList roots = desktopPaths();
+    QStringList ancestors;
+    for (const QString &rootPath : roots) {
         QDir root(rootPath);
         if (!root.exists()) {
             QString parentPath = rootPath;
@@ -461,8 +459,10 @@ void ApplicationRegistry::monitorPaths()
                     break;
                 parentPath = parent;
             }
-            if (QDir(parentPath).exists())
+            if (QDir(parentPath).exists()) {
                 m_watcher->addPath(parentPath);
+                ancestors.append(parentPath);
+            }
             continue;
         }
 
@@ -477,5 +477,21 @@ void ApplicationRegistry::monitorPaths()
         while (files.hasNext())
             m_watcher->addPath(files.next());
     }
+
+    // An ancestor stands in for a missing root only until that root exists.
+    const QStringList watched = m_watcher->directories();
+    QStringList stale;
+    for (const QString &dir : watched) {
+        if (ancestors.contains(dir))
+            continue;
+        const bool underRoot = std::any_of(roots.cbegin(), roots.cend(),
+                                           [&dir](const QString &root) {
+            return dir == root || dir.startsWith(root + QLatin1Char('/'));
+        });
+        if (!underRoot)
+            stale.append(dir);
+    }
+    if (!stale.isEmpty())
+        m_watcher->removePaths(stale);
 }
 

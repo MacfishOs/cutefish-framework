@@ -85,6 +85,9 @@ private:
     bool sendRequest(const QDBusPendingCall &call, Completion done);
     void failRequests();
 
+    // An apply waits for its reply, its OperationFinished, or the state that shows it.
+    bool operationPending() const;
+
     struct OperationResult {
         bool succeeded;
         bool degraded;

@@ -57,7 +57,7 @@ bool BluetoothAgent::handleMessage(const QDBusMessage &message, const QDBusConne
     }
     if (message.member() == QStringLiteral("Cancel")
         || message.member() == QStringLiteral("Release")) {
-        m_manager->finishPrompt(QStringLiteral("org.bluez.Error.Canceled"));
+        m_manager->finishPrompt();
         if (message.member() == QStringLiteral("Release")) {
             m_manager->m_agentReady = false;
             emit m_manager->changed();

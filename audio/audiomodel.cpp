@@ -40,10 +40,9 @@ int AudioModel::rowCount(const QModelIndex &parent) const
 
 QVariant AudioModel::data(const QModelIndex &index, int role) const
 {
-    if (!index.isValid() || index.model() != this || index.column() != 0
-        || index.row() < 0 || index.row() >= m_objects.size())
+    AudioObject *object = objectAt(index);
+    if (!object)
         return {};
-    AudioObject *object = m_objects.at(index.row());
     if (role == Qt::DisplayRole)
         return object->description();
     if (role == ObjectRole)
@@ -56,8 +55,8 @@ QVariant AudioModel::data(const QModelIndex &index, int role) const
 
 bool AudioModel::setData(const QModelIndex &index, const QVariant &value, int role)
 {
-    if (!index.isValid() || index.model() != this || index.column() != 0
-        || index.row() < 0 || index.row() >= m_objects.size())
+    AudioObject *object = objectAt(index);
+    if (!object)
         return false;
     const int propertyIndex = m_properties.value(role, -1);
     if (propertyIndex < 0)
@@ -65,7 +64,7 @@ bool AudioModel::setData(const QModelIndex &index, const QVariant &value, int ro
     const QMetaProperty property = AudioObject::staticMetaObject.property(propertyIndex);
     if (!property.isWritable())
         return false;
-    return property.write(m_objects.at(index.row()), value);
+    return property.write(object, value);
 }
 
 Qt::ItemFlags AudioModel::flags(const QModelIndex &index) const
@@ -86,6 +85,14 @@ int AudioModel::role(const QByteArray &name) const
 AudioObject *AudioModel::defaultNode() const
 {
     return m_backend->defaultNode(m_kind);
+}
+
+AudioObject *AudioModel::objectAt(const QModelIndex &index) const
+{
+    if (!index.isValid() || index.model() != this || index.column() != 0
+        || index.row() < 0 || index.row() >= m_objects.size())
+        return nullptr;
+    return m_objects.at(index.row());
 }
 
 void AudioModel::addObject(AudioObject *object)

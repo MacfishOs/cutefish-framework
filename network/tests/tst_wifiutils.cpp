@@ -63,10 +63,6 @@ private slots:
         QVERIFY(!WifiUtils::pskValid(QStringLiteral("1234567")));
         QVERIFY(WifiUtils::pskValid(QString(64, QLatin1Char('a'))));
         QVERIFY(!WifiUtils::pskValid(QString(64, QLatin1Char('g'))));
-        QVERIFY(WifiUtils::wepKeyValid(QStringLiteral("abcde")));
-        QVERIFY(WifiUtils::wepKeyValid(QStringLiteral("0123456789")));
-        QVERIFY(!WifiUtils::wepKeyValid(QStringLiteral("012345678g")));
-        QVERIFY(!WifiUtils::wepKeyValid(QStringLiteral("abcdef")));
         QCOMPARE(WifiUtils::generatedPassword().size(), 12);
         QVERIFY(WifiUtils::pskValid(WifiUtils::generatedPassword()));
     }

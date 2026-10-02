@@ -3,7 +3,7 @@
 include(CMakeFindDependencyMacro)
 find_dependency(Qt6 COMPONENTS Core Gui DBus Qml)
 
-# Without COMPONENTS every installed library is imported.
+# Without COMPONENTS only Application, Appearance and IO are imported.
 set(_cutefish_framework_components ${CutefishFramework_FIND_COMPONENTS})
 if(NOT _cutefish_framework_components)
     set(_cutefish_framework_components Application Appearance IO)

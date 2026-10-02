@@ -4,7 +4,6 @@
 #include "batterystatus.h"
 
 #include <QDBusConnection>
-#include <QDBusConnectionInterface>
 #include <QSignalSpy>
 #include <QTest>
 

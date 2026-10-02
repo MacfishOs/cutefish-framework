@@ -34,7 +34,6 @@ inline const QString connectionInterface =
         QStringLiteral("org.freedesktop.NetworkManager.Settings.Connection");
 inline const QString activeInterface = QStringLiteral("org.freedesktop.NetworkManager.Connection.Active");
 inline const QString deviceInterface = QStringLiteral("org.freedesktop.NetworkManager.Device");
-inline const QString wiredInterface = QStringLiteral("org.freedesktop.NetworkManager.Device.Wired");
 inline const QString wirelessInterface = QStringLiteral("org.freedesktop.NetworkManager.Device.Wireless");
 inline const QString statisticsInterface =
         QStringLiteral("org.freedesktop.NetworkManager.Device.Statistics");
@@ -42,7 +41,6 @@ inline const QString accessPointInterface = QStringLiteral("org.freedesktop.Netw
 inline const QString ip4ConfigInterface = QStringLiteral("org.freedesktop.NetworkManager.IP4Config");
 inline const QString ip6ConfigInterface = QStringLiteral("org.freedesktop.NetworkManager.IP6Config");
 inline const QString agentManagerInterface = QStringLiteral("org.freedesktop.NetworkManager.AgentManager");
-inline const QString secretAgentInterface = QStringLiteral("org.freedesktop.NetworkManager.SecretAgent");
 inline const QString propertiesInterface = QStringLiteral("org.freedesktop.DBus.Properties");
 inline const QString objectManagerInterface = QStringLiteral("org.freedesktop.DBus.ObjectManager");
 

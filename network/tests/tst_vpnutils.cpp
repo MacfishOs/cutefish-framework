@@ -127,6 +127,17 @@ private slots:
         QCOMPARE(peers.first().value(QStringLiteral("allowed-ips")).toStringList(),
                  (QStringList {QStringLiteral("0.0.0.0/0"), QStringLiteral("::/0")}));
 
+        const NMVariantMapMap ipv6Server = VpnUtils::manualProfile({{QStringLiteral("kind"), QStringLiteral("wireguard")},
+                                                                    {QStringLiteral("server"), QStringLiteral("2001:db8::1")},
+                                                                    {QStringLiteral("privateKey"), QStringLiteral("yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=")},
+                                                                    {QStringLiteral("publicKey"), QStringLiteral("xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=")},
+                                                                    {QStringLiteral("address"), QStringLiteral("10.0.0.2/24")}},
+                                                                   &error);
+        QVERIFY2(!ipv6Server.isEmpty(), qPrintable(error));
+        QCOMPARE(ipv6Server.value(QStringLiteral("wireguard")).value(QStringLiteral("peers")).value<QList<QVariantMap>>()
+                         .first().value(QStringLiteral("endpoint")).toString(),
+                 QStringLiteral("[2001:db8::1]:51820"));
+
         QVERIFY(VpnUtils::manualProfile({{QStringLiteral("kind"), QStringLiteral("pptp")},
                                          {QStringLiteral("server"), QStringLiteral("x")}},
                                         &error)

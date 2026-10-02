@@ -103,7 +103,7 @@ void MprisPlayerInterface::onPropertyChanged(const QString &propertyName, const 
             Q_EMIT loopStatusChanged(m_loopStatus);
         }
     } else if (propertyName == QStringLiteral("MaximumRate")) {
-        bool maximumRate = value.toDouble();
+        double maximumRate = value.toDouble();
         if (m_maximumRate != maximumRate) {
             m_maximumRate = maximumRate;
             Q_EMIT maximumRateChanged(m_maximumRate);

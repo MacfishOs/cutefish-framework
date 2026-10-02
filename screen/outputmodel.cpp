@@ -97,8 +97,6 @@ QVariant DisplayOutputModel::data(const QModelIndex &index, int role) const
         return {};
     const Entry &e = m_entries.at(index.row());
     const auto *mode = selectedMode(e);
-    const auto resolutions = resolutionModes(e);
-    const auto refreshes = refreshModes(e);
     switch (role) {
     case Qt::DisplayRole:
         return name(e);
@@ -122,15 +120,18 @@ QVariant DisplayOutputModel::data(const QModelIndex &index, int role) const
         return e.rotation == 0 ? 1 : e.rotation == 1 ? 2 : e.rotation == 2 ? 4 : 8;
     case ScaleRole:
         return e.scale120 / 120.0;
-    case ResolutionIndexRole:
+    case ResolutionIndexRole: {
+        const auto resolutions = resolutionModes(e);
         for (int i = 0; i < resolutions.size(); ++i) {
             const auto &m = e.physical.modes.at(resolutions.at(i));
             if (mode && m.width == mode->width && m.height == mode->height)
                 return i;
         }
         return 0;
-    case RecommendedResolutionIndexRole:
+    }
+    case RecommendedResolutionIndexRole: {
         // The display's preferred mode, the one the compositor starts it in.
+        const auto resolutions = resolutionModes(e);
         for (int i = 0; i < resolutions.size(); ++i) {
             const auto &m = e.physical.modes.at(resolutions.at(i));
             for (const auto &preferred : e.physical.modes) {
@@ -140,9 +141,11 @@ QVariant DisplayOutputModel::data(const QModelIndex &index, int role) const
             }
         }
         return -1;
+    }
     case RecommendedScaleRole:
         return e.physical.recommendedScale120 / 120.0;
     case ResolutionsRole: {
+        const auto resolutions = resolutionModes(e);
         QStringList v;
         for (int i : resolutions) {
             const auto &m = e.physical.modes.at(i);
@@ -151,8 +154,9 @@ QVariant DisplayOutputModel::data(const QModelIndex &index, int role) const
         return v;
     }
     case RefreshRateIndexRole:
-        return refreshes.indexOf(e.modeIndex);
+        return refreshModes(e).indexOf(e.modeIndex);
     case RefreshRatesRole: {
+        const auto refreshes = refreshModes(e);
         QStringList v;
         for (int i : refreshes)
             v.append(QStringLiteral("%1 Hz").arg(e.physical.modes.at(i).refreshMilliHz / 1000.0, 0,
@@ -266,12 +270,13 @@ bool DisplayOutputModel::setData(const QModelIndex &index, const QVariant &value
         if (selected < 0 || selected >= choices.size())
             return false;
         const auto &t = e.physical.modes.at(choices.at(selected));
+        const auto *current = selectedMode(e);
+        const int currentRefresh = current ? current->refreshMilliHz : 0;
         int best = choices.at(selected), difference = INT_MAX;
         for (int i = 0; i < e.physical.modes.size(); ++i) {
             const auto &c = e.physical.modes.at(i);
             if (c.width == t.width && c.height == t.height) {
-                const int d = qAbs(c.refreshMilliHz
-                                   - (selectedMode(e) ? selectedMode(e)->refreshMilliHz : 0));
+                const int d = qAbs(c.refreshMilliHz - currentRefresh);
                 if (d < difference) {
                     best = i;
                     difference = d;
@@ -313,6 +318,18 @@ bool DisplayOutputModel::setData(const QModelIndex &index, const QVariant &value
     }
     m_layoutDirty |= role == PositionRole || role == NormalizedPositionRole || role == EnabledRole
             || role == ReplicationSourceIndexRole;
+    if (role == ReplicationSourceIndexRole && e.primary && !e.mirrorSource.isEmpty()) {
+        // The compositor takes the primary only from a mirror source.
+        for (auto &candidate : m_entries) {
+            if (candidate.physical.sessionId == e.mirrorSource && candidate.enabled
+                && candidate.mirrorSource.isEmpty()) {
+                e.primary = false;
+                candidate.primary = true;
+                emit dataChanged(this->index(0), this->index(m_entries.size() - 1), {PrimaryRole});
+                break;
+            }
+        }
+    }
     if (role == EnabledRole && !e.enabled && e.primary) {
         e.primary = false;
         for (auto &candidate : m_entries) {
@@ -377,12 +394,12 @@ void DisplayOutputModel::setState(const DisplayClient::State &state)
         }
     }
     for (const auto &physical : state.physical) {
+        int row = 0;
+        while (row < m_entries.size() && m_entries[row].physical.sessionId != physical.sessionId)
+            ++row;
         Entry entry;
-        for (const auto &previous : m_entries)
-            if (previous.physical.sessionId == physical.sessionId) {
-                entry = previous;
-                break;
-            }
+        if (row < m_entries.size())
+            entry = m_entries[row];
         entry.physical = physical;
         entry.enabled = false;
         entry.primary = false;
@@ -405,9 +422,6 @@ void DisplayOutputModel::setState(const DisplayClient::State &state)
                 entry.mirrorSource = logical.destinations.first();
             break;
         }
-        int row = 0;
-        while (row < m_entries.size() && m_entries[row].physical.sessionId != physical.sessionId)
-            ++row;
         if (row == m_entries.size()) {
             beginInsertRows({}, row, row);
             m_entries.append(entry);

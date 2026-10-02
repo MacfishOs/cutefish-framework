@@ -6,33 +6,6 @@
 
 namespace {
 
-QDBusArgument &operator<<(QDBusArgument &argument, const NMObjects &objects)
-{
-    argument.beginMap(QMetaType::fromType<QDBusObjectPath>(), QMetaType::fromType<NMVariantMapMap>());
-    for (auto it = objects.cbegin(); it != objects.cend(); ++it) {
-        argument.beginMapEntry();
-        argument << it.key() << it.value();
-        argument.endMapEntry();
-    }
-    argument.endMap();
-    return argument;
-}
-
-const QDBusArgument &operator>>(const QDBusArgument &argument, NMObjects &objects)
-{
-    argument.beginMap();
-    while (!argument.atEnd()) {
-        QDBusObjectPath path;
-        NMVariantMapMap interfaces;
-        argument.beginMapEntry();
-        argument >> path >> interfaces;
-        argument.endMapEntry();
-        objects.insert(path, interfaces);
-    }
-    argument.endMap();
-    return argument;
-}
-
 QVariant read(const QDBusArgument &argument)
 {
     switch (argument.currentType()) {

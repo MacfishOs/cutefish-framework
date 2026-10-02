@@ -31,7 +31,6 @@ CUTEFISH_NETWORK_EXPORT int strengthStep(int strength);
 CUTEFISH_NETWORK_EXPORT QString strengthIcon(int strength);
 
 CUTEFISH_NETWORK_EXPORT bool pskValid(const QString &psk);
-CUTEFISH_NETWORK_EXPORT bool wepKeyValid(const QString &key);
 CUTEFISH_NETWORK_EXPORT QString generatedPassword();
 
 } // namespace WifiUtils

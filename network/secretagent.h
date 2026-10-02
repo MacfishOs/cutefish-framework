@@ -7,7 +7,6 @@
 #include <QDBusMessage>
 #include <QList>
 #include <QPointer>
-#include <functional>
 
 #include <QtQml/qqmlregistration.h>
 
@@ -109,7 +108,6 @@ private:
     void fail(const Request &request, const QString &error, const QString &text);
     void ask(const Request &request);
     void finish();
-    void dismiss(const std::function<bool(const Request &)> &matches);
     void dismissStalePrompts();
 
     // Owned by the application, which may tear it down first.

@@ -33,18 +33,13 @@ UserAccount *AccountsManagerPrivate::account(const QString &path, quint64 reques
     if (!user) {
         user = new UserAccount(path, service->connection(), owner);
         accounts.insert(path, user);
-        QObject::connect(user, &UserAccount::userNameChanged, owner,
-                         [this, user]() {
-                             const QString path = pathFor(user);
-                             if (!path.isEmpty())
-                                 names.insert(path, user->userName());
-                         });
-        QObject::connect(user, &UserAccount::accountChanged, owner,
-                         [this, user]() {
-                             const QString path = pathFor(user);
-                             if (!path.isEmpty())
-                                 names.insert(path, user->userName());
-                         });
+        const auto updateName = [this, user]() {
+            const QString path = pathFor(user);
+            if (!path.isEmpty())
+                names.insert(path, user->userName());
+        };
+        QObject::connect(user, &UserAccount::userNameChanged, owner, updateName);
+        QObject::connect(user, &UserAccount::accountChanged, owner, updateName);
         QObject::connect(user, &UserAccount::userIdChanged, owner,
                          [this, user]() {
                              const QString previousPath = pathFor(user);
@@ -58,8 +53,8 @@ UserAccount *AccountsManagerPrivate::account(const QString &path, quint64 reques
                              accounts.remove(previousPath);
                              remove(nextPath);
                              accounts.insert(nextPath, user);
-                             names.insert(nextPath, user->userName().isEmpty()
-                                                  ? previousName : user->userName());
+                             const QString userName = user->userName();
+                             names.insert(nextPath, userName.isEmpty() ? previousName : userName);
                          });
     }
     const QString currentName = user->userName();
@@ -68,6 +63,17 @@ UserAccount *AccountsManagerPrivate::account(const QString &path, quint64 reques
     else if (!name.isEmpty())
         names.insert(path, name);
     return user;
+}
+
+UserAccountList AccountsManagerPrivate::accountsFor(const QList<QDBusObjectPath> &paths,
+                                                    quint64 requestSerial)
+{
+    UserAccountList result;
+    for (const QDBusObjectPath &path : paths) {
+        if (UserAccount *user = account(path.path(), requestSerial))
+            result.append(user);
+    }
+    return result;
 }
 
 QString AccountsManagerPrivate::pathFor(UserAccount *user) const
@@ -219,12 +225,7 @@ void AccountsManager::listCachedUsers()
                     return;
                 }
 
-                UserAccountList result;
-                for (const QDBusObjectPath &path : reply.value()) {
-                    if (UserAccount *user = d_ptr->account(path.path(), started))
-                        result.append(user);
-                }
-                Q_EMIT listCachedUsersFinished(result);
+                Q_EMIT listCachedUsersFinished(d_ptr->accountsFor(reply.value(), started));
             });
 }
 
@@ -238,12 +239,7 @@ UserAccountList AccountsManager::listCachedUsersSync()
         return {};
     }
 
-    UserAccountList result;
-    for (const QDBusObjectPath &path : reply.value()) {
-        if (UserAccount *user = d_ptr->account(path.path(), started))
-            result.append(user);
-    }
-    return result;
+    return d_ptr->accountsFor(reply.value(), started);
 }
 
 UserAccount *AccountsManager::cachedUser(const QString &userName) const
@@ -311,11 +307,6 @@ bool AccountsManager::deleteUser(qlonglong uid, bool removeFiles)
         return false;
     }
     return true;
-}
-
-bool AccountsManager::deleteUser(UserAccount *account, bool removeFiles)
-{
-    return account && deleteUser(account->userId(), removeFiles);
 }
 
 }

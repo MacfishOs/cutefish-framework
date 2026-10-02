@@ -5,7 +5,6 @@
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
-#include <QDBusMetaType>
 #include <QDBusObjectPath>
 #include <QDBusVariant>
 #include <QDBusVirtualObject>
@@ -50,7 +49,6 @@ public:
         : m_bus(bus)
     {
         registerNetworkDBusTypes();
-        qDBusRegisterMetaType<QList<QVariantMap>>();
         objects[FakeNM::managerPath][FakeNM::manager] = {
             {QStringLiteral("Version"), QStringLiteral("1.52.1")},
             {QStringLiteral("State"), 70u},

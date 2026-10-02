@@ -608,21 +608,6 @@ void NetworkSecretAgent::finish()
     Q_EMIT requestChanged();
 }
 
-void NetworkSecretAgent::dismiss(const std::function<bool(const Request &)> &matches)
-{
-    bool headChanged = false;
-    for (int i = m_requests.size() - 1; i >= 0; --i) {
-        const Request &request = m_requests.at(i);
-        if (request.accessPointPath.isEmpty() || !matches(request))
-            continue;
-        m_requests.removeAt(i);
-        headChanged |= i == 0;
-    }
-
-    if (headChanged)
-        Q_EMIT requestChanged();
-}
-
 void NetworkSecretAgent::dismissStalePrompts()
 {
     if (!m_client->ready())
@@ -630,13 +615,23 @@ void NetworkSecretAgent::dismissStalePrompts()
 
     // A prompt for a network that went out of range, a device that went away, or a device
     // that started connecting elsewhere is out of date.
-    dismiss([this](const Request &request) {
-        if (!m_client->has(request.accessPointPath, accessPointInterface)
-            || !m_client->has(request.devicePath, deviceInterface))
-            return true;
-        const QString active = m_client->activeConnection(request.devicePath);
-        return !active.isEmpty() && active != request.deviceActive;
-    });
+    bool headChanged = false;
+    for (int i = m_requests.size() - 1; i >= 0; --i) {
+        const Request &request = m_requests.at(i);
+        if (request.accessPointPath.isEmpty())
+            continue;
+        if (m_client->has(request.accessPointPath, accessPointInterface)
+            && m_client->has(request.devicePath, deviceInterface)) {
+            const QString active = m_client->activeConnection(request.devicePath);
+            if (active.isEmpty() || active == request.deviceActive)
+                continue;
+        }
+        m_requests.removeAt(i);
+        headChanged |= i == 0;
+    }
+
+    if (headChanged)
+        Q_EMIT requestChanged();
 }
 
 #include "secretagent.moc"

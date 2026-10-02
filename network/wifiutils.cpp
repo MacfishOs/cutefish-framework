@@ -322,24 +322,6 @@ bool pskValid(const QString &psk)
     return bytes.size() >= 8 && bytes.size() <= 63;
 }
 
-bool wepKeyValid(const QString &key)
-{
-    if (key.size() == 10 || key.size() == 26) {
-        for (const QChar c : key) {
-            if (c.unicode() > 0x7f || !std::isxdigit(c.unicode()))
-                return false;
-        }
-        return true;
-    }
-    if (key.size() != 5 && key.size() != 13)
-        return false;
-    for (const QChar c : key) {
-        if (c.unicode() < 0x20 || c.unicode() > 0x7e)
-            return false;
-    }
-    return true;
-}
-
 QString generatedPassword()
 {
     // nmcli's alphabet, without the characters that read like others.

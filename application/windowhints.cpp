@@ -107,7 +107,10 @@ void WindowHints::watchSurface()
             }, Qt::DirectConnection);
     m_destroyedConnection = connect(
             native, &QNativeInterface::Private::QWaylandWindow::surfaceDestroyed, this,
-            [this] { m_surfaceDying = true; }, Qt::DirectConnection);
+            [this] {
+                m_surfaceDying = true;
+                setInteractiveResize(false);
+            }, Qt::DirectConnection);
 }
 
 bool WindowHints::eventFilter(QObject *object, QEvent *event)

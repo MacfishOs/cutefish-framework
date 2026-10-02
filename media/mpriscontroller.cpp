@@ -63,17 +63,22 @@ MprisController::MprisController(const QString &service, const QDBusConnection &
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::canPauseChanged, this, &MprisController::canPauseChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::canPlayChanged, this, &MprisController::canPlayChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::canSeekChanged, this, &MprisController::canSeekChanged);
-    connect(m_mprisPlayerInterface, &MprisPlayerInterface::canSeekChanged, this, &MprisController::canSeekChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::loopStatusChanged, this, &MprisController::loopStatusChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::maximumRateChanged, this, &MprisController::maximumRateChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::metadataChanged, this, &MprisController::metadataChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::minimumRateChanged, this, &MprisController::minimumRateChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::playbackStatusChanged, this, &MprisController::playbackStatusChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::positionChanged, this, &MprisController::onPositionChanged);
+    // An unchanged or failed Position reply emits no positionChanged; re-arm here.
+    connect(m_mprisPlayerInterface, &MprisPlayerInterface::asyncPropertyFinished, this, [this](const QString &propertyName) {
+        if (propertyName == QLatin1String("Position")) {
+            m_requestedPosition = false;
+        }
+    });
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::rateChanged, this, &MprisController::rateChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::shuffleChanged, this, &MprisController::shuffleChanged);
     connect(m_mprisPlayerInterface, &MprisPlayerInterface::volumeChanged, this, &MprisController::volumeChanged);
-    connect(m_mprisPlayerInterface, &MprisPlayerInterface::seeked, this, &MprisController::seeked);
+    connect(m_mprisPlayerInterface, &MprisPlayerInterface::Seeked, this, &MprisController::seeked);
     m_mprisPlayerInterface->setUseCache(true);
 
     // This will initialize the properties, if needed
@@ -305,7 +310,7 @@ bool MprisController::setPosition(const QString &aTrackId, qlonglong position)
     }
 
     QVariant length = m_mprisPlayerInterface->metadata()[Mpris::metadataToString(Mpris::Length)];
-    if (!length.isValid()) {
+    if (length.isValid()) {
         qlonglong reportedLength = length.toLongLong();
 
         if (position < 0 || position > reportedLength) {
@@ -651,6 +656,8 @@ void MprisController::onAsyncGetAllPlayerPropertiesFinished()
 
 void MprisController::onCanControlChanged()
 {
+    Q_EMIT canControlChanged();
+
     // On first reception, we are using a "GetAll" so we can skip this
     if (m_canControlReceived) {
         // I could disconnect and re-connect the signals so I avoid

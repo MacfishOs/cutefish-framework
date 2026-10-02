@@ -36,7 +36,6 @@ target_link_libraries(cutefish-framework-bluetooth PUBLIC
 )
 
 cutefish_install_qml_module(cutefish-framework-bluetooth)
-install(FILES DevicesModel.qml DESTINATION ${INSTALL_QMLDIR}/Cutefish/Bluetooth)
 
 if(BUILD_TESTING)
     add_subdirectory(tests)

@@ -19,7 +19,7 @@ struct ext_image_copy_capture_session_v1;
 struct ext_image_copy_capture_frame_v1;
 struct wl_buffer;
 
-// One ext_image_copy_capture_v1 session into a pool of shared memory buffers.
+// One ext_image_copy_capture_v1 session into a pool of shared memory or DMA-BUF buffers.
 // A buffer handed out stays the consumer's until releaseBuffer().
 class CaptureSession : public QObject
 {

@@ -416,7 +416,7 @@ void MprisManager::onServiceAppeared(const QString &service)
         connect(controller.data(), SIGNAL(playbackStatusChanged()), m_playbackStatusMapper, SLOT(map()));
         m_playbackStatusMapper->setMapping(controller.data(), controller->service());
         // One mapper for every controller: connected once, not per player.
-        connect(m_playbackStatusMapper, SIGNAL(mapped(QString)), this, SLOT(onAvailableControllerPlaybackStatusChanged(QString)), Qt::UniqueConnection);
+        connect(m_playbackStatusMapper, &QSignalMapper::mappedString, this, &MprisManager::onAvailableControllerPlaybackStatusChanged, Qt::UniqueConnection);
     }
 
     if (m_currentController.isNull()) {
@@ -434,7 +434,7 @@ void MprisManager::onServiceAppeared(const QString &service)
         m_availableControllers.prepend(controller);
         setCurrentController(controller);
     } else {
-        m_availableControllers.insert(1, controller);
+        m_availableControllers.insert(qMin<qsizetype>(1, m_availableControllers.size()), controller);
         if (controller->playbackStatus() == Mpris::Playing) {
             m_otherPlayingControllers.prepend(controller);
         }
@@ -471,7 +471,9 @@ void MprisManager::onServiceVanished(const QString &service)
 void MprisManager::onAvailableControllerPlaybackStatusChanged(const QString &service)
 {
     QSharedPointer<MprisController> controller = availableController(service);
-    Q_ASSERT(!controller.isNull());
+    if (controller.isNull()) {
+        return;
+    }
 
     if (m_currentController == controller) {
         if (m_currentController->playbackStatus() == Mpris::Playing) {
@@ -480,7 +482,11 @@ void MprisManager::onAvailableControllerPlaybackStatusChanged(const QString &ser
 
         if (!m_otherPlayingControllers.isEmpty()) {
             QSharedPointer<MprisController> currentController = m_otherPlayingControllers.takeFirst();
-            m_availableControllers.move(m_availableControllers.indexOf(currentController), 0);
+            const qsizetype index = m_availableControllers.indexOf(currentController);
+            if (index >= 0) {
+                m_availableControllers.move(index, 0);
+            }
+
             setCurrentController(currentController);
         }
     } else {
@@ -493,7 +499,7 @@ void MprisManager::onAvailableControllerPlaybackStatusChanged(const QString &ser
             && m_currentController->playbackStatus() != Mpris::Playing) {
             setCurrentController(controller);
         } else {
-            m_availableControllers.move(m_availableControllers.indexOf(controller), 1);
+            m_availableControllers.move(m_availableControllers.indexOf(controller), qMin<qsizetype>(1, m_availableControllers.size() - 1));
             m_otherPlayingControllers.removeAll(controller); // Just in case, shouldn't be needed
             m_otherPlayingControllers.prepend(controller);
         }
@@ -583,6 +589,7 @@ void MprisManager::setCurrentController(QSharedPointer<MprisController> controll
         connect(m_currentController.data(), &MprisController::metadataChanged, this, &MprisManager::metadataChanged);
         connect(m_currentController.data(), &MprisController::minimumRateChanged, this, &MprisManager::minimumRateChanged);
         connect(m_currentController.data(), &MprisController::playbackStatusChanged, this, &MprisManager::playbackStatusChanged);
+        connect(m_currentController.data(), &MprisController::positionChanged, this, &MprisManager::positionChanged);
         connect(m_currentController.data(), &MprisController::rateChanged, this, &MprisManager::rateChanged);
         connect(m_currentController.data(), &MprisController::shuffleChanged, this, &MprisManager::shuffleChanged);
         connect(m_currentController.data(), &MprisController::volumeChanged, this, &MprisManager::volumeChanged);
@@ -594,6 +601,31 @@ void MprisManager::setCurrentController(QSharedPointer<MprisController> controll
     }
 
     Q_EMIT currentServiceChanged();
+
+    // The forwarded properties read the new controller; notify them all.
+    Q_EMIT canQuitChanged();
+    Q_EMIT canRaiseChanged();
+    Q_EMIT canSetFullscreenChanged();
+    Q_EMIT desktopEntryChanged();
+    Q_EMIT fullscreenChanged();
+    Q_EMIT hasTrackListChanged();
+    Q_EMIT identityChanged();
+    Q_EMIT supportedUriSchemesChanged();
+    Q_EMIT supportedMimeTypesChanged();
+    Q_EMIT canControlChanged();
+    Q_EMIT canGoNextChanged();
+    Q_EMIT canGoPreviousChanged();
+    Q_EMIT canPauseChanged();
+    Q_EMIT canPlayChanged();
+    Q_EMIT canSeekChanged();
+    Q_EMIT loopStatusChanged();
+    Q_EMIT maximumRateChanged();
+    Q_EMIT metadataChanged();
+    Q_EMIT minimumRateChanged();
+    Q_EMIT playbackStatusChanged();
+    Q_EMIT rateChanged();
+    Q_EMIT shuffleChanged();
+    Q_EMIT volumeChanged();
 }
 
 bool MprisManager::checkController(const char *callerName) const

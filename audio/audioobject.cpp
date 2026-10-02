@@ -26,6 +26,17 @@ QVector<T> arrayValues(const spa_pod *pod, quint32 type)
     return QVector<T>(values, values + count);
 }
 
+QVariantList intValues(const spa_pod *object, quint32 key)
+{
+    QVariantList values;
+    const spa_pod_prop *prop = spa_pod_find_prop(object, nullptr, key);
+    if (prop) {
+        for (int value : arrayValues<int>(&prop->value, SPA_TYPE_Int))
+            values.append(value);
+    }
+    return values;
+}
+
 int availability(quint32 value)
 {
     if (value == SPA_PARAM_AVAILABILITY_yes)
@@ -153,11 +164,16 @@ quint32 AudioObject::cardIndex() const
     return ok ? id : InvalidId;
 }
 
+const AudioObject *AudioObject::cardObject() const
+{
+    return m_backend ? m_backend->object(cardIndex()) : nullptr;
+}
+
 // The card's bus, such as "pci", "usb" or "bluetooth"; empty for virtual
 // nodes and for SoC codecs, which have no bus.
 QString AudioObject::bus() const
 {
-    const AudioObject *card = m_backend ? m_backend->object(cardIndex()) : nullptr;
+    const AudioObject *card = cardObject();
     return card ? card->m_properties.value("device.bus").toString() : QString();
 }
 
@@ -170,7 +186,7 @@ int AudioObject::profileDevice() const
 
 QVariantList AudioObject::ports() const
 {
-    const AudioObject *card = m_backend ? m_backend->object(cardIndex()) : nullptr;
+    const AudioObject *card = cardObject();
     if (!card || (m_kind != Sink && m_kind != Source))
         return {};
     QVariantList result;
@@ -191,7 +207,7 @@ QVariantList AudioObject::ports() const
 
 int AudioObject::activePortIndex() const
 {
-    const AudioObject *card = m_backend ? m_backend->object(cardIndex()) : nullptr;
+    const AudioObject *card = cardObject();
     if (!card)
         return -1;
     const int active = card->m_activeRoutes.value(profileDevice(), -1);
@@ -388,22 +404,11 @@ int AudioObject::updateRoute(const spa_pod *param, bool current)
                                                         SPA_POD_SIZE(&props->value)));
         }
     } else {
-        QVariantList devices;
-        QVariantList profiles;
-        const spa_pod_prop *prop = spa_pod_find_prop(param, nullptr, SPA_PARAM_ROUTE_devices);
-        if (prop) {
-            for (int value : arrayValues<int>(&prop->value, SPA_TYPE_Int))
-                devices.append(value);
-        }
-        prop = spa_pod_find_prop(param, nullptr, SPA_PARAM_ROUTE_profiles);
-        if (prop) {
-            for (int value : arrayValues<int>(&prop->value, SPA_TYPE_Int))
-                profiles.append(value);
-        }
         updateChoice(m_routes, {{"index", index}, {"name", QString::fromUtf8(name)},
             {"description", QString::fromUtf8(description)}, {"priority", priority},
             {"direction", direction}, {"availability", availability(available)},
-            {"devices", devices}, {"profiles", profiles}});
+            {"devices", intValues(param, SPA_PARAM_ROUTE_devices)},
+            {"profiles", intValues(param, SPA_PARAM_ROUTE_profiles)}});
     }
     Q_EMIT changed();
     return current ? device : -1;

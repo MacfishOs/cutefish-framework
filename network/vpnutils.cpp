@@ -1,7 +1,6 @@
 #include "vpnutils.h"
 #include "networkclient.h"
 
-#include <QDBusArgument>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -377,16 +376,16 @@ NMVariantMapMap wireGuardProfile(const QByteArray &content, const QString &name,
     uint fwmark = 0;
     uint mtu = 0;
     bool peerRoutes = true;
-    QVariantList addresses[2];
-    QVariantList dns[2];
+    QList<QVariantMap> addresses[2];
+    QList<uint> dns4;
+    QList<QByteArray> dns6;
     QStringList search;
     QList<QVariantMap> peers;
 
     // Like `wg setconf`: whitespace anywhere is dropped and '#' starts a comment.
     const QStringList lines = QString::fromUtf8(content).split(QLatin1Char('\n'));
     for (int number = 1; number <= lines.size(); ++number) {
-        QString line = lines.at(number - 1);
-        line = line.left(line.indexOf(QLatin1Char('#')) < 0 ? line.size() : line.indexOf(QLatin1Char('#')));
+        QString line = lines.at(number - 1).section(QLatin1Char('#'), 0, 0);
         line.remove(QRegularExpression(QStringLiteral("\\s")));
         if (line.isEmpty())
             continue;
@@ -434,9 +433,9 @@ NMVariantMapMap wireGuardProfile(const QByteArray &content, const QString &name,
                 if (address.isNull())
                     search << word;
                 else if (address.protocol() == QAbstractSocket::IPv4Protocol)
-                    dns[0] << qToBigEndian(address.toIPv4Address());
+                    dns4 << qToBigEndian(address.toIPv4Address());
                 else
-                    dns[1] << QByteArray(reinterpret_cast<const char *>(address.toIPv6Address().c), 16);
+                    dns6 << QByteArray(reinterpret_cast<const char *>(address.toIPv6Address().c), 16);
             }
         } else if (section == Interface && field.compare(QLatin1String("MTU"), Qt::CaseInsensitive) == 0) {
             mtu = value.toUInt(&ok);
@@ -515,24 +514,12 @@ NMVariantMapMap wireGuardProfile(const QByteArray &content, const QString &name,
         QVariantMap ip;
         ip.insert(QStringLiteral("method"), addresses[family].isEmpty() ? QStringLiteral("disabled") : QStringLiteral("manual"));
         if (!addresses[family].isEmpty()) {
-            QList<QVariantMap> data;
-            for (const QVariant &address : std::as_const(addresses[family]))
-                data << address.toMap();
-            ip.insert(QStringLiteral("address-data"), QVariant::fromValue(data));
+            ip.insert(QStringLiteral("address-data"), QVariant::fromValue(addresses[family]));
             // DNS needs an address of its family; without search domains, the server
             // answers for every name, as wg-quick has it.
-            if (!dns[family].isEmpty()) {
-                if (family == 0) {
-                    QList<uint> servers;
-                    for (const QVariant &server : std::as_const(dns[0]))
-                        servers << server.toUInt();
-                    ip.insert(QStringLiteral("dns"), QVariant::fromValue(servers));
-                } else {
-                    QList<QByteArray> servers;
-                    for (const QVariant &server : std::as_const(dns[1]))
-                        servers << server.toByteArray();
-                    ip.insert(QStringLiteral("dns"), QVariant::fromValue(servers));
-                }
+            const bool hasDns = family == 0 ? !dns4.isEmpty() : !dns6.isEmpty();
+            if (hasDns) {
+                ip.insert(QStringLiteral("dns"), family == 0 ? QVariant::fromValue(dns4) : QVariant::fromValue(dns6));
                 ip.insert(QStringLiteral("dns-search"), search.isEmpty() ? QStringList {QStringLiteral("~")} : search);
             }
         }
@@ -577,6 +564,10 @@ NMVariantMapMap manualProfile(const QVariantMap &form, QString *error)
     if (kind == QLatin1String("wireguard")) {
         // Written out as a wg-quick file, so the form is checked the way imports are.
         QString endpoint = server;
+        // NetworkManager takes a bare IPv6 address's last group for the port, so it needs brackets.
+        if (QHostAddress(server).protocol() == QAbstractSocket::IPv6Protocol
+            && QHostAddress(server.section(QLatin1Char(':'), 0, -2)).isNull())
+            endpoint = QStringLiteral("[%1]").arg(server);
         if (!endpoint.contains(QLatin1Char(':')) || endpoint.endsWith(QLatin1Char(']')))
             endpoint += QStringLiteral(":51820");
         QString config = QStringLiteral("[Interface]\nPrivateKey = %1\nAddress = %2\n")

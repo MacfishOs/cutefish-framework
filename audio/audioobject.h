@@ -101,6 +101,7 @@ private:
     // Returns the device of a current route, -1 otherwise.
     int updateRoute(const spa_pod *param, bool current);
     int profileDevice() const;
+    const AudioObject *cardObject() const;
 
     Backend *m_backend;
     quint32 m_id;

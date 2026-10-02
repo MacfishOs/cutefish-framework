@@ -95,13 +95,13 @@ bool AppletProxyModel::lessThan(const QModelIndex &left, const QModelIndex &righ
         return QString::localeAwareCompare(value(left, "name").toString(), value(right, "name").toString()) > 0;
 
     // Sorted descending: whatever compares greater comes first.
-    const bool leftConnected = value(left, "connectionState").toInt() == NetworkModel::Activated;
-    const bool rightConnected = value(right, "connectionState").toInt() == NetworkModel::Activated;
+    const int leftState = value(left, "connectionState").toInt();
+    const int rightState = value(right, "connectionState").toInt();
+    const bool leftConnected = leftState == NetworkModel::Activated;
+    const bool rightConnected = rightState == NetworkModel::Activated;
     if (leftConnected != rightConnected)
         return rightConnected;
 
-    const int leftState = value(left, "connectionState").toInt();
-    const int rightState = value(right, "connectionState").toInt();
     if (leftState != rightState)
         return leftState > rightState;
 

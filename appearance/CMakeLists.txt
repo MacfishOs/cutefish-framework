@@ -5,7 +5,7 @@ set(CUTEFISH_APPEARANCE_SOURCES
     wallpaper.h
 )
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml DBus)
+find_package(Qt6 REQUIRED COMPONENTS Core Qml DBus)
 
 include(GNUInstallDirs)
 
@@ -20,7 +20,6 @@ target_include_directories(cutefish-framework-appearance
 
 target_link_libraries(cutefish-framework-appearance PUBLIC
     Qt6::Core
-    Qt6::Gui
     Qt6::DBus
 )
 

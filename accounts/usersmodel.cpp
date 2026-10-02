@@ -6,8 +6,7 @@
 namespace QtAccountsService {
 
 UsersModelPrivate::UsersModelPrivate(UsersModel *model, const QDBusConnection &bus)
-    : owner(model)
-    , manager(new AccountsManager(bus, model))
+    : manager(new AccountsManager(bus, model))
 {
 }
 

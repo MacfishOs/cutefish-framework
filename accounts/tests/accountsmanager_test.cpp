@@ -13,6 +13,11 @@ using namespace QtAccountsService;
 
 static const QString serviceName = QStringLiteral("org.freedesktop.Accounts");
 static const QString managerPath = QStringLiteral("/org/freedesktop/Accounts");
+static const QStringList userNames = {
+    QStringLiteral("alice"), QStringLiteral("bob"), QStringLiteral("carol"),
+    QStringLiteral("error"), QStringLiteral("delete-before-cache"),
+    QStringLiteral("delete-before-uncache"), QStringLiteral("created")
+};
 
 class TestUserAdaptor : public QDBusAbstractAdaptor
 {
@@ -134,13 +139,8 @@ Q_SIGNALS:
 private:
     static QDBusObjectPath userPath(const QString &name)
     {
-        static const QStringList names = {
-            QStringLiteral("alice"), QStringLiteral("bob"), QStringLiteral("carol"),
-            QStringLiteral("error"), QStringLiteral("delete-before-cache"),
-            QStringLiteral("delete-before-uncache"), QStringLiteral("created")
-        };
         return QDBusObjectPath(managerPath + QStringLiteral("/User")
-                               + QString::number(1001 + names.indexOf(name)));
+                               + QString::number(1001 + userNames.indexOf(name)));
     }
 };
 
@@ -417,19 +417,12 @@ int main(int argc, char **argv)
                 || !bus.registerObject(managerPath, &manager, QDBusConnection::ExportAdaptors))
             return 1;
 
-        static const QStringList names = {
-            QStringLiteral("alice"), QStringLiteral("bob"), QStringLiteral("carol"),
-            QStringLiteral("error"), QStringLiteral("delete-before-cache"),
-            QStringLiteral("delete-before-uncache"), QStringLiteral("created")
-        };
-        QList<QObject *> users;
-        for (int i = 0; i < names.size(); ++i) {
+        for (int i = 0; i < userNames.size(); ++i) {
             QObject *user = new QObject(&manager);
-            new TestUserAdaptor(user, names.at(i), 1001 + i);
+            new TestUserAdaptor(user, userNames.at(i), 1001 + i);
             const QString path = managerPath + QStringLiteral("/User") + QString::number(1001 + i);
             if (!bus.registerObject(path, user, QDBusConnection::ExportAdaptors))
                 return 1;
-            users.append(user);
         }
         return app.exec();
     }

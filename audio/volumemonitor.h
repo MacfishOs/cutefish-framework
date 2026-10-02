@@ -31,6 +31,8 @@ private:
     static const pw_stream_events streamEvents;
     void stop();
     void process();
+    void updateVolume(double volume);
+    void updateAvailable(bool available);
 
     QPointer<AudioObject> m_target;
     pw_stream *m_stream = nullptr;

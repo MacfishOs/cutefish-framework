@@ -92,16 +92,16 @@ void MprisRootInterface::onPropertyChanged(const QString &propertyName, const QV
             Q_EMIT identityChanged(m_identity);
         }
     } else if (propertyName == QStringLiteral("SupportedMimeTypes")) {
-        QStringList supportedUriSchemes = value.toStringList();
-        if (m_supportedUriSchemes != supportedUriSchemes) {
-            m_supportedUriSchemes = supportedUriSchemes;
-            Q_EMIT supportedMimeTypesChanged(m_supportedUriSchemes);
-        }
-    } else if (propertyName == QStringLiteral("SupportedUriSchemes")) {
         QStringList supportedMimeTypes = value.toStringList();
         if (m_supportedMimeTypes != supportedMimeTypes) {
             m_supportedMimeTypes = supportedMimeTypes;
-            Q_EMIT supportedUriSchemesChanged(m_supportedMimeTypes);
+            Q_EMIT supportedMimeTypesChanged(m_supportedMimeTypes);
+        }
+    } else if (propertyName == QStringLiteral("SupportedUriSchemes")) {
+        QStringList supportedUriSchemes = value.toStringList();
+        if (m_supportedUriSchemes != supportedUriSchemes) {
+            m_supportedUriSchemes = supportedUriSchemes;
+            Q_EMIT supportedUriSchemesChanged(m_supportedUriSchemes);
         }
     } else {
         qWarning() << Q_FUNC_INFO

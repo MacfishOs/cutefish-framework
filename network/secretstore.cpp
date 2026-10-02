@@ -158,16 +158,16 @@ void SecretStore::save(const QString &uuid, const QString &connectionName,
                        const QString &settingName, const QString &key, const QString &value,
                        std::function<void()> done)
 {
-    const auto finish = [done](const QString &session, SecretStore *store) {
+    const auto finish = [this, done](const QString &session) {
         if (!session.isEmpty())
-            store->closeSession(session);
+            closeSession(session);
         if (done)
             done();
     };
 
     openSession([=, this](const QString &session) {
         if (session.isEmpty()) {
-            finish(session, this);
+            finish(session);
             return;
         }
 
@@ -176,13 +176,13 @@ void SecretStore::save(const QString &uuid, const QString &connectionName,
                  const auto collection = reply.arguments().value(0).value<QDBusObjectPath>();
                  if (reply.type() != QDBusMessage::ReplyMessage || collection.path() == noPrompt) {
                      qWarning() << "Secret Service has no default collection to store" << key << "in";
-                     finish(session, this);
+                     finish(session);
                      return;
                  }
 
                  unlock({collection}, [=, this](const Paths &unlocked) {
                      if (unlocked.isEmpty()) {
-                         finish(session, this);
+                         finish(session);
                          return;
                      }
 
@@ -211,10 +211,10 @@ void SecretStore::save(const QString &uuid, const QString &connectionName,
                               if (reply.type() == QDBusMessage::ReplyMessage
                                   && promptPath.path() != noPrompt)
                                   prompt(promptPath, [=, this](bool, const QVariant &) {
-                                      finish(session, this);
+                                      finish(session);
                                   });
                               else
-                                  finish(session, this);
+                                  finish(session);
                           });
                  });
              });

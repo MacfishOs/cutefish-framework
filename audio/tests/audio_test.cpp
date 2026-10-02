@@ -5,7 +5,6 @@
 #include "teststream.h"
 
 #include <QAbstractItemModelTester>
-#include <QDir>
 #include <QFile>
 #include <QProcess>
 #include <QQmlComponent>

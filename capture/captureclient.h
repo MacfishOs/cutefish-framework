@@ -1,7 +1,6 @@
 #ifndef CUTEFISH_CAPTURECLIENT_H
 #define CUTEFISH_CAPTURECLIENT_H
 
-#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QRect>

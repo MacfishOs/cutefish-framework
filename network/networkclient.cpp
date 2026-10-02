@@ -119,17 +119,6 @@ QVariant NetworkClient::setting(const QString &connection, const QString &settin
     return plain(m_settings.value(connection).value(setting).value(key));
 }
 
-QString NetworkClient::connectionByUuid(const QString &uuid) const
-{
-    if (uuid.isEmpty())
-        return {};
-    for (auto it = m_settings.cbegin(); it != m_settings.cend(); ++it) {
-        if (it->value(QStringLiteral("connection")).value(QStringLiteral("uuid")).toString() == uuid)
-            return it.key();
-    }
-    return {};
-}
-
 QString NetworkClient::hotspotConnection() const
 {
     for (const QString &connection : connections()) {
@@ -233,7 +222,6 @@ void NetworkClient::reset()
     const QStringList paths = m_objects.keys();
     m_objects.clear();
     m_settings.clear();
-    m_unreadable.clear();
     m_settingsRequests.clear();
     m_permissions.clear();
 
@@ -344,7 +332,6 @@ void NetworkClient::interfacesRemoved(const QDBusObjectPath &path, const QString
 
     if (interfaces.contains(connectionInterface)) {
         m_settings.remove(objectPath);
-        m_unreadable.remove(objectPath);
         m_settingsRequests.remove(objectPath);
     }
 
@@ -406,13 +393,10 @@ void NetworkClient::fetchSettings(const QString &path)
              m_settingsRequests.remove(path);
 
              // Another user's private profile: it exists, but its settings are not ours to read.
-             if (reply.type() == QDBusMessage::ReplyMessage) {
+             if (reply.type() == QDBusMessage::ReplyMessage)
                  m_settings.insert(path, qdbus_cast<NMVariantMapMap>(reply.arguments().value(0)));
-                 m_unreadable.remove(path);
-             } else {
+             else
                  m_settings.remove(path);
-                 m_unreadable.insert(path);
-             }
              updateReady();
              scheduleChanged();
          });

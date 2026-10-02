@@ -65,7 +65,7 @@ void DisplayClient::connectInterface()
     m_state = {};
     m_loaded = false;
     emit stateChanged();
-    if (m_applyPending || !m_operationToken.isEmpty() || m_completion)
+    if (operationPending())
         finishOperation(m_operationToken,
                         {false, false, 1, tr("The display service restarted."), {}});
     delete m_interface;
@@ -124,7 +124,7 @@ void DisplayClient::refresh()
             m_state = {};
             emit stateChanged();
             emit availabilityChanged();
-            if (m_applyPending || !m_operationToken.isEmpty() || m_completion)
+            if (operationPending())
                 finishOperation(m_operationToken, {false, false, 1, reply.error().message(), {}});
             return;
         }
@@ -143,7 +143,7 @@ QString DisplayClient::apply(const QList<ipc::DisplayRequest> &displays, const Q
                              const QList<ipc::Placement> &placements,
                              const ipc::MirrorGroups &mirrorGroups)
 {
-    if (!available() || m_applyPending || !m_operationToken.isEmpty() || m_completion)
+    if (!available() || operationPending())
         return {};
     m_applyPending = true;
     m_operationToken.clear();
@@ -166,10 +166,8 @@ QString DisplayClient::apply(const QList<ipc::DisplayRequest> &displays, const Q
         } else {
             m_operationToken = reply.value();
             const auto result = m_earlyResults.constFind(m_operationToken);
-            if (result != m_earlyResults.cend()) {
-                const auto completed = *result;
-                queueCompletion(m_operationToken, completed);
-            }
+            if (result != m_earlyResults.cend())
+                queueCompletion(m_operationToken, *result);
             m_earlyResults.clear();
         }
     });
@@ -186,6 +184,11 @@ void DisplayClient::finishOperation(const QString &token, const OperationResult 
     m_operationTimeout.stop();
     emit operationFinished(completedToken, result.succeeded, result.degraded, result.errorCode,
                            result.message, result.affected);
+}
+
+bool DisplayClient::operationPending() const
+{
+    return m_applyPending || !m_operationToken.isEmpty() || m_completion;
 }
 
 void DisplayClient::queueCompletion(const QString &token, const OperationResult &result)

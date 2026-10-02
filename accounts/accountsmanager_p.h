@@ -16,6 +16,7 @@ public:
 
     UserAccount *account(const QString &path, quint64 requestSerial,
                          const QString &name = QString());
+    UserAccountList accountsFor(const QList<QDBusObjectPath> &paths, quint64 requestSerial);
     QString pathFor(UserAccount *user) const;
     void remove(const QString &path);
     void removedByService(const QString &path);

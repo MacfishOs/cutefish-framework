@@ -113,14 +113,12 @@ private:
     void setObjectPath(const QString &path);
     void notifyAll();
     void refresh();
-    void watch(const QDBusPendingCall &call);
+    void watch(const QDBusPendingCall &call, void (UserAccount::*notify)() = nullptr,
+               bool displayName = false);
     void notePendingChange(const char *property, const QVariant &value,
                            void (UserAccount::*notify)(), bool displayName = false);
 
     UserAccountPrivate *const d_ptr;
-
-private Q_SLOTS:
-    void handleAccountChanged();
 };
 
 using UserAccountList = QList<UserAccount *>;

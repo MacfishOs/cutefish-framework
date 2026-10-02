@@ -3,7 +3,6 @@
 #include "bluetoothrfkill.h"
 
 #include <QDBusArgument>
-#include <QDBusConnectionInterface>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
@@ -63,12 +62,12 @@ BluetoothManager::BluetoothManager(const QDBusConnection &bus, bool monitorRfkil
 
 BluetoothManager::~BluetoothManager()
 {
-    finishPrompt(QStringLiteral("org.bluez.Error.Canceled"));
+    finishPrompt();
     for (const auto &path : std::as_const(m_pairingOperations))
         m_bus.asyncCall(QDBusMessage::createMethodCall(m_owner, path, deviceInterface,
                                                        QStringLiteral("CancelPairing")));
     if (m_agentReady) {
-        auto message = QDBusMessage::createMethodCall(m_owner, QStringLiteral("/org/bluez"),
+        auto message = QDBusMessage::createMethodCall(m_owner, agentManagerPath,
                                                       agentManagerInterface,
                                                       QStringLiteral("UnregisterAgent"));
         message << QVariant::fromValue(QDBusObjectPath(agentPath));
@@ -126,6 +125,8 @@ void BluetoothManager::ownerChanged(const QString &, const QString &, const QStr
     reset();
     if (!newOwner.isEmpty())
         load(newOwner);
+    else
+        setReady();
 }
 
 void BluetoothManager::reset()
@@ -133,19 +134,17 @@ void BluetoothManager::reset()
     ++m_generation;
     m_retryTimer.stop();
     if (!m_owner.isEmpty()) {
-        m_bus.disconnect(m_owner, QStringLiteral("/"),
-                         QStringLiteral("org.freedesktop.DBus.ObjectManager"),
+        m_bus.disconnect(m_owner, QStringLiteral("/"), objectManagerInterface,
                          QStringLiteral("InterfacesAdded"), this,
                          SLOT(interfacesAdded(QDBusObjectPath, BluetoothInterfaces)));
-        m_bus.disconnect(m_owner, QStringLiteral("/"),
-                         QStringLiteral("org.freedesktop.DBus.ObjectManager"),
+        m_bus.disconnect(m_owner, QStringLiteral("/"), objectManagerInterface,
                          QStringLiteral("InterfacesRemoved"), this,
                          SLOT(interfacesRemoved(QDBusObjectPath, QStringList)));
         m_bus.disconnect(m_owner, QString(), propertiesInterface,
                          QStringLiteral("PropertiesChanged"), this,
                          SLOT(propertiesChanged(QString, QVariantMap, QStringList, QDBusMessage)));
     }
-    finishPrompt(QStringLiteral("org.bluez.Error.Canceled"));
+    finishPrompt();
     m_owner.clear();
     m_operational = false;
     m_loading = false;
@@ -172,15 +171,15 @@ void BluetoothManager::load(const QString &owner)
         return;
     m_owner = owner;
     m_loading = true;
-    m_bus.connect(owner, QStringLiteral("/"), QStringLiteral("org.freedesktop.DBus.ObjectManager"),
+    m_bus.connect(owner, QStringLiteral("/"), objectManagerInterface,
                   QStringLiteral("InterfacesAdded"), this,
                   SLOT(interfacesAdded(QDBusObjectPath, BluetoothInterfaces)));
-    m_bus.connect(owner, QStringLiteral("/"), QStringLiteral("org.freedesktop.DBus.ObjectManager"),
+    m_bus.connect(owner, QStringLiteral("/"), objectManagerInterface,
                   QStringLiteral("InterfacesRemoved"), this,
                   SLOT(interfacesRemoved(QDBusObjectPath, QStringList)));
     m_bus.connect(owner, QString(), propertiesInterface, QStringLiteral("PropertiesChanged"), this,
                   SLOT(propertiesChanged(QString, QVariantMap, QStringList, QDBusMessage)));
-    call(QStringLiteral("/"), QStringLiteral("org.freedesktop.DBus.ObjectManager"),
+    call(QStringLiteral("/"), objectManagerInterface,
          QStringLiteral("GetManagedObjects"), {}, [this](const QDBusMessage &reply) {
              if (reply.type() == QDBusMessage::ErrorMessage) {
                  reset();
@@ -244,7 +243,7 @@ void BluetoothManager::interfacesRemoved(const QDBusObjectPath &path, const QStr
         return;
     if (interfaces.contains(deviceInterface) || interfaces.contains(adapterInterface)) {
         if (m_pairingPath == path.path())
-            finishPrompt(QStringLiteral("org.bluez.Error.Canceled"));
+            finishPrompt();
         const bool adapter = entry->isAdapter();
         m_objects.remove(path.path());
         m_discoveryOwned.remove(path.path());
@@ -425,8 +424,8 @@ void BluetoothManager::call(const QString &path, const QString &interface, const
             });
 }
 
-void BluetoothManager::setProperty(BluetoothObject *entry, const QString &property,
-                                   const QVariant &value)
+void BluetoothManager::setObjectProperty(BluetoothObject *entry, const QString &property,
+                                         const QVariant &value)
 {
     if (!entry || object(entry->path()) != entry)
         return;
@@ -444,13 +443,14 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
         return;
     }
     const bool cancel = method == QStringLiteral("CancelPairing");
+    const bool pair = method == QStringLiteral("Pair");
     if (entry->busy() && !cancel) {
         deviceFailure(method, entry->name(), tr("The device is busy. Try again in a moment."));
         return;
     }
     // Without an agent of its own the caller pairs through BlueZ's default one,
     // which the shell keeps registered.
-    if (method == QStringLiteral("Pair") && m_agentEnabled && !m_agentReady) {
+    if (pair && m_agentEnabled && !m_agentReady) {
         deviceFailure(method, entry->name(),
                       tr("Bluetooth isn't ready yet. Try again in a moment."));
         return;
@@ -462,20 +462,18 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
     QPointer<BluetoothObject> guard(entry);
     const QString path = entry->path();
     const QString name = entry->name();
-    if (method == QStringLiteral("Pair"))
+    if (pair)
         m_pairingOperations.insert(path);
     call(
             remove ? entry->adapterPath() : path, remove ? adapterInterface : deviceInterface,
             method, remove ? QVariantList {QVariant::fromValue(QDBusObjectPath(path))} : arguments,
-            [this, guard, path, name, method, cancel](const QDBusMessage &reply) {
-                if (method == QStringLiteral("Pair"))
+            [this, guard, path, name, method, cancel, pair](const QDBusMessage &reply) {
+                if (pair)
                     m_pairingOperations.remove(path);
                 if (guard && !cancel)
                     guard->setBusy(false);
-                if (method == QStringLiteral("Pair") || cancel) {
-                    if (m_pairingPath == path)
-                        finishPrompt(QStringLiteral("org.bluez.Error.Canceled"));
-                }
+                if ((pair || cancel) && m_pairingPath == path)
+                    finishPrompt();
                 if (reply.type() == QDBusMessage::ErrorMessage && !cancel) {
                     qCWarning(lcBluetooth) << method << "failed:" << reply.errorName()
                                            << reply.errorMessage();
@@ -492,8 +490,7 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
                     if (!quiet.contains(reply.errorName()) && !alreadyConnected)
                         deviceFailure(method, guard ? guard->name() : name, describe(reply));
                 }
-                if (!guard || reply.type() == QDBusMessage::ErrorMessage
-                    || method != QStringLiteral("Pair"))
+                if (!guard || reply.type() == QDBusMessage::ErrorMessage || !pair)
                     return;
                 // Trust is granted only after a successful user-initiated pairing.
                 guard->setBusy(true);
@@ -508,19 +505,17 @@ void BluetoothManager::operate(BluetoothObject *entry, const QString &method,
                              operate(guard, QStringLiteral("Connect"));
                      });
             },
-            Errors::Ignore, method == QStringLiteral("Pair") ? 180000 : 60000);
+            Errors::Ignore, pair ? 180000 : 60000);
 }
 
 void BluetoothManager::setDiscoveryRequested(bool requested)
 {
     m_discoveryFailed.clear();
     m_stopRetries.clear();
-    if (m_discoveryRequested == requested) {
-        syncDiscovery();
-        return;
+    if (m_discoveryRequested != requested) {
+        m_discoveryRequested = requested;
+        emit changed();
     }
-    m_discoveryRequested = requested;
-    emit changed();
     syncDiscovery();
 }
 
@@ -613,8 +608,7 @@ void BluetoothManager::setAgentEnabled(bool enabled)
                 operate(device, QStringLiteral("CancelPairing"));
         }
         if (m_agentReady)
-            call(QStringLiteral("/org/bluez"), agentManagerInterface,
-                 QStringLiteral("UnregisterAgent"),
+            call(agentManagerPath, agentManagerInterface, QStringLiteral("UnregisterAgent"),
                  {QVariant::fromValue(QDBusObjectPath(agentPath))});
         m_agentReady = false;
         m_bus.unregisterObject(agentPath);
@@ -627,22 +621,20 @@ void BluetoothManager::registerAgent()
     if (!m_agentEnabled || !m_operational || m_agentReady || m_registeringAgent)
         return;
     m_registeringAgent = true;
-    call(QStringLiteral("/org/bluez"), agentManagerInterface, QStringLiteral("RegisterAgent"),
+    call(agentManagerPath, agentManagerInterface, QStringLiteral("RegisterAgent"),
          {QVariant::fromValue(QDBusObjectPath(agentPath)), QStringLiteral("KeyboardDisplay")},
          [this](const QDBusMessage &reply) {
              m_registeringAgent = false;
              if (reply.type() == QDBusMessage::ErrorMessage)
                  return;
              if (!m_agentEnabled) {
-                 call(QStringLiteral("/org/bluez"), agentManagerInterface,
-                      QStringLiteral("UnregisterAgent"),
+                 call(agentManagerPath, agentManagerInterface, QStringLiteral("UnregisterAgent"),
                       {QVariant::fromValue(QDBusObjectPath(agentPath))});
                  return;
              }
              m_agentReady = true;
              emit changed();
-             call(QStringLiteral("/org/bluez"), agentManagerInterface,
-                  QStringLiteral("RequestDefaultAgent"),
+             call(agentManagerPath, agentManagerInterface, QStringLiteral("RequestDefaultAgent"),
                   {QVariant::fromValue(QDBusObjectPath(agentPath))});
          });
 }
@@ -712,9 +704,7 @@ void BluetoothManager::respondPairing(bool accept, const QString &code)
 void BluetoothManager::finishPrompt(const QString &error)
 {
     if (m_hasRequest)
-        m_bus.send(m_request.createErrorReply(
-                error.isEmpty() ? QStringLiteral("org.bluez.Error.Canceled") : error,
-                tr("Pairing request dismissed.")));
+        m_bus.send(m_request.createErrorReply(error, tr("Pairing request dismissed.")));
     m_hasRequest = false;
     m_request = QDBusMessage();
     m_promptTimer.stop();
@@ -729,7 +719,7 @@ void BluetoothManager::finishPrompt(const QString &error)
 void BluetoothManager::cancelPairing()
 {
     const QString path = m_pairingPath;
-    finishPrompt(QStringLiteral("org.bluez.Error.Canceled"));
+    finishPrompt();
     if (auto *device = object(path))
         operate(device, QStringLiteral("CancelPairing"));
 }
@@ -794,6 +784,8 @@ QString BluetoothManager::describe(const QDBusMessage &reply) const
         return tr("The device has no features this computer can use.");
     if (reason == QLatin1String("adapter-not-powered"))
         return tr("Bluetooth is turned off.");
+    if (name == QLatin1String("Blocked") && hardwareBlocked())
+        return tr("Bluetooth is blocked by a hardware switch.");
     if (name == QLatin1String("NotReady"))
         return tr("Bluetooth isn't ready yet. Try again in a moment.");
     if (name == QLatin1String("InProgress") || reason == QLatin1String("busy")

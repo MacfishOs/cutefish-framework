@@ -56,6 +56,7 @@ private:
 
     void connectToDaemon();
     void disconnectFromDaemon();
+    void releaseMetadata();
     void fail();
     void iterate();
     void addGlobal(quint32 id, quint32 permissions, const char *type,

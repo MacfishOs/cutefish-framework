@@ -34,27 +34,26 @@ void Appearance::init()
     if (!m_interface->isValid())
         return;
 
-    connect(m_interface, SIGNAL(darkModeChanged(bool)), this, SLOT(onDarkModeChanged(bool)));
-    connect(m_interface, SIGNAL(wallpaperChanged(QString)), this,
-            SLOT(onWallpaperChanged(QString)));
+    connect(m_interface, SIGNAL(darkModeChanged(bool)), this, SIGNAL(darkModeChanged()));
+    connect(m_interface, SIGNAL(wallpaperChanged(QString)), this, SIGNAL(wallpaperChanged()));
     connect(m_interface, SIGNAL(userWallpapersChanged()), this, SIGNAL(userWallpapersChanged()));
     connect(m_interface, SIGNAL(wallpaperFoldersChanged()), this,
             SIGNAL(wallpaperFoldersChanged()));
     connect(m_interface, SIGNAL(wallpaperFolderImagesChanged(QString)), this,
             SIGNAL(wallpaperFolderImagesChanged(QString)));
-    connect(m_interface, SIGNAL(accentColorChanged(int)), this, SLOT(onAccentColorChanged(int)));
+    connect(m_interface, SIGNAL(accentColorChanged(int)), this, SIGNAL(accentColorIndexChanged()));
     connect(m_interface, SIGNAL(darkModeDimsWallpaerChanged()), this,
-            SLOT(onDarkModeDimsWallpaperChanged()));
+            SIGNAL(dimsWallpaperChanged()));
     connect(m_interface, SIGNAL(continuousCornersChanged(bool)), this,
             SLOT(onContinuousCornersChanged(bool)));
     connect(m_interface, SIGNAL(systemFontPointSizeChanged()), this,
-            SLOT(onFontPointSizeChanged()));
-    connect(m_interface, SIGNAL(systemFontChanged()), this, SLOT(onFontFamilyChanged()));
+            SIGNAL(fontPointSizeChanged()));
+    connect(m_interface, SIGNAL(systemFontChanged()), this, SIGNAL(fontFamilyChanged()));
     connect(m_interface, SIGNAL(iconThemeChanged()), this, SIGNAL(iconThemeChanged()));
-    connect(m_interface, SIGNAL(backgroundTypeChanged()), this, SLOT(onBackgroundTypeChanged()));
-    connect(m_interface, SIGNAL(backgroundColorChanged()), this, SLOT(onBackgroundColorChanged()));
+    connect(m_interface, SIGNAL(backgroundTypeChanged()), this, SIGNAL(backgroundTypeChanged()));
+    connect(m_interface, SIGNAL(backgroundColorChanged()), this, SIGNAL(backgroundColorChanged()));
     connect(m_interface, SIGNAL(backgroundVisibleChanged()), this,
-            SLOT(onBackgroundVisibleChanged()));
+            SIGNAL(backgroundVisibleChanged()));
 
     emit darkModeChanged();
     emit wallpaperChanged();
@@ -75,12 +74,6 @@ void Appearance::init()
 QVariant Appearance::serviceProperty(const char *name) const
 {
     return m_interface && m_interface->isValid() ? m_interface->property(name) : QVariant();
-}
-
-void Appearance::callService(const char *method)
-{
-    if (m_interface && m_interface->isValid())
-        m_interface->call(method);
 }
 
 void Appearance::callService(const char *method, const QVariant &value)
@@ -272,56 +265,8 @@ void Appearance::setFontRendering(bool antialias, const QString &hintStyle)
         m_interface->call("setFontRendering", antialias, hintStyle);
 }
 
-void Appearance::onDarkModeChanged(bool darkMode)
-{
-    Q_UNUSED(darkMode);
-    emit darkModeChanged();
-}
-
-void Appearance::onWallpaperChanged(const QString &path)
-{
-    Q_UNUSED(path);
-    emit wallpaperChanged();
-}
-
-void Appearance::onAccentColorChanged(int accentColor)
-{
-    Q_UNUSED(accentColor);
-    emit accentColorIndexChanged();
-}
-
 void Appearance::onContinuousCornersChanged(bool continuousCorners)
 {
     m_continuousCorners = continuousCorners;
     emit continuousCornersChanged();
-}
-
-void Appearance::onDarkModeDimsWallpaperChanged()
-{
-    emit dimsWallpaperChanged();
-}
-
-void Appearance::onFontPointSizeChanged()
-{
-    emit fontPointSizeChanged();
-}
-
-void Appearance::onFontFamilyChanged()
-{
-    emit fontFamilyChanged();
-}
-
-void Appearance::onBackgroundTypeChanged()
-{
-    emit backgroundTypeChanged();
-}
-
-void Appearance::onBackgroundColorChanged()
-{
-    emit backgroundColorChanged();
-}
-
-void Appearance::onBackgroundVisibleChanged()
-{
-    emit backgroundVisibleChanged();
 }

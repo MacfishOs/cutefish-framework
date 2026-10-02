@@ -105,20 +105,10 @@ signals:
 
 private slots:
     void init();
-    void onDarkModeChanged(bool darkMode);
-    void onWallpaperChanged(const QString &path);
-    void onAccentColorChanged(int accentColor);
     void onContinuousCornersChanged(bool continuousCorners);
-    void onDarkModeDimsWallpaperChanged();
-    void onFontPointSizeChanged();
-    void onFontFamilyChanged();
-    void onBackgroundTypeChanged();
-    void onBackgroundColorChanged();
-    void onBackgroundVisibleChanged();
 
 private:
     QVariant serviceProperty(const char *name) const;
-    void callService(const char *method);
     void callService(const char *method, const QVariant &value);
 
     QDBusInterface *m_interface;

@@ -22,7 +22,7 @@ DisplayScreen::DisplayScreen(QObject *parent)
             [this](const QString &, bool succeeded, bool degraded, uint, const QString &message,
                    const QStringList &) {
                 m_busy = false;
-                m_error = succeeded ? (degraded ? message : QString()) : message;
+                m_error = succeeded && !degraded ? QString() : message;
                 m_outputModel->setState(m_client.state());
                 emit stateChanged();
             });

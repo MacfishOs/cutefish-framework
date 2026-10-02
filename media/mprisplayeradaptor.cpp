@@ -246,10 +246,12 @@ void MprisPlayerAdaptor::OpenUri(const QString &Uri)
     QUrl url(Uri, QUrl::StrictMode);
     if (!url.isValid()) {
         player->sendErrorReply(QDBusError::InvalidArgs, QStringLiteral("Wanted to open an url but the url is invalid."));
+        return;
     }
 
     if (!player->supportedUriSchemes().contains(url.scheme())) {
         player->sendErrorReply(QDBusError::NotSupported, QStringLiteral("Wanted to open an url but the scheme is not supported."));
+        return;
     }
 
     QMimeDatabase db;

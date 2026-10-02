@@ -1,9 +1,7 @@
-#include <memory>
 #include <optional>
 #include <utility>
 
 #include <QDBusConnection>
-#include <QDBusConnectionInterface>
 #include <QSignalSpy>
 #include <QTest>
 #include <QTimer>

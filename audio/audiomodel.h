@@ -31,6 +31,7 @@ Q_SIGNALS:
     void defaultNodeChanged();
 
 private:
+    AudioObject *objectAt(const QModelIndex &index) const;
     void addObject(AudioObject *object);
     void removeObject(AudioObject *object);
 

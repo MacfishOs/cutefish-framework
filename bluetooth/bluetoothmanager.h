@@ -80,7 +80,7 @@ public:
     Q_INVOKABLE void cancelPairing();
     Q_INVOKABLE void refresh();
     BluetoothObject *object(const QString &path) const;
-    void setProperty(BluetoothObject *object, const QString &property, const QVariant &value);
+    void setObjectProperty(BluetoothObject *object, const QString &property, const QVariant &value);
     void operate(BluetoothObject *object, const QString &method,
                  const QVariantList &arguments = {});
     void discovery(BluetoothObject *adapter, bool start);
@@ -118,7 +118,7 @@ private:
     void setReady();
     void syncDiscovery();
     void registerAgent();
-    void finishPrompt(const QString &error = QString());
+    void finishPrompt(const QString &error = QStringLiteral("org.bluez.Error.Canceled"));
     void prompt(const QDBusMessage &message);
     void deviceFailure(const QString &method, const QString &device, const QString &body);
     QString describe(const QDBusMessage &reply) const;

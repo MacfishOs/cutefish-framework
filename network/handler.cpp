@@ -459,8 +459,6 @@ void Handler::importVpn(const QUrl &file)
 
     // NetworkManager's own readers, the ones nmcli and both big desktops use; whichever
     // reads the file first wins.
-    QStringList types;
-
     QStringList plugins = VpnUtils::installedPlugins();
     const QString suffix = QFileInfo(path).suffix().toLower();
     const QString likely = suffix == QLatin1String("ovpn") || suffix == QLatin1String("conf") ? QStringLiteral("openvpn")
@@ -468,14 +466,13 @@ void Handler::importVpn(const QUrl &file)
                                                                                               : QString();
     if (plugins.removeAll(likely))
         plugins.prepend(likely);
-    types += plugins;
 
-    if (types.isEmpty()) {
+    if (plugins.isEmpty()) {
         Q_EMIT vpnAddFailed(tr("No VPN plugin can read this file. Install the one for your VPN, "
                                   "for example network-manager-openvpn for OpenVPN."));
         return;
     }
-    importVpnAs(path, types, QString());
+    importVpnAs(path, plugins, QString());
 }
 
 void Handler::importVpnAs(const QString &file, QStringList types, const QString &error)

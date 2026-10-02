@@ -75,7 +75,6 @@ if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     add_executable(display-outputmodel-test tests/outputmodel_test.cpp)
     target_link_libraries(display-outputmodel-test PRIVATE cutefish-framework-screen Qt6::Test)
-    target_include_directories(display-outputmodel-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME display-outputmodel-test COMMAND display-outputmodel-test)
     add_executable(display-client-test tests/displayclient_test.cpp)
     target_link_libraries(display-client-test PRIVATE Cutefish::Display Qt6::Test)
@@ -89,7 +88,6 @@ if(BUILD_TESTING)
         target_compile_definitions(display-screen-integration-test PRIVATE
             SCREEN_PROBE_PATH="$<TARGET_FILE:display-wayland-screen-probe>")
         target_link_libraries(display-screen-integration-test PRIVATE cutefish-framework-screen Qt6::Test)
-        target_include_directories(display-screen-integration-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
         add_test(NAME display-screen-integration-test
             COMMAND dbus-run-session -- $<TARGET_FILE:display-screen-integration-test>)
         set_tests_properties(display-screen-integration-test PROPERTIES

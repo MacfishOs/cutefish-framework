@@ -90,6 +90,5 @@ private:
     QList<DesktopEntry *> m_entries;
     QString m_language;
     bool m_loading = false;
-    bool m_scanInProgress = false;
     bool m_scanQueued = false;
 };

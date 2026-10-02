@@ -45,8 +45,8 @@ signals:
 private:
     bool accepts(const BluetoothObject *device) const;
     void rebuild();
-    void insertRow(int row, BluetoothObject *device);
-    void removeRow(int row);
+    void insertDevice(int row, BluetoothObject *device);
+    void removeDevice(int row);
     QPointer<BluetoothManager> m_manager;
     QList<QPointer<BluetoothObject>> m_devices;
     Filter m_filter = AllDevices;

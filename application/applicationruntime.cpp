@@ -37,6 +37,17 @@ QProcessEnvironment applicationEnvironment()
 
     return environment;
 }
+
+template<typename... Args>
+bool callBool(QDBusInterface *iface, const QString &method, const Args &...args)
+{
+    if (!iface->isValid())
+        return false;
+
+    const QDBusReply<bool> reply = iface->call(method, args...);
+
+    return reply.isValid() && reply.value();
+}
 }
 
 ApplicationRuntime *ApplicationRuntime::instance()
@@ -120,24 +131,12 @@ bool ApplicationRuntime::quitApplication(const QString &appId)
     if (appId.isEmpty())
         return false;
 
-    QDBusInterface *iface = interface();
-    if (!iface->isValid())
-        return false;
-
-    const QDBusReply<bool> reply = iface->call(QStringLiteral("quitApplication"), appId);
-
-    return reply.isValid() && reply.value();
+    return callBool(interface(), QStringLiteral("quitApplication"), appId);
 }
 
 bool ApplicationRuntime::quitAll()
 {
-    QDBusInterface *iface = interface();
-    if (!iface->isValid())
-        return false;
-
-    const QDBusReply<bool> reply = iface->call(QStringLiteral("quitAll"));
-
-    return reply.isValid() && reply.value();
+    return callBool(interface(), QStringLiteral("quitAll"));
 }
 
 bool ApplicationRuntime::quitByPid(quint32 pid)
@@ -145,24 +144,12 @@ bool ApplicationRuntime::quitByPid(quint32 pid)
     if (pid == 0)
         return false;
 
-    QDBusInterface *iface = interface();
-    if (!iface->isValid())
-        return false;
-
-    const QDBusReply<bool> reply = iface->call(QStringLiteral("quitByPid"), pid);
-
-    return reply.isValid() && reply.value();
+    return callBool(interface(), QStringLiteral("quitByPid"), pid);
 }
 
 bool ApplicationRuntime::isRunning(const QString &appId)
 {
-    QDBusInterface *iface = interface();
-    if (!iface->isValid())
-        return false;
-
-    const QDBusReply<bool> reply = iface->call(QStringLiteral("isRunning"), appId);
-
-    return reply.isValid() && reply.value();
+    return callBool(interface(), QStringLiteral("isRunning"), appId);
 }
 
 QStringList ApplicationRuntime::runningApplications()

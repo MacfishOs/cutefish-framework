@@ -93,6 +93,11 @@ QDateTime lastUsed(const NetworkClient *client, const QString &profile)
     return seconds ? QDateTime::fromSecsSinceEpoch(qint64(seconds)) : QDateTime();
 }
 
+QString profileOf(const NetworkClient *client, const QString &active)
+{
+    return NetworkClient::path(client->property(active, activeInterface, QStringLiteral("Connection")));
+}
+
 // The profiles NetworkManager would activate on the device, and the one it has active.
 QStringList profilesFor(const NetworkClient *client, const QString &device, const QString &type)
 {
@@ -100,7 +105,7 @@ QStringList profilesFor(const NetworkClient *client, const QString &device, cons
     QStringList candidates = client->property(device, deviceInterface, QStringLiteral("AvailableConnections")).toStringList();
     const QString active = client->activeConnection(device);
     if (!active.isEmpty())
-        candidates << NetworkClient::path(client->property(active, activeInterface, QStringLiteral("Connection")));
+        candidates << profileOf(client, active);
 
     for (const QString &profile : std::as_const(candidates)) {
         if (profiles.contains(profile) || !client->readable(profile) || isPort(client, profile)
@@ -133,8 +138,7 @@ NetworkModel::NetworkModel(QObject *parent)
     connect(m_client, &NetworkClient::changed, this, &NetworkModel::rebuild);
     connect(m_client, &NetworkClient::activeStateChanged, this,
             [this](const QString &active, uint state, uint reason) {
-                const QString profile = NetworkClient::path(
-                        m_client->property(active, activeInterface, QStringLiteral("Connection")));
+                const QString profile = profileOf(m_client, active);
                 if (!VpnUtils::isVpn(m_client, profile))
                     return;
                 if (state == ActiveActivating) {
@@ -348,7 +352,7 @@ void NetworkModel::rebuild()
 void NetworkModel::addWired(const QString &device, QList<Item> &items) const
 {
     const QString active = m_client->activeConnection(device);
-    const QString activeProfile = NetworkClient::path(m_client->property(active, activeInterface, QStringLiteral("Connection")));
+    const QString activeProfile = profileOf(m_client, active);
 
     for (const QString &profile : profilesFor(m_client, device, QStringLiteral("802-3-ethernet"))) {
         Item item;
@@ -392,7 +396,7 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
     const uint capabilities = m_client->property(device, wirelessInterface, QStringLiteral("WirelessCapabilities")).toUInt();
     const QString activeAp = NetworkClient::path(m_client->property(device, wirelessInterface, QStringLiteral("ActiveAccessPoint")));
     const QString active = m_client->activeConnection(device);
-    const QString activeProfile = NetworkClient::path(m_client->property(active, activeInterface, QStringLiteral("Connection")));
+    const QString activeProfile = profileOf(m_client, active);
     const int activeState = active.isEmpty() ? int(Deactivated)
                                              : m_client->property(active, activeInterface, QStringLiteral("State")).toInt();
 
@@ -439,7 +443,7 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
         network.security = security;
     }
 
-    QList<QString> unmatched;
+    bool activeUnlisted = false;
     for (const QString &profile : profilesFor(m_client, device, wirelessSetting)) {
         const QString mode = m_client->setting(profile, wirelessSetting, QStringLiteral("mode")).toString();
         if (!mode.isEmpty() && mode != QLatin1String("infrastructure"))
@@ -464,7 +468,7 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
             index = sameName;
         if (index < 0) {
             if (isActive)
-                unmatched << profile;
+                activeUnlisted = true;
             continue;
         }
 
@@ -516,13 +520,13 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
     }
 
     // Connected to a network no scan has listed, a hidden one for instance.
-    for (const QString &profile : std::as_const(unmatched)) {
+    if (activeUnlisted) {
         Network network;
-        network.ssid = WifiUtils::ssidKey(m_client->setting(profile, wirelessSetting, QStringLiteral("ssid")).toByteArray());
-        network.profile = profile;
-        network.timestamp = lastUsed(m_client, profile);
+        network.ssid = WifiUtils::ssidKey(m_client->setting(activeProfile, wirelessSetting, QStringLiteral("ssid")).toByteArray());
+        network.profile = activeProfile;
+        network.timestamp = lastUsed(m_client, activeProfile);
         network.accessPoint = activeAp;
-        switch (profileClass(m_client, profile)) {
+        switch (profileClass(m_client, activeProfile)) {
         case SecurityClass::Open:
             network.security = Enums::NoneSecurity;
             break;
@@ -538,7 +542,7 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
         }
         if (!activeAp.isEmpty())
             network.strength = ap(activeAp, "Strength").toInt();
-        addItem(network, device + QLatin1Char('|') + profile);
+        addItem(network, device + QLatin1Char('|') + activeProfile);
     }
 }
 
@@ -587,13 +591,19 @@ void NetworkModel::addVpns(QList<Item> &items) const
 
 void NetworkModel::fillDetails(Item &item) const
 {
-    // Addresses are those of the device the network is up on.
+    // Addresses are those of the device the network is up on; a VPN's come from its
+    // active connection, as its row has no device.
     if (item.connectionState != Activated)
         return;
 
     const QString device = item.devicePath;
-    const QString ip4 = NetworkClient::path(m_client->property(device, deviceInterface, QStringLiteral("Ip4Config")));
-    const QString ip6 = NetworkClient::path(m_client->property(device, deviceInterface, QStringLiteral("Ip6Config")));
+    const QString vpn = item.type == Enums::Vpn ? VpnUtils::activeConnection(m_client, item.connectionPath) : QString();
+    const auto config = [&](const QString &name) {
+        return NetworkClient::path(vpn.isEmpty() ? m_client->property(device, deviceInterface, name)
+                                                 : m_client->property(vpn, activeInterface, name));
+    };
+    const QString ip4 = config(QStringLiteral("Ip4Config"));
+    const QString ip6 = config(QStringLiteral("Ip6Config"));
 
     item.ipV4Address = firstAddress(m_client->property(ip4, ip4ConfigInterface, QStringLiteral("AddressData")).toList(), false);
     item.ipV6Address = firstAddress(m_client->property(ip6, ip6ConfigInterface, QStringLiteral("AddressData")).toList(), true);

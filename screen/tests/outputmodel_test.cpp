@@ -3,6 +3,31 @@
 
 #include "outputmodel.h"
 
+// Displays side by side from x = 0, each its own logical display, display 0 primary.
+static DisplayClient::State extendedDisplays(int count)
+{
+    DisplayClient::State state;
+    for (int i = 0; i < count; ++i) {
+        cutefish::display::ipc::PhysicalDisplay physical;
+        physical.sessionId = QString::number(i);
+        cutefish::display::ipc::Mode mode;
+        mode.width = 1920;
+        mode.height = 1080;
+        mode.refreshMilliHz = 60000;
+        mode.current = true;
+        physical.modes.append(mode);
+        state.physical.append(physical);
+        cutefish::display::ipc::LogicalDisplay logical;
+        logical.id = physical.sessionId;
+        logical.destinations = {physical.sessionId};
+        logical.primary = i == 0;
+        logical.scale120 = 120;
+        logical.x = i * 1920;
+        state.logical.append(logical);
+    }
+    return state;
+}
+
 class OutputModelTest : public QObject
 {
     Q_OBJECT
@@ -45,6 +70,50 @@ private slots:
         QCOMPARE(reset.count(), 0);
         QVERIFY(selected.isValid());
         QCOMPARE(model.data(selected, DisplayOutputModel::IdRole).toString(), QString("1"));
+    }
+
+    void mirroringThePrimaryHandsItToTheSource()
+    {
+        DisplayOutputModel model;
+        model.setState(extendedDisplays(3));
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        // DisplayScreen applies on dirtyChanged, so the handoff has to come before it.
+        QString applied;
+        connect(&model, &DisplayOutputModel::dirtyChanged, [&] {
+            applied = model.primary();
+        });
+        QVERIFY(model.setData(model.index(0), 1, DisplayOutputModel::ReplicationSourceIndexRole));
+        QCOMPARE(applied, QString("1"));
+        QCOMPARE(model.primary(), QString("1"));
+        QVERIFY(!model.data(model.index(0), DisplayOutputModel::PrimaryRole).toBool());
+        QVERIFY(model.data(model.index(1), DisplayOutputModel::PrimaryRole).toBool());
+        bool primaryChanged = false;
+        for (const auto &arguments : changed) {
+            const auto roles = arguments.at(2).value<QList<int>>();
+            primaryChanged |= roles.contains(DisplayOutputModel::PrimaryRole);
+        }
+        QVERIFY(primaryChanged);
+        const auto placements = model.placements();
+        QCOMPARE(placements.size(), 1);
+        QCOMPARE(placements[0].displayId, QString("2"));
+        QCOMPARE(placements[0].parentId, QString("1"));
+    }
+
+    void mirroringThePrimaryNeedsAnExtendedSource()
+    {
+        // Display 1 is off in the first state and mirrors display 2 in the second.
+        auto off = extendedDisplays(3);
+        off.logical.removeAt(1);
+        auto mirroring = off;
+        mirroring.logical[1].destinations.append("1");
+        for (const auto &state : {off, mirroring}) {
+            DisplayOutputModel model;
+            model.setState(state);
+            QVERIFY(model.setData(model.index(0), 1,
+                                  DisplayOutputModel::ReplicationSourceIndexRole));
+            QCOMPARE(model.primary(), QString("0"));
+            QVERIFY(model.data(model.index(0), DisplayOutputModel::PrimaryRole).toBool());
+        }
     }
 
     void selectedResolutionAndRefreshStayConsistent()

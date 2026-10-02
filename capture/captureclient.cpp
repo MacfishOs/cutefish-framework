@@ -11,6 +11,22 @@
 #include "linux-dmabuf-v1-client-protocol.h"
 #include "xdg-output-unstable-v1-client-protocol.h"
 
+namespace {
+
+// Only a release tells the compositor; a plain destroy leaves the server
+// object until the connection closes.
+void releaseOutput(const CaptureClient::Output &output)
+{
+    if (output.xdgOutput)
+        zxdg_output_v1_destroy(output.xdgOutput);
+    if (wl_output_get_version(output.output) >= WL_OUTPUT_RELEASE_SINCE_VERSION)
+        wl_output_release(output.output);
+    else
+        wl_output_destroy(output.output);
+}
+
+} // namespace
+
 struct CaptureClientListeners {
     static void global(void *data, wl_registry *registry, uint32_t name, const char *interface,
                        uint32_t version)
@@ -69,12 +85,7 @@ struct CaptureClientListeners {
                                });
         if (it == self->m_outputs.end())
             return;
-        if ((*it)->xdgOutput)
-            zxdg_output_v1_destroy((*it)->xdgOutput);
-        if (wl_output_get_version((*it)->output) >= WL_OUTPUT_RELEASE_SINCE_VERSION)
-            wl_output_release((*it)->output);
-        else
-            wl_output_destroy((*it)->output);
+        releaseOutput(**it);
         self->m_outputs.erase(it);
     }
 
@@ -108,7 +119,6 @@ struct CaptureClientListeners {
     static void handleClosed(void *data, ext_foreign_toplevel_handle_v1 *handle)
     {
         auto *toplevel = static_cast<CaptureClient::Toplevel *>(data);
-        toplevel->identifier.clear();
         ext_foreign_toplevel_handle_v1_destroy(handle);
         toplevel->handle = nullptr;
     }
@@ -183,16 +193,8 @@ CaptureClient::~CaptureClient()
     }
     if (m_toplevelList)
         ext_foreign_toplevel_list_v1_destroy(m_toplevelList);
-    for (auto &output : m_outputs) {
-        if (output->xdgOutput)
-            zxdg_output_v1_destroy(output->xdgOutput);
-        // Only a release tells the compositor; a plain destroy leaves the
-        // server object until the connection closes.
-        if (wl_output_get_version(output->output) >= WL_OUTPUT_RELEASE_SINCE_VERSION)
-            wl_output_release(output->output);
-        else
-            wl_output_destroy(output->output);
-    }
+    for (const auto &output : m_outputs)
+        releaseOutput(*output);
     if (m_copyManager)
         ext_image_copy_capture_manager_v1_destroy(m_copyManager);
     if (m_dmabuf)

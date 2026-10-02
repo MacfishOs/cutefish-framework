@@ -6,7 +6,6 @@
 #include <QDBusMessage>
 #include <QHash>
 #include <QObject>
-#include <QSet>
 #include <QTimer>
 
 #include <functional>
@@ -50,7 +49,6 @@ public:
     // As NetworkManager sent them, so an Update hands back the D-Bus types it was given.
     NMVariantMapMap settings(const QString &connection) const;
     QVariant setting(const QString &connection, const QString &setting, const QString &key) const;
-    QString connectionByUuid(const QString &uuid) const;
     // The profile that shares this machine's connection over Wi-Fi.
     QString hotspotConnection() const;
 
@@ -105,7 +103,6 @@ private:
     bool m_ready = false;
     QHash<QString, QHash<QString, QVariantMap>> m_objects;
     QHash<QString, NMVariantMapMap> m_settings;
-    QSet<QString> m_unreadable;
     // The newest GetSettings per profile; an older reply is stale.
     QHash<QString, quint64> m_settingsRequests;
     quint64 m_permissionsRequest = 0;

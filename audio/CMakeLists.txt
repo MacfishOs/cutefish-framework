@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
+find_package(Qt6 REQUIRED COMPONENTS Core Qml)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3>=0.3.65)
 pkg_check_modules(SPA REQUIRED IMPORTED_TARGET libspa-0.2)
@@ -32,8 +32,6 @@ target_include_directories(cutefish-framework-audio PUBLIC ${CMAKE_CURRENT_SOURC
 target_link_libraries(cutefish-framework-audio PUBLIC
     Qt6::Core
     Qt6::Qml
-    Qt6::Gui
-    Qt6::Quick
     PkgConfig::PIPEWIRE
     PkgConfig::SPA
 )

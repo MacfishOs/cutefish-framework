@@ -122,7 +122,7 @@ bool BluetoothObject::hasBluezInterface() const
 
 void BluetoothObject::setValue(const QString &property, const QVariant &value)
 {
-    m_manager->setProperty(this, property, value);
+    m_manager->setObjectProperty(this, property, value);
 }
 
 void BluetoothObject::setName(const QString &name)

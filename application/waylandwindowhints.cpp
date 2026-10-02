@@ -9,6 +9,16 @@
 
 namespace Cutefish {
 
+namespace {
+
+void flushDisplay()
+{
+    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+    wl_display_flush(native->display());
+}
+
+} // namespace
+
 WaylandWindowHints *WaylandWindowHints::instance()
 {
     static auto *manager = new WaylandWindowHints(qApp);
@@ -72,8 +82,7 @@ void WaylandWindowHints::setSkipTaskbar(wl_surface *surface, bool skip)
     if (!m_manager || !surface)
         return;
     cutefish_window_hints_v1_set_skip_taskbar(m_manager, surface, skip);
-    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
-    wl_display_flush(native->display());
+    flushDisplay();
 }
 
 void WaylandWindowHints::setAlwaysOnTop(wl_surface *surface, bool alwaysOnTop)
@@ -81,8 +90,7 @@ void WaylandWindowHints::setAlwaysOnTop(wl_surface *surface, bool alwaysOnTop)
     if (!m_manager || !surface)
         return;
     cutefish_window_hints_v1_set_always_on_top(m_manager, surface, alwaysOnTop);
-    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
-    wl_display_flush(native->display());
+    flushDisplay();
 }
 
 void WaylandWindowHints::setResizeAroundCenter(wl_surface *surface, bool center)
@@ -92,8 +100,7 @@ void WaylandWindowHints::setResizeAroundCenter(wl_surface *surface, bool center)
     cutefish_window_hints_v1_set_resize_anchor(m_manager, surface,
             center ? CUTEFISH_WINDOW_HINTS_V1_RESIZE_ANCHOR_CENTER
                    : CUTEFISH_WINDOW_HINTS_V1_RESIZE_ANCHOR_TOP_LEFT);
-    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
-    wl_display_flush(native->display());
+    flushDisplay();
 }
 
 void WaylandWindowHints::setServerResize(wl_surface *surface, bool enabled)
@@ -101,8 +108,7 @@ void WaylandWindowHints::setServerResize(wl_surface *surface, bool enabled)
     if (!m_manager || !surface)
         return;
     cutefish_window_hints_v1_set_server_resize(m_manager, surface, enabled);
-    auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
-    wl_display_flush(native->display());
+    flushDisplay();
 }
 
 } // namespace Cutefish

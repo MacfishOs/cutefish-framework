@@ -65,6 +65,15 @@ QString terminalId(const QString &line)
         entry.remove(0, 1);
     return entry.section(':', 0, 0);
 }
+
+bool writeLines(const QString &path, const QStringList &lines)
+{
+    QSaveFile output(path);
+    if (!output.open(QIODevice::WriteOnly))
+        return false;
+    const auto data = (lines.join('\n') + '\n').toUtf8();
+    return output.write(data) == data.size() && output.commit();
+}
 } // namespace
 
 QString MimeApps::userListPath()
@@ -115,11 +124,7 @@ bool MimeApps::setDefault(const QString &path, const QString &mimeType, const QS
     auto removed = readEntries(lines, "Removed Associations", mimeType);
     if (removed.removeAll(desktopId))
         writeEntry(lines, "Removed Associations", mimeType, removed);
-    QSaveFile output(path);
-    if (!output.open(QIODevice::WriteOnly))
-        return false;
-    const auto data = (lines.join('\n') + '\n').toUtf8();
-    return output.write(data) == data.size() && output.commit();
+    return writeLines(path, lines);
 }
 
 QString MimeApps::defaultTerminal(const QString &path)
@@ -156,9 +161,5 @@ bool MimeApps::setDefaultTerminal(const QString &path, const QString &desktopId)
         return !line.trimmed().startsWith('#') && terminalId(line) == desktopId;
     });
     lines.prepend(desktopId);
-    QSaveFile output(path);
-    if (!output.open(QIODevice::WriteOnly))
-        return false;
-    const auto data = (lines.join('\n') + '\n').toUtf8();
-    return output.write(data) == data.size() && output.commit();
+    return writeLines(path, lines);
 }

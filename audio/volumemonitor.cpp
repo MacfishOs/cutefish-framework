@@ -16,14 +16,9 @@ const pw_stream_events VolumeMonitor::streamEvents = [] {
     events.state_changed = [](void *data, pw_stream_state, pw_stream_state state, const char *) {
         auto *self = static_cast<VolumeMonitor *>(data);
         const bool available = state == PW_STREAM_STATE_STREAMING;
-        if (self->m_available != available) {
-            self->m_available = available;
-            Q_EMIT self->availableChanged();
-        }
-        if (!available && self->m_volume != 0.0) {
-            self->m_volume = 0.0;
-            Q_EMIT self->volumeChanged();
-        }
+        self->updateAvailable(available);
+        if (!available)
+            self->updateVolume(0.0);
     };
     return events;
 }();
@@ -110,10 +105,22 @@ void VolumeMonitor::process()
     // Rise at once but fall at 30 dB/s, as a level meter does; raw per-buffer
     // peaks jump by tens of dB and make the meter flicker.
     const double fall = std::pow(10.0, -30.0 / 20.0 * frames / 48000.0);
-    const double volume = std::clamp(std::max(peak, m_volume * fall), 0.0, 1.0);
+    updateVolume(std::clamp(std::max(peak, m_volume * fall), 0.0, 1.0));
+}
+
+void VolumeMonitor::updateVolume(double volume)
+{
     if (m_volume != volume) {
         m_volume = volume;
         Q_EMIT volumeChanged();
+    }
+}
+
+void VolumeMonitor::updateAvailable(bool available)
+{
+    if (m_available != available) {
+        m_available = available;
+        Q_EMIT availableChanged();
     }
 }
 
@@ -124,14 +131,8 @@ void VolumeMonitor::stop()
         pw_stream_destroy(m_stream);
         m_stream = nullptr;
     }
-    if (m_available) {
-        m_available = false;
-        Q_EMIT availableChanged();
-    }
-    if (m_volume != 0.0) {
-        m_volume = 0.0;
-        Q_EMIT volumeChanged();
-    }
+    updateAvailable(false);
+    updateVolume(0.0);
 }
 
 }

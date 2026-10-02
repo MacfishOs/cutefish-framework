@@ -131,11 +131,13 @@ const pw_device_events Backend::deviceEvents = [] {
             binding->object->updateProfile(param, id == SPA_PARAM_Profile);
         else if (id == SPA_PARAM_EnumRoute || id == SPA_PARAM_Route) {
             const int device = binding->object->updateRoute(param, id == SPA_PARAM_Route);
+            if (device < 0)
+                return;
             // Only that device's nodes: the card's other routes may still hold
             // the previous volume of a node that has already changed.
             for (AudioObject *node : binding->backend->objects()) {
-                if (device >= 0 && node->kind() != AudioObject::Card
-                    && node->cardIndex() == binding->object->index() && node->profileDevice() == device)
+                if (node->kind() != AudioObject::Card && node->cardIndex() == binding->object->index()
+                    && node->profileDevice() == device)
                     binding->backend->updateRouteVolume(node);
             }
         }
@@ -226,8 +228,7 @@ void Backend::connectToDaemon()
                               PW_KEY_APP_ID, "org.cutefish.Audio", nullptr), 0);
     }
     if (!m_core) {
-        disconnectFromDaemon();
-        m_retry.start();
+        fail();
         return;
     }
     pw_core_add_listener(m_core, &m_coreListener, &coreEvents, this);
@@ -266,13 +267,7 @@ void Backend::disconnectFromDaemon()
     const auto ids = m_bindings.keys();
     for (quint32 id : ids)
         removeGlobal(id);
-    if (m_metadata) {
-        spa_hook_remove(&m_metadataListener);
-        pw_proxy_destroy(reinterpret_cast<pw_proxy *>(m_metadata));
-        m_metadata = nullptr;
-    }
-    m_metadataId = AudioObject::InvalidId;
-    m_metadataPermissions = 0;
+    releaseMetadata();
     if (m_registry) {
         spa_hook_remove(&m_registryListener);
         pw_proxy_destroy(reinterpret_cast<pw_proxy *>(m_registry));
@@ -300,6 +295,17 @@ void Backend::disconnectFromDaemon()
         Q_EMIT connectedChanged();
     }
     updateDefaults();
+}
+
+void Backend::releaseMetadata()
+{
+    if (m_metadata) {
+        spa_hook_remove(&m_metadataListener);
+        pw_proxy_destroy(reinterpret_cast<pw_proxy *>(m_metadata));
+        m_metadata = nullptr;
+    }
+    m_metadataId = AudioObject::InvalidId;
+    m_metadataPermissions = 0;
 }
 
 void Backend::addGlobal(quint32 id, quint32 permissions, const char *type,
@@ -390,10 +396,7 @@ void Backend::addGlobal(quint32 id, quint32 permissions, const char *type,
 void Backend::removeGlobal(quint32 id)
 {
     if (id == m_metadataId && m_metadata) {
-        spa_hook_remove(&m_metadataListener);
-        pw_proxy_destroy(reinterpret_cast<pw_proxy *>(m_metadata));
-        m_metadata = nullptr;
-        m_metadataId = AudioObject::InvalidId;
+        releaseMetadata();
         m_defaultSink.clear();
         m_defaultSource.clear();
         updateDefaults();
@@ -470,8 +473,9 @@ void Backend::setNodeParam(AudioObject *object, const spa_pod *param)
     if (!binding || binding->object != object || !object->m_writable || object->kind() == AudioObject::Card)
         return;
     Binding *card = m_bindings.value(object->cardIndex());
-    if (card && card->object->m_routeProperties.contains(object->profileDevice())
-        && card->object->m_activeRoutes.contains(object->profileDevice())) {
+    const int device = object->profileDevice();
+    if (card && card->object->m_routeProperties.contains(device)
+        && card->object->m_activeRoutes.contains(device)) {
         if (!(card->permissions & PW_PERM_W)) {
             checkResult(-EACCES, "Set device volume");
             return;
@@ -480,8 +484,8 @@ void Backend::setNodeParam(AudioObject *object, const spa_pod *param)
         spa_pod_builder builder = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
         const auto *route = static_cast<spa_pod *>(spa_pod_builder_add_object(&builder,
             SPA_TYPE_OBJECT_ParamRoute, SPA_PARAM_Route,
-            SPA_PARAM_ROUTE_index, SPA_POD_Int(card->object->m_activeRoutes.value(object->profileDevice())),
-            SPA_PARAM_ROUTE_device, SPA_POD_Int(object->profileDevice()),
+            SPA_PARAM_ROUTE_index, SPA_POD_Int(card->object->m_activeRoutes.value(device)),
+            SPA_PARAM_ROUTE_device, SPA_POD_Int(device),
             SPA_PARAM_ROUTE_props, SPA_POD_Pod(param),
             SPA_PARAM_ROUTE_save, SPA_POD_Bool(true)));
         checkResult(pw_device_set_param(reinterpret_cast<pw_device *>(card->proxy), SPA_PARAM_Route, 0, route), "Set device volume");

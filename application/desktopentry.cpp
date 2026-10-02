@@ -4,11 +4,9 @@
 #include "applicationruntime.h"
 #include "languageenvironment.h"
 
-#include <QFile>
 #include <QFileInfo>
 #include <QLocale>
 #include <QMap>
-#include <QRegularExpression>
 #include <QStandardPaths>
 
 namespace {
@@ -21,15 +19,45 @@ QStringList splitList(const QString &value)
     return result;
 }
 
-QString unescapeValue(QString value)
+QString unescapeValue(const QString &value)
 {
-    value.replace(QStringLiteral("\\n"), QStringLiteral("\n"));
-    value.replace(QStringLiteral("\\t"), QStringLiteral("\t"));
-    value.replace(QStringLiteral("\\r"), QStringLiteral("\r"));
-    value.replace(QStringLiteral("\\s"), QStringLiteral(" "));
-    value.replace(QStringLiteral("\\;"), QStringLiteral(";"));
-    value.replace(QStringLiteral("\\\\"), QStringLiteral("\\"));
-    return value;
+    // One pass, so an escaped backslash cannot start another escape.
+    QString result;
+    result.reserve(value.size());
+    for (int i = 0; i < value.size(); ++i) {
+        const QChar ch = value.at(i);
+        if (ch != QLatin1Char('\\') || i + 1 == value.size()) {
+            result.append(ch);
+            continue;
+        }
+
+        const QChar next = value.at(++i);
+        switch (next.unicode()) {
+        case 'n':
+            result.append(QLatin1Char('\n'));
+            break;
+        case 't':
+            result.append(QLatin1Char('\t'));
+            break;
+        case 'r':
+            result.append(QLatin1Char('\r'));
+            break;
+        case 's':
+            result.append(QLatin1Char(' '));
+            break;
+        case ';':
+            result.append(QLatin1Char(';'));
+            break;
+        case '\\':
+            result.append(QLatin1Char('\\'));
+            break;
+        default:
+            result.append(ch);
+            result.append(next);
+            break;
+        }
+    }
+    return result;
 }
 
 bool parseBool(const QString &value)
@@ -157,10 +185,9 @@ QString substituteToken(const QString &token, const DesktopEntry *entry,
             result.append(entry->path());
         } else if (field == QLatin1Char('i')) {
             // %i is handled as two arguments by commandForArguments().
-        } else if (field == QLatin1Char('f') || field == QLatin1Char('u')) {
-            if (!arguments.isEmpty())
-                result.append(arguments.first());
-        } else if (field == QLatin1Char('F') || field == QLatin1Char('U')) {
+        } else if (field == QLatin1Char('f') || field == QLatin1Char('u')
+                   || field == QLatin1Char('F') || field == QLatin1Char('U')) {
+            // Inside a larger token a list code can take only one argument.
             if (!arguments.isEmpty())
                 result.append(arguments.first());
         }
@@ -361,7 +388,7 @@ bool DesktopEntry::parse(const QString &id, const QString &path,
         if (equals <= 0)
             continue;
 
-        QString key = line.left(equals).trimmed();
+        const QString key = line.left(equals).trimmed();
         const QString value = unescapeValue(line.mid(equals + 1).trimmed());
         if (group.startsWith(QStringLiteral("Desktop Action "))) {
             actionValues[group.mid(QStringLiteral("Desktop Action ").size())][key] = value;
@@ -369,7 +396,6 @@ bool DesktopEntry::parse(const QString &id, const QString &path,
             const int localeStart = key.indexOf(QLatin1Char('['));
             if (localeStart > 0 && key.endsWith(QLatin1Char(']'))) {
                 localized.insert(key, value);
-                key = key.left(localeStart);
             } else {
                 values.insert(key, value);
             }
@@ -414,8 +440,7 @@ void DesktopEntry::update(const DesktopEntryData &data)
         m_tryExec = data.tryExec;
         emit tryExecChanged();
     }
-    const bool hasExecChanged = m_exec != data.exec;
-    if (hasExecChanged) {
+    if (m_exec != data.exec) {
         m_exec = data.exec;
         emit execChanged();
     }

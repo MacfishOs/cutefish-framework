@@ -30,7 +30,6 @@ public:
     Q_INVOKABLE void createUser(const QString &userName, const QString &fullName,
                                 UserAccount::AccountType accountType);
     Q_INVOKABLE bool deleteUser(qlonglong uid, bool removeFiles);
-    bool deleteUser(UserAccount *account, bool removeFiles);
 
 Q_SIGNALS:
     void userCreated(QtAccountsService::UserAccount *account);

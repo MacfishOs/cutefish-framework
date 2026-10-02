@@ -17,9 +17,8 @@ struct UserRow
 class UsersModelPrivate
 {
 public:
-    UsersModelPrivate(UsersModel *owner, const QDBusConnection &bus);
+    UsersModelPrivate(UsersModel *model, const QDBusConnection &bus);
 
-    UsersModel *owner;
     AccountsManager *manager;
     QVector<UserRow> rows;
 };

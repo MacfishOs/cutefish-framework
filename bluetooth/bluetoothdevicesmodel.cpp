@@ -117,14 +117,14 @@ void BluetoothDevicesModel::rebuild()
     const int oldCount = m_devices.size();
     for (int row = m_devices.size() - 1; row >= 0; --row) {
         if (!m_devices.at(row) || !devices.contains(m_devices.at(row)))
-            removeRow(row);
+            removeDevice(row);
     }
     for (int row = 0; row < devices.size(); ++row) {
         if (row < m_devices.size() && m_devices.at(row) == devices.at(row))
             continue;
         const int from = m_devices.indexOf(devices.at(row), row);
         if (from < 0) {
-            insertRow(row, devices.at(row));
+            insertDevice(row, devices.at(row));
         } else {
             beginMoveRows({}, from, from, {}, row);
             m_devices.move(from, row);
@@ -135,7 +135,7 @@ void BluetoothDevicesModel::rebuild()
         emit countChanged();
 }
 
-void BluetoothDevicesModel::insertRow(int row, BluetoothObject *device)
+void BluetoothDevicesModel::insertDevice(int row, BluetoothObject *device)
 {
     beginInsertRows({}, row, row);
     m_devices.insert(row, device);
@@ -147,7 +147,7 @@ void BluetoothDevicesModel::insertRow(int row, BluetoothObject *device)
     });
 }
 
-void BluetoothDevicesModel::removeRow(int row)
+void BluetoothDevicesModel::removeDevice(int row)
 {
     beginRemoveRows({}, row, row);
     const QPointer<BluetoothObject> device = m_devices.takeAt(row);
