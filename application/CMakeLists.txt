@@ -1,6 +1,22 @@
 find_package(Qt6 REQUIRED COMPONENTS Core DBus Gui Qml)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WaylandClient REQUIRED IMPORTED_TARGET wayland-client)
+pkg_check_modules(WaylandProtocols REQUIRED wayland-protocols)
+pkg_get_variable(WAYLAND_PROTOCOLS_DATADIR wayland-protocols pkgdatadir)
+find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner REQUIRED)
+
+# Generated privately: Qt's Wayland plugin has its own copy of these interfaces.
+set(xdg_activation_xml ${WAYLAND_PROTOCOLS_DATADIR}/staging/xdg-activation/xdg-activation-v1.xml)
+set(xdg_activation_header ${CMAKE_CURRENT_BINARY_DIR}/xdg-activation-v1-client-protocol.h)
+set(xdg_activation_code ${CMAKE_CURRENT_BINARY_DIR}/xdg-activation-v1-protocol.c)
+add_custom_command(OUTPUT ${xdg_activation_header}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} client-header ${xdg_activation_xml} ${xdg_activation_header}
+    DEPENDS ${xdg_activation_xml} VERBATIM)
+add_custom_command(OUTPUT ${xdg_activation_code}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} private-code ${xdg_activation_xml} ${xdg_activation_code}
+    DEPENDS ${xdg_activation_xml} VERBATIM)
+set_source_files_properties(${xdg_activation_header} ${xdg_activation_code}
+    PROPERTIES SKIP_AUTOGEN ON)
 
 add_library(cutefish-framework-application SHARED
     cutefishapplication.cpp
@@ -27,6 +43,10 @@ add_library(cutefish-framework-application SHARED
     windowhints.h
     waylandwindowhints.cpp
     waylandwindowhints_p.h
+    waylandactivation.cpp
+    waylandactivation_p.h
+    ${xdg_activation_header}
+    ${xdg_activation_code}
 )
 add_library(Cutefish::Application ALIAS cutefish-framework-application)
 
@@ -34,6 +54,7 @@ target_include_directories(cutefish-framework-application PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/Cutefish/Application>
 )
+target_include_directories(cutefish-framework-application PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(cutefish-framework-application
     PUBLIC
         Qt6::Core

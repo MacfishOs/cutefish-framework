@@ -1,6 +1,7 @@
 #include "applicationruntime.h"
 #include "languageenvironment.h"
 #include "proxysettings.h"
+#include "waylandactivation_p.h"
 
 #include <QDBusConnection>
 #include <QDBusInterface>
@@ -21,10 +22,13 @@ namespace
 // private cutefish_shell_v1 and cutefish_window_management_v1 globals. The fd
 // itself is close-on-exec, but the variable naming it has to go as well, so
 // children fall back to the public WAYLAND_DISPLAY the session also set.
-QProcessEnvironment applicationEnvironment()
+QProcessEnvironment applicationEnvironment(const QString &activationToken)
 {
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.remove(QStringLiteral("WAYLAND_SOCKET"));
+    environment.remove(QStringLiteral("XDG_ACTIVATION_TOKEN"));
+    if (!activationToken.isEmpty())
+        environment.insert(QStringLiteral("XDG_ACTIVATION_TOKEN"), activationToken);
     LanguageEnvironment::apply(environment);
     ProxyEnvironment::apply(environment);
 
@@ -98,7 +102,10 @@ bool ApplicationRuntime::launchApplication(const QString &appId, const QStringLi
     if (!iface->isValid())
         return false;
 
-    const QDBusReply<uint> reply = iface->call(QStringLiteral("launchApplication"), appId, arguments);
+    // A single-instance application hands the token to its running instance,
+    // which can then be activated on another desk.
+    const QDBusReply<uint> reply = iface->call(QStringLiteral("launchApplication"), appId, arguments,
+                                               Cutefish::WaylandActivation::requestToken());
 
     return reply.isValid() && reply.value() != 0;
 }
@@ -110,10 +117,11 @@ bool ApplicationRuntime::launchCommand(const QStringList &command,
     if (command.isEmpty() || command.first().isEmpty())
         return false;
 
+    const QString activationToken = Cutefish::WaylandActivation::requestToken();
     QDBusInterface *iface = interface();
     if (iface->isValid()) {
         const QDBusReply<uint> reply = iface->call(QStringLiteral("launchCommand"), appId,
-                                                   command, workingDirectory);
+                                                   command, workingDirectory, activationToken);
         if (reply.isValid() && reply.value() != 0)
             return true;
     }
@@ -122,7 +130,7 @@ bool ApplicationRuntime::launchCommand(const QStringList &command,
     process.setProgram(command.first());
     process.setArguments(command.mid(1));
     process.setWorkingDirectory(workingDirectory);
-    process.setProcessEnvironment(applicationEnvironment());
+    process.setProcessEnvironment(applicationEnvironment(activationToken));
     return process.startDetached();
 }
 
