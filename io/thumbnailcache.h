@@ -15,6 +15,9 @@ class ThumbnailCache
 public:
     static ThumbnailCache *self();
 
+    /** Whether Qt's image readers or an installed thumbnailer handle @p mimeType. */
+    bool canThumbnail(const QString &mimeType);
+
     Thumbnail requestThumbnail(const QString &filePath, const QSize &requestedSize);
     QImage generateThumbnail(const QString &source, const QSize &requestedSize);
     QString writeCacheFile(const QString &path, const QImage &image);

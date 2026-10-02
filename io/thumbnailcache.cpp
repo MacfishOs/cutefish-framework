@@ -1,10 +1,12 @@
 #include "thumbnailcache.h"
+#include "thumbnailers_p.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QMimeDatabase>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QUrl>
@@ -66,6 +68,12 @@ bool isCurrent(const QImage &image, const QString &uri, qint64 mtime, qint64 siz
     return cachedSize.isEmpty() || cachedSize.toLongLong() == size;
 }
 
+bool isReadableMimeType(const QString &mimeType)
+{
+    static const QList<QByteArray> readable = QImageReader::supportedMimeTypes();
+    return readable.contains(mimeType.toLatin1());
+}
+
 void setMetadata(QImage &image, const QString &uri, qint64 mtime, qint64 size)
 {
     image.setText(uriKey, uri);
@@ -78,6 +86,11 @@ ThumbnailCache *ThumbnailCache::self()
 {
     static ThumbnailCache cache;
     return &cache;
+}
+
+bool ThumbnailCache::canThumbnail(const QString &mimeType)
+{
+    return isReadableMimeType(mimeType) || Thumbnailers::self()->contains(mimeType);
 }
 
 Thumbnail ThumbnailCache::requestThumbnail(const QString &filePath, const QSize &requestedSize)
@@ -143,10 +156,15 @@ Thumbnail ThumbnailCache::requestThumbnail(const QString &filePath, const QSize 
 
 QImage ThumbnailCache::generateThumbnail(const QString &source, const QSize &requestedSize)
 {
+    if (requestedSize.isEmpty())
+        return {};
+
     QImageReader reader(source);
     const QSize originalSize = reader.size();
-    if (!originalSize.isValid() || requestedSize.isEmpty())
-        return {};
+    if (!originalSize.isValid()) {
+        const QString mimeType = QMimeDatabase().mimeTypeForFile(source).name();
+        return Thumbnailers::self()->generate(source, mimeType, requestedSize);
+    }
 
     reader.setQuality(90);
     reader.setAutoTransform(true);
