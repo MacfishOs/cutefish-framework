@@ -21,6 +21,7 @@ class NightLight : public QObject
     Q_PROPERTY(int schedule READ schedule WRITE setSchedule NOTIFY scheduleChanged)
     Q_PROPERTY(int customStart READ customStart WRITE setCustomStart NOTIFY customStartChanged)
     Q_PROPERTY(int customEnd READ customEnd WRITE setCustomEnd NOTIFY customEndChanged)
+    Q_PROPERTY(bool preview READ preview WRITE setPreview NOTIFY previewChanged)
 
 public:
     enum Schedule {
@@ -54,6 +55,11 @@ public:
     int customEnd() const { return m_customEnd; }
     void setCustomEnd(int minutes);
 
+    // Shows the temperature while the night light is off; the service ends it
+    // if this process leaves the bus.
+    bool preview() const { return m_preview; }
+    void setPreview(bool preview);
+
 signals:
     void loadedChanged();
     void availableChanged();
@@ -62,6 +68,7 @@ signals:
     void scheduleChanged();
     void customStartChanged();
     void customEndChanged();
+    void previewChanged();
 
 private slots:
     void load();
@@ -82,4 +89,5 @@ private:
     int m_schedule = Never;
     int m_customStart = 18 * 60;
     int m_customEnd = 6 * 60;
+    bool m_preview = false;
 };

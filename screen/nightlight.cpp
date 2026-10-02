@@ -107,6 +107,15 @@ void NightLight::setCustomEnd(int minutes)
     call(QStringLiteral("setCustomEnd"), minutes);
 }
 
+void NightLight::setPreview(bool preview)
+{
+    if (preview == m_preview)
+        return;
+    m_preview = preview;
+    emit previewChanged();
+    call(QStringLiteral("setPreview"), preview);
+}
+
 void NightLight::onEnabledChanged(bool enabled)
 {
     if (enabled == m_enabled)
