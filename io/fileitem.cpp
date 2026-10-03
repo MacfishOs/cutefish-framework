@@ -4,6 +4,7 @@
 #include "filesystemurl.h"
 
 #include <QDir>
+#include <QHash>
 #include <QLocale>
 #include <QMimeDatabase>
 #include <QStandardPaths>
@@ -80,28 +81,32 @@ QString standardFolderIconName(const QString &path)
     if (path.isEmpty())
         return {};
 
-    static const QList<QPair<QStandardPaths::StandardLocation, QString>> folders = {
-            {QStandardPaths::HomeLocation, QStringLiteral("folder-home")},
-            {QStandardPaths::DesktopLocation, QStringLiteral("folder-desktop")},
-            {QStandardPaths::DocumentsLocation, QStringLiteral("folder-documents")},
-            {QStandardPaths::DownloadLocation, QStringLiteral("folder-download")},
-            {QStandardPaths::MusicLocation, QStringLiteral("folder-music")},
-            {QStandardPaths::PicturesLocation, QStringLiteral("folder-picture")},
-            {QStandardPaths::MoviesLocation, QStringLiteral("folder-video")},
-            {QStandardPaths::TemplatesLocation, QStringLiteral("folder-templates")},
-            {QStandardPaths::PublicShareLocation, QStringLiteral("folder-publicshare")},
-    };
+    // QStandardPaths reads user-dirs.dirs again on every call. The session writes
+    // that file before it starts the desktop, so once per process is enough.
+    static const QHash<QString, QString> icons = [] {
+        const QList<QPair<QStandardPaths::StandardLocation, QString>> folders = {
+                {QStandardPaths::HomeLocation, QStringLiteral("folder-home")},
+                {QStandardPaths::DesktopLocation, QStringLiteral("folder-desktop")},
+                {QStandardPaths::DocumentsLocation, QStringLiteral("folder-documents")},
+                {QStandardPaths::DownloadLocation, QStringLiteral("folder-download")},
+                {QStandardPaths::MusicLocation, QStringLiteral("folder-music")},
+                {QStandardPaths::PicturesLocation, QStringLiteral("folder-picture")},
+                {QStandardPaths::MoviesLocation, QStringLiteral("folder-video")},
+                {QStandardPaths::TemplatesLocation, QStringLiteral("folder-templates")},
+                {QStandardPaths::PublicShareLocation, QStringLiteral("folder-publicshare")},
+        };
 
-    const QString cleaned = QDir::cleanPath(path);
+        QHash<QString, QString> result;
+        for (const auto &[location, icon] : folders) {
+            const QString standard = QStandardPaths::writableLocation(location);
+            // Home first: disabled XDG directories resolve to the home directory itself.
+            if (!standard.isEmpty() && !result.contains(QDir::cleanPath(standard)))
+                result.insert(QDir::cleanPath(standard), icon);
+        }
+        return result;
+    }();
 
-    // Home first: disabled XDG directories resolve to the home directory itself.
-    for (const auto &[location, icon] : folders) {
-        const QString standard = QStandardPaths::writableLocation(location);
-        if (!standard.isEmpty() && QDir::cleanPath(standard) == cleaned)
-            return icon;
-    }
-
-    return {};
+    return icons.value(QDir::cleanPath(path));
 }
 
 bool isStandardFolder(const QUrl &url)

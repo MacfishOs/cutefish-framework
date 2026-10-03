@@ -163,7 +163,8 @@ private:
 
 QString convertSize(quint64 size);
 
-// Empty unless path is the home directory or an XDG user directory.
+// Empty unless path is the home directory or an XDG user directory, as they were
+// on the first call.
 QString standardFolderIconName(const QString &path);
 bool isStandardFolder(const QUrl &url);
 bool canMoveStandardFolderTo(const QUrl &source, const QUrl &destination);
