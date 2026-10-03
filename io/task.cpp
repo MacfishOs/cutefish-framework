@@ -1,6 +1,7 @@
 #include "task.h"
 #include "async.h"
 #include "fileitem.h"
+#include "posix_p.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -10,10 +11,35 @@
 #include <QTimer>
 
 #include <cerrno>
+#include <linux/magic.h>
+#include <sys/stat.h>
+#include <sys/statvfs.h>
+#include <sys/vfs.h>
 
 namespace Cutefish::IO {
 
 namespace {
+
+// A copy within a filesystem that shares extents may take no space at all, so it is not counted.
+bool takesSpace(const QString &source, const QString &directory, bool move)
+{
+    const auto sourcePath = Internal::native(source);
+    const auto directoryPath = Internal::native(directory);
+
+    struct stat from, to;
+    struct statfs fromFs, toFs;
+    if (::lstat(sourcePath, &from) < 0 || ::stat(directoryPath, &to) < 0
+        || ::statfs(sourcePath, &fromFs) < 0 || ::statfs(directoryPath, &toFs) < 0)
+        return false;
+
+    if (move && from.st_dev == to.st_dev)
+        return false;
+
+    const auto type = toFs.f_type;
+    return fromFs.f_type != type
+            || (type != BTRFS_SUPER_MAGIC && type != XFS_SUPER_MAGIC
+                && type != BCACHEFS_SUPER_MAGIC);
+}
 
 TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                    const std::function<void(const TaskProgress &, bool)> &report)
@@ -25,6 +51,7 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
     QList<QPair<quint64, quint64>> weights;
     quint64 creditedBytes = 0, creditedItems = 0;
     quint64 sourceBytes = 0, sourceItems = 0;
+    quint64 required = 0;
     const auto legacyProgress = ctx.progress;
     const auto conflictResolver = ctx.conflict;
 
@@ -88,7 +115,14 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                     scan.files = 1;
                 else {
                     try {
-                        LocalFileSystem::directorySize(FileSystemUrl(url).localPath(), scan);
+                        const auto source = FileSystemUrl(url).localPath();
+                        LocalFileSystem::directorySize(source, scan);
+
+                        if ((request.operation == Operation::Copy
+                             || request.operation == Operation::Move)
+                            && takesSpace(source, FileSystemUrl(request.destination).localPath(),
+                                          request.operation == Operation::Move))
+                            required += scan.allocated;
                     } catch (const Failure &failure) {
                         if (failure.error.code == ECANCELED)
                             throw;
@@ -100,6 +134,16 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                 info.totalBytes += scan.bytes;
                 info.totalItems += scan.files;
             }
+        }
+
+        if (info.totalsKnown && required) {
+            // A lower bound: block rounding and metadata are not counted, so a copy can still
+            // run out, but one that cannot fit fails before it writes anything.
+            const auto destination = FileSystemUrl(request.destination).localPath();
+            struct statvfs fs;
+            if (::statvfs(Internal::native(destination), &fs) == 0
+                && required > quint64(fs.f_bavail) * fs.f_frsize)
+                throw Failure(ENOSPC, destination);
         }
 
         if (request.operation == Operation::Mkdir)

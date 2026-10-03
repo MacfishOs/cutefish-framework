@@ -22,6 +22,8 @@ struct OperationContext
     std::function<void(const QString &)> currentItem;
     quint64 bytes = 0;
     quint64 files = 0;
+    // Space the regular files found by a size scan occupy, without sparse holes.
+    quint64 allocated = 0;
     std::function<void(quint64, quint64)> progress;
     std::function<ConflictPolicy(const QString &source, const QString &destination)> conflict;
 

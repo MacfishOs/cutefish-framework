@@ -29,6 +29,8 @@ quint64 sizeAt(int parent, const QByteArray &name, const QString &path, Operatio
         });
     } else if (S_ISREG(st.st_mode) || S_ISLNK(st.st_mode)) {
         size = st.st_size;
+        if (S_ISREG(st.st_mode))
+            ctx.allocated += std::min<quint64>(st.st_size, quint64(st.st_blocks) * 512);
         ctx.advance(size);
     }
 

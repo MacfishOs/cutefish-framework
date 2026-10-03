@@ -6,11 +6,13 @@
 #include <QPersistentModelIndex>
 #include <QPixmap>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 using namespace Cutefish::IO;
@@ -832,6 +834,54 @@ private slots:
 
         QCOMPARE(task.operationName(), QString("copy"));
         QCOMPARE(task.destinationName(), QString("target"));
+    }
+
+    void copyThatCannotFitFailsBeforeWriting()
+    {
+        QTemporaryDir target(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation)
+                             + "/cutefish-io-XXXXXX");
+        QVERIFY(target.isValid());
+
+        struct statvfs fs;
+        QCOMPARE(::statvfs(QFile::encodeName(target.path()), &fs), 0);
+        const qint64 available = qint64(fs.f_bavail) * fs.f_frsize;
+        if (available > (qint64(8) << 30))
+            QSKIP("The runtime directory has too much free space to fill");
+
+        // Kept on the build tree's disk, so the large source costs no memory.
+        QTemporaryDir source(QDir::currentPath() + "/cutefish-io-XXXXXX");
+        QVERIFY(source.isValid());
+        const qint64 length = available + 64 * 1024 * 1024;
+
+        const int full =
+                ::open(QFile::encodeName(source.filePath("full")), O_WRONLY | O_CREAT, 0600);
+        QVERIFY(full >= 0);
+        const int allocated = ::posix_fallocate(full, 0, length);
+        ::close(full);
+        if (allocated != 0)
+            QSKIP("The build tree has no room for a source larger than the target");
+
+        Task copy({Operation::Copy, {local(source.filePath("full"))}, local(target.path())});
+        QSignalSpy failed(&copy, &Task::result);
+        copy.start();
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(copy.error(), ENOSPC);
+        QVERIFY(QDir(target.path())
+                        .isEmpty(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot));
+
+        QFile sparse(source.filePath("sparse"));
+        QVERIFY(sparse.open(QIODevice::WriteOnly));
+        QVERIFY(sparse.resize(length));
+        QVERIFY(sparse.seek(length - 4));
+        QCOMPARE(sparse.write("tail"), 4);
+        sparse.close();
+
+        Task fits({Operation::Copy, {local(sparse.fileName())}, local(target.path())});
+        QSignalSpy done(&fits, &Task::result);
+        fits.start();
+        QTRY_COMPARE(done.size(), 1);
+        QCOMPARE(fits.state(), Task::State::Succeeded);
+        QCOMPARE(QFileInfo(target.filePath("sparse")).size(), length);
     }
 
     void preparationSharesCancellation()
