@@ -4,6 +4,7 @@
 
 #include <QUuid>
 
+#include <deque>
 #include <linux/fs.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -46,8 +47,66 @@ void Internal::eraseAt(int parent, const QByteArray &name, const QString &path,
 
 namespace {
 
+// Copies drive their own writeback so the page cache holds a bounded amount of unwritten data:
+// progress follows the disk, and a slow drive can be ejected soon after the copy ends.
+constexpr off_t kWritebackChunk = 8 * 1024 * 1024;
+constexpr off_t kWritebackLimit = 32 * 1024 * 1024;
+constexpr size_t kWritebackFiles = 256;
+
+class Writeback
+{
+public:
+    Writeback() = default;
+
+    ~Writeback()
+    {
+        for (const auto &range : m_ranges)
+            ::close(range.fd);
+    }
+
+    Writeback(const Writeback &) = delete;
+    Writeback &operator=(const Writeback &) = delete;
+
+    // Starts writing the range back at once and waits only for the oldest ranges, across files,
+    // so the drive always has work queued and nothing forces a journal commit or cache flush.
+    void push(int fd, off_t offset, off_t length, off_t bytes)
+    {
+        const int owned = ::fcntl(fd, F_DUPFD_CLOEXEC, 0);
+        if (owned < 0)
+            return;
+
+        ::sync_file_range(owned, offset, length, SYNC_FILE_RANGE_WRITE);
+        m_ranges.push_back({owned, offset, length, bytes});
+        m_pending += bytes;
+
+        while (m_pending > kWritebackLimit || m_ranges.size() > kWritebackFiles) {
+            const auto range = m_ranges.front();
+            m_ranges.pop_front();
+
+            ::sync_file_range(range.fd, range.offset, range.length,
+                              SYNC_FILE_RANGE_WAIT_BEFORE | SYNC_FILE_RANGE_WRITE
+                                      | SYNC_FILE_RANGE_WAIT_AFTER);
+            ::posix_fadvise(range.fd, range.offset, range.length, POSIX_FADV_DONTNEED);
+            ::close(range.fd);
+            m_pending -= range.bytes;
+        }
+    }
+
+private:
+    struct Range
+    {
+        int fd;
+        off_t offset;
+        off_t length;
+        off_t bytes;
+    };
+
+    std::deque<Range> m_ranges;
+    off_t m_pending = 0;
+};
+
 void copyAt(int sourceParent, const QByteArray &source, int targetParent, const QByteArray &target,
-            const QString &path, OperationContext &ctx)
+            const QString &path, OperationContext &ctx, Writeback &writeback)
 {
     ctx.checkpoint(path);
 
@@ -79,7 +138,7 @@ void copyAt(int sourceParent, const QByteArray &source, int targetParent, const 
         check(output.value, path);
 
         children(input.value, path, [&](const QByteArray &child, const QString &childPath) {
-            copyAt(input.value, child, output.value, child, childPath, ctx);
+            copyAt(input.value, child, output.value, child, childPath, ctx, writeback);
         });
 
         check(::fchmod(output.value, st.st_mode & 0777), path);
@@ -102,6 +161,18 @@ void copyAt(int sourceParent, const QByteArray &source, int targetParent, const 
         off_t position = 0;
         bool sparse = true;
         bool inKernel = true;
+
+        off_t flushed = 0;
+        off_t unflushed = 0;
+        auto wrote = [&](off_t bytes) {
+            unflushed += bytes;
+            if (unflushed < kWritebackChunk)
+                return;
+
+            writeback.push(output.value, flushed, position - flushed, unflushed);
+            flushed = position;
+            unflushed = 0;
+        };
 
         // Filesystems that share extents (Btrfs, XFS) clone the whole file; the rest refuse.
         if (opened.st_size > 0 && ::ioctl(output.value, FICLONE, input.value) == 0) {
@@ -154,6 +225,7 @@ void copyAt(int sourceParent, const QByteArray &source, int targetParent, const 
                     if (copied > 0) {
                         ctx.advance(copied);
                         position += copied;
+                        wrote(copied);
                         continue;
                     }
 
@@ -193,8 +265,12 @@ void copyAt(int sourceParent, const QByteArray &source, int targetParent, const 
                 }
 
                 position += count;
+                wrote(count);
             }
         }
+
+        if (unflushed)
+            writeback.push(output.value, flushed, position - flushed, unflushed);
 
         check(::ftruncate(output.value, opened.st_size), path);
         check(::fchmod(output.value, st.st_mode & 0777), path);
@@ -321,7 +397,8 @@ QString LocalFileSystem::copy(const QString &source, const QString &destination,
     QByteArray temporary = ".cutefish-copy-" + QUuid::createUuid().toByteArray(QUuid::Id128);
 
     try {
-        copyAt(input.fd.value, input.name, output.fd.value, temporary, source, ctx);
+        Writeback writeback;
+        copyAt(input.fd.value, input.name, output.fd.value, temporary, source, ctx, writeback);
         ctx.checkpoint(source);
 
         auto result = publish(output.fd.value, temporary, source, destination, policy, ctx);
