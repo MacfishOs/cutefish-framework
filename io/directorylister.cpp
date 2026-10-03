@@ -8,6 +8,22 @@
 
 namespace Cutefish::IO {
 
+namespace {
+
+QString existingAncestor(QString path)
+{
+    while (!QFileInfo(path).isDir()) {
+        const QString parent = QFileInfo(path).absolutePath();
+        if (parent == path)
+            break;
+        path = parent;
+    }
+
+    return path;
+}
+
+} // namespace
+
 DirectoryLister::DirectoryLister(QObject *parent)
     : QObject(parent)
 {
@@ -19,7 +35,7 @@ DirectoryLister::DirectoryLister(QObject *parent)
         if (m_autoUpdate)
             m_debounce.start();
     });
-    connect(&m_watch, &FileWatcher::error, this, &DirectoryLister::error);
+    connect(&m_watch, &FileWatcher::error, this, &DirectoryLister::reportError);
     connect(&m_debounce, &QTimer::timeout, this, &DirectoryLister::refresh);
     connect(&m_retry, &QTimer::timeout, this, [this] {
         if (m_autoUpdate)
@@ -59,6 +75,8 @@ void DirectoryLister::openUrl(const QUrl &url)
     m_items.clear();
     m_watch.clear();
     m_retry.stop();
+    m_listed = false;
+    m_lastError.clear();
 
     emit directoryChanged();
     refresh();
@@ -80,6 +98,34 @@ void DirectoryLister::stop()
     emit canceled();
 }
 
+void DirectoryLister::watchDirectory()
+{
+    m_watch.clear();
+
+    try {
+        const QString path = FileSystemUrl(m_url).localPath();
+
+        // A path that is gone gets no watch and no polling; the listing either
+        // moves to its parent or reports it once.
+        if (!QFileInfo(path).isDir() || m_watch.watch(path))
+            m_retry.stop();
+        else
+            m_retry.start();
+    } catch (const Failure &) {
+        m_retry.stop();
+    }
+}
+
+// Polling repeats the same failure every interval; show it once.
+void DirectoryLister::reportError(const QString &message)
+{
+    if (message == m_lastError)
+        return;
+
+    m_lastError = message;
+    emit error(message);
+}
+
 void DirectoryLister::refresh()
 {
     if (m_url.isEmpty())
@@ -90,14 +136,7 @@ void DirectoryLister::refresh()
         return;
     }
 
-    try {
-        if (m_watch.watch(FileSystemUrl(m_url).localPath()))
-            m_retry.stop();
-        else
-            m_retry.start();
-    } catch (const Failure &) {
-        m_watch.clear();
-    }
+    watchDirectory();
 
     const quint64 generation = m_generation;
     auto context = std::make_shared<OperationContext>();
@@ -117,12 +156,7 @@ void DirectoryLister::refresh()
 
         if (listing.url.isValid() && listing.url != m_url) {
             m_url = listing.url;
-            m_watch.clear();
-
-            if (m_watch.watch(FileSystemUrl(m_url).localPath()))
-                m_retry.stop();
-            else
-                m_retry.start();
+            watchDirectory();
 
             emit directoryChanged();
 
@@ -138,10 +172,11 @@ void DirectoryLister::refresh()
             return;
 
         if (listing.error) {
-            emit error(listing.error.message + ": " + listing.error.path);
+            reportError(listing.error.message + ": " + listing.error.path);
             if (generation == m_generation)
                 emit canceled();
         } else {
+            m_listed = true;
             emit completed();
         }
 
@@ -152,7 +187,7 @@ void DirectoryLister::refresh()
     });
 
     watcher->setFuture(Internal::runAsync([url = m_url, hidden = m_hidden, context,
-                                           preparer = m_itemPreparer] {
+                                           preparer = m_itemPreparer, listed = m_listed] {
         Listing result;
 
         try {
@@ -164,6 +199,8 @@ void DirectoryLister::refresh()
 
                 if (target.isFile())
                     result.url = QUrl::fromLocalFile(target.absolutePath());
+                else if (listed && !target.exists())
+                    result.url = QUrl::fromLocalFile(existingAncestor(target.absoluteFilePath()));
             }
 
             result.items = FileEnumerator::list(result.url, hidden, context.get());

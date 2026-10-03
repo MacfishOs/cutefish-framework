@@ -539,25 +539,42 @@ private slots:
         QTRY_COMPARE(changed.count(), 1);
     }
 
-    void watcherDirectoryRecreation()
+    void watcherDirectoryRemoval()
     {
         QTemporaryDir dir;
-        const auto path = dir.filePath("watched");
+        const auto path = dir.filePath("a/b");
         QVERIFY(QDir().mkpath(path));
+        writeFile(dir.filePath("sibling"));
 
         DirectoryLister lister;
         DirectoryModel model;
         model.setDirLister(&lister);
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+        QSignalSpy failed(&lister, &DirectoryLister::error);
         lister.openUrl(local(path));
+        QTRY_COMPARE(listed.count(), 1);
 
-        QTest::qWait(80);
-        QVERIFY(QDir().rmdir(path));
-        QTest::qWait(80);
+        QVERIFY(QDir(dir.filePath("a")).removeRecursively());
+        QTRY_COMPARE(lister.url(), local(dir.path()));
+        QTRY_COMPARE(model.rowCount(), 1);
+        QCOMPARE(model.itemForIndex(model.index(0, 0)).name(), QString("sibling"));
+        QCOMPARE(failed.count(), 0);
+    }
 
-        QVERIFY(QDir().mkpath(path));
-        writeFile(path + "/new");
-        QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 1, 5000);
-        QCOMPARE(model.itemForIndex(model.index(0, 0)).name(), QString("new"));
+    void missingDirectoryReportsOnce()
+    {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("missing");
+
+        DirectoryLister lister;
+        QSignalSpy failed(&lister, &DirectoryLister::error);
+        lister.openUrl(local(path));
+        QTRY_COMPARE(failed.count(), 1);
+
+        lister.emitChanges();
+        QTest::qWait(2500);
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(lister.url(), local(path));
     }
 
     void staleListingAndDestruction()

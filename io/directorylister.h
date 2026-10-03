@@ -75,6 +75,8 @@ signals:
 
 private:
     void refresh();
+    void watchDirectory();
+    void reportError(const QString &message);
     void cancelListing();
 
     struct Listing
@@ -91,6 +93,8 @@ private:
     bool m_hidden = false;
     bool m_autoUpdate = true;
     bool m_pending = false;
+    bool m_listed = false;
+    QString m_lastError;
     quint64 m_generation = 0;
     FileWatcher m_watch;
     QTimer m_debounce;
