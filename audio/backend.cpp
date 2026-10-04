@@ -177,6 +177,7 @@ Backend::~Backend()
 {
     m_retry.stop();
     disconnectFromDaemon();
+    releaseContext();
     pw_deinit();
 }
 
@@ -217,11 +218,15 @@ void Backend::connectToDaemon()
     if (m_core)
         return;
     m_failurePending = false;
-    m_loop = pw_loop_new(nullptr);
-    if (m_loop) {
-        pw_loop_enter(m_loop);
-        m_context = pw_context_new(m_loop, nullptr, 0);
+    // A context loads its modules and configuration when created; kept across
+    // attempts, a retry while the daemon is away costs only the connect.
+    if (!m_loop) {
+        m_loop = pw_loop_new(nullptr);
+        if (m_loop)
+            pw_loop_enter(m_loop);
     }
+    if (m_loop && !m_context)
+        m_context = pw_context_new(m_loop, nullptr, 0);
     if (m_context) {
         m_core = pw_context_connect(m_context,
             pw_properties_new(PW_KEY_APP_NAME, "Cutefish Audio",
@@ -249,8 +254,12 @@ void Backend::iterate()
     m_iterating = true;
     const int result = pw_loop_iterate(m_loop, 0);
     m_iterating = false;
-    if (result < 0 && result != -EINTR)
-        fail();
+    if (result < 0 && result != -EINTR) {
+        // A loop that failed is not reused.
+        disconnectFromDaemon();
+        releaseContext();
+        m_retry.start();
+    }
 }
 
 void Backend::fail()
@@ -278,6 +287,18 @@ void Backend::disconnectFromDaemon()
         pw_core_disconnect(m_core);
         m_core = nullptr;
     }
+    m_links.clear();
+    m_defaultSink.clear();
+    m_defaultSource.clear();
+    if (m_connected) {
+        m_connected = false;
+        Q_EMIT connectedChanged();
+    }
+    updateDefaults();
+}
+
+void Backend::releaseContext()
+{
     if (m_context) {
         pw_context_destroy(m_context);
         m_context = nullptr;
@@ -287,14 +308,6 @@ void Backend::disconnectFromDaemon()
         pw_loop_destroy(m_loop);
         m_loop = nullptr;
     }
-    m_links.clear();
-    m_defaultSink.clear();
-    m_defaultSource.clear();
-    if (m_connected) {
-        m_connected = false;
-        Q_EMIT connectedChanged();
-    }
-    updateDefaults();
 }
 
 void Backend::releaseMetadata()

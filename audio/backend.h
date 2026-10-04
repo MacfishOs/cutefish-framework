@@ -56,6 +56,7 @@ private:
 
     void connectToDaemon();
     void disconnectFromDaemon();
+    void releaseContext();
     void releaseMetadata();
     void fail();
     void iterate();
