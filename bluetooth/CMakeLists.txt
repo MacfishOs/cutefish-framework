@@ -29,10 +29,13 @@ qt_add_qml_module(cutefish-framework-bluetooth
 
 add_library(Cutefish::Bluetooth ALIAS cutefish-framework-bluetooth)
 
-target_link_libraries(cutefish-framework-bluetooth PUBLIC
-    Qt6::Core
-    Qt6::Qml
-    Qt6::DBus
+target_link_libraries(cutefish-framework-bluetooth
+    PUBLIC
+        Qt6::Core
+        Qt6::Qml
+        Qt6::DBus
+    PRIVATE
+        Cutefish::Application
 )
 
 cutefish_install_qml_module(cutefish-framework-bluetooth)

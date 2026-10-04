@@ -8,6 +8,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Core DBus Qml Test)
+if(NOT TARGET Cutefish::Application)
+    find_package(CutefishFramework REQUIRED COMPONENTS Application)
+endif()
 find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
 add_executable(tst_bluetooth tst_bluetooth.cpp
     ../bluetoothmanager.cpp ../bluetoothmanager.h
@@ -17,7 +20,8 @@ add_executable(tst_bluetooth tst_bluetooth.cpp
     ../bluetoothrfkill.cpp ../bluetoothrfkill.h
     ../bluetoothdbustypes.cpp ../bluetoothdbustypes.h
 )
-target_link_libraries(tst_bluetooth PRIVATE Qt6::Core Qt6::DBus Qt6::Qml Qt6::Test)
+target_link_libraries(tst_bluetooth PRIVATE Cutefish::Application Qt6::Core Qt6::DBus Qt6::Qml
+    Qt6::Test)
 add_test(NAME bluetooth COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_bluetooth>)
 set_tests_properties(bluetooth PROPERTIES TIMEOUT 60)
 

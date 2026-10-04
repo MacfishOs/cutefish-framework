@@ -1,6 +1,7 @@
 #include "bluetoothmanager.h"
 #include "bluetoothagent.h"
 #include "bluetoothrfkill.h"
+#include "cutefishnotification.h"
 
 #include <QDBusArgument>
 #include <QDBusPendingCallWatcher>
@@ -804,13 +805,14 @@ QString BluetoothManager::describe(const QDBusMessage &reply) const
 
 void BluetoothManager::notify(const QString &summary, const QString &body)
 {
-    const QString service = QStringLiteral("org.freedesktop.Notifications");
-    const QString path = QStringLiteral("/org/freedesktop/Notifications");
-    QDBusMessage message =
-            QDBusMessage::createMethodCall(service, path, service, QStringLiteral("Notify"));
-    message << tr("Bluetooth") << 0u << QStringLiteral("bluetooth") << summary << body
-            << QStringList() << QVariantMap() << -1;
-    QDBusConnection::sessionBus().call(message, QDBus::NoBlock);
+    auto *notification = new Cutefish::Notification(this);
+    // Sent from whichever process shows Bluetooth, so no desktop entry of its own.
+    notification->setAppName(tr("Bluetooth"));
+    notification->setIconName(QStringLiteral("bluetooth"));
+    notification->setSummary(summary);
+    notification->setBody(body);
+    notification->setAutoDelete(true);
+    notification->show();
 }
 
 void BluetoothManager::clearError()

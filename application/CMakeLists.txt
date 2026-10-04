@@ -27,6 +27,8 @@ add_library(cutefish-framework-application SHARED
     keyfile.h
     mimeapps.cpp
     mimeapps.h
+    cutefishnotification.cpp
+    cutefishnotification.h
     preferences.cpp
     preferences.h
     proxysettings.cpp
@@ -76,6 +78,7 @@ install(FILES
     languageenvironment.h
     keyfile.h
     mimeapps.h
+    cutefishnotification.h
     preferences.h
     proxysettings.h
     applicationlauncher.h
@@ -121,6 +124,11 @@ if(BUILD_TESTING)
     add_executable(tst_mimeapps tests/tst_mimeapps.cpp)
     target_link_libraries(tst_mimeapps PRIVATE Cutefish::Application Qt6::Test)
     add_test(NAME mimeapps COMMAND tst_mimeapps)
+
+    find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
+    add_executable(tst_notification tests/tst_notification.cpp)
+    target_link_libraries(tst_notification PRIVATE Cutefish::Application Qt6::Test)
+    add_test(NAME notification COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_notification>)
 
     add_executable(tst_applicationregistry tests/tst_applicationregistry.cpp)
     target_link_libraries(tst_applicationregistry PRIVATE Cutefish::Application Qt6::Test)
