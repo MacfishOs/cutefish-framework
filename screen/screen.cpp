@@ -104,12 +104,3 @@ void DisplayScreen::revert()
     if (pendingConfirmation())
         m_client.revert(m_client.state().previewToken);
 }
-
-void DisplayScreen::identify()
-{
-    QStringList ids;
-    for (const auto &display : m_client.state().logical)
-        ids.append(display.id);
-    m_client.identify(ids);
-    emit identifyRequested(ids);
-}

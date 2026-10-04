@@ -95,8 +95,6 @@ void DisplayClient::connectInterface()
                     queueCompletion(token, result);
                 refresh();
             });
-    connect(m_interface, &ComCutefishDisplayConfig1Interface::IdentifyRequested, this,
-            &DisplayClient::identifyRequested);
     // Last, so a completion that asks again reaches the new owner.
     failRequests();
 }
@@ -221,12 +219,6 @@ void DisplayClient::revert(const QString &token)
 {
     if (available())
         m_interface->RevertConfiguration(token);
-}
-
-void DisplayClient::identify(const QStringList &displayIds)
-{
-    if (available())
-        m_interface->IdentifyDisplays(displayIds);
 }
 
 bool DisplayClient::setDisplayPower(bool on, Completion done)

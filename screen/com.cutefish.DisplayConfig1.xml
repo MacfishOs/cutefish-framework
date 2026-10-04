@@ -39,11 +39,9 @@ Adapted for Cutefish: a versioned session D-Bus interface without Ash or Mojo.
     <method name="ResetConfiguration"><arg name="instanceId" type="s" direction="in"/><arg name="topologyGeneration" type="t" direction="in"/><arg name="appliedRevision" type="t" direction="in"/><arg name="operationToken" type="s" direction="out"/></method>
     <method name="SetDisplayPower"><arg name="displayIds" type="as" direction="in"/><arg name="state" type="u" direction="in"/><arg name="operationToken" type="s" direction="out"/></method>
     <method name="SetDockedLidClosed"><arg name="closed" type="b" direction="in"/><arg name="operationToken" type="s" direction="out"/></method>
-    <method name="IdentifyDisplays"><arg name="displayIds" type="as" direction="in"/></method>
     <method name="SetNightLight"><arg name="strength" type="d" direction="in"/><arg name="durationMs" type="u" direction="in"/></method>
     <signal name="StateChanged"><arg name="topologyGeneration" type="t"/><arg name="appliedRevision" type="t"/></signal>
     <signal name="OperationFinished"><arg name="operationToken" type="s"/><arg name="succeeded" type="b"/><arg name="degraded" type="b"/><arg name="errorCode" type="u"/><arg name="errorMessage" type="s"/><arg name="affectedDisplayIds" type="as"/><arg name="topologyGeneration" type="t"/><arg name="appliedRevision" type="t"/></signal>
     <signal name="PreviewChanged"><arg name="previewToken" type="s"/><arg name="deadlineMs" type="t"/><arg name="topologyGeneration" type="t"/><arg name="appliedRevision" type="t"/></signal>
-    <signal name="IdentifyRequested"><arg name="displayIds" type="as"/></signal>
   </interface>
 </node>

@@ -57,7 +57,6 @@ public:
                   const cutefish::display::ipc::MirrorGroups &mirrorGroups);
     void confirm(const QString &token);
     void revert(const QString &token);
-    void identify(const QStringList &displayIds);
 
     // Powers every display on or off. False when the compositor is not on the bus,
     // and then `done` is never called.
@@ -78,7 +77,6 @@ signals:
     void stateChanged();
     void operationFinished(QString token, bool succeeded, bool degraded, uint errorCode,
                            QString message, QStringList affectedDisplays);
-    void identifyRequested(QStringList displayIds);
 
 private:
     void connectInterface();

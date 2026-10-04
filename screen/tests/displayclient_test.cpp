@@ -56,7 +56,6 @@ signals:
     void OperationFinished(const QString &token, bool succeeded, bool degraded, uint errorCode,
                            const QString &message, const QStringList &affectedDisplayIds,
                            qulonglong topologyGeneration, qulonglong appliedRevision);
-    void IdentifyRequested(const QStringList &displayIds);
 
 private:
     QString finish(bool succeeded, ErrorCode error)
@@ -221,17 +220,6 @@ private slots:
         QTRY_VERIFY(result.has_value());
         QVERIFY(!result->succeeded);
         QCOMPARE(result->error, ErrorCode::Unavailable);
-    }
-
-    void forwardsIdentifyRequests()
-    {
-        Service service;
-        QVERIFY(service.start());
-        DisplayClient client;
-        QSignalSpy identify(&client, &DisplayClient::identifyRequested);
-        emit service.fake.IdentifyRequested({QStringLiteral("display-1")});
-        QTRY_COMPARE(identify.count(), 1);
-        QCOMPARE(identify.at(0).at(0).toStringList(), QStringList {QStringLiteral("display-1")});
     }
 };
 

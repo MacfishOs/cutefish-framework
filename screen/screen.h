@@ -49,11 +49,8 @@ public:
 
     Q_INVOKABLE void save() { apply(); }
 
-    Q_INVOKABLE void identify();
-
 signals:
     void stateChanged();
-    void identifyRequested(QStringList displayIds);
 
 private:
     void updateState();
