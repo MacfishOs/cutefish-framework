@@ -2,8 +2,11 @@
 
 #include <QDateTime>
 #include <QFileInfo>
+#include <QHash>
 #include <QMimeType>
 #include <QUrl>
+
+#include <utility>
 
 namespace Cutefish::IO {
 
@@ -110,8 +113,19 @@ public:
     }
 
     QDateTime time(FileTime type) const;
+    // The same instant in zone. UTC skips the local time conversion, which stats
+    // the time zone file on every call.
+    QDateTime time(FileTime type, const QTimeZone &zone) const;
     QMimeType determineMimeType() const;
+
+    // Descriptions and icon names by MIME type, shared by the items of one listing.
+    using TypeDetails = QHash<QString, std::pair<QString, QString>>;
+
+    // Reads the metadata the accessors use and detects the type.
     void prepareMetadata();
+    // The same, but when previous is this file, unchanged, its type, icon and names
+    // are kept instead; returns whether they were.
+    bool prepareMetadata(const FileItem &previous, TypeDetails *details);
 
     QString mimetype() const
     {
@@ -131,8 +145,37 @@ public:
     QString iconName() const;
 
 private:
+    friend class FileEnumerator;
+
+    // For a child the enumerator found in a directory it already resolved.
+    FileItem(const QUrl &url, const QString &localPath)
+        : m_url(url)
+        , m_info(localPath)
+    {
+    }
+
+    // What prepareMetadata() saw, so a later listing can compare without reading
+    // m_info, which other threads may share.
+    struct Stamp
+    {
+        qint64 size = -1;
+        qint64 modified = 0;
+        qint64 changed = 0;
+        // Set only for a directory or regular file; links are followed.
+        uint kind = 0;
+
+        bool operator==(const Stamp &other) const
+        {
+            return size == other.size && modified == other.modified && changed == other.changed
+                    && kind == other.kind;
+        }
+    };
+
+    void detectType(TypeDetails *details);
+
     QUrl m_url;
     QFileInfo m_info;
+    Stamp m_stamp;
     QMimeType m_mimeType;
     QString m_displayName;
     QString m_iconName;

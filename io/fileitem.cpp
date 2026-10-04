@@ -4,10 +4,12 @@
 #include "filesystemurl.h"
 
 #include <QDir>
+#include <QFile>
 #include <QHash>
 #include <QLocale>
 #include <QMimeDatabase>
 #include <QStandardPaths>
+#include <QTimeZone>
 
 namespace Cutefish::IO {
 
@@ -28,6 +30,14 @@ QDateTime FileItem::time(FileTime type) const
                                  : m_info.lastModified();
 }
 
+QDateTime FileItem::time(FileTime type, const QTimeZone &zone) const
+{
+    return m_info.fileTime(type == CreationTime  ? QFile::FileBirthTime
+                                   : type == AccessTime ? QFile::FileAccessTime
+                                                        : QFile::FileModificationTime,
+                           zone);
+}
+
 QMimeType FileItem::determineMimeType() const
 {
     if (isNull())
@@ -38,13 +48,78 @@ QMimeType FileItem::determineMimeType() const
 
 void FileItem::prepareMetadata()
 {
-    if (isNull())
-        return;
+    prepareMetadata(FileItem(), nullptr);
+}
 
-    m_info.stat();
-    m_mimeType = QMimeDatabase().mimeTypeForFile(m_info);
-    m_typeDescription = m_mimeType.comment();
-    m_iconName = iconName();
+bool FileItem::prepareMetadata(const FileItem &previous, TypeDetails *details)
+{
+    if (isNull())
+        return false;
+
+    // What QFileInfo::stat() reads, less the read and execute access(2) checks no
+    // accessor uses.
+    m_info.refresh();
+    const bool link = m_info.isSymLink();
+    m_info.size();
+    m_info.isHidden();
+    m_info.isWritable();
+
+    m_stamp = {};
+    if (m_info.isDir() || m_info.isFile()) {
+        const QTimeZone utc(QTimeZone::UTC);
+        m_stamp.size = m_info.size();
+        m_stamp.modified = m_info.fileTime(QFile::FileModificationTime, utc).toMSecsSinceEpoch();
+        m_stamp.changed = m_info.fileTime(QFile::FileMetadataChangeTime, utc).toMSecsSinceEpoch();
+        m_stamp.kind = (m_info.isDir() ? 1 : 2) | (link ? 4 : 0);
+    }
+
+    // Content sniffing reads the file; the same entry with the same size and times
+    // has the same contents.
+    if (m_stamp.kind && m_stamp == previous.m_stamp && m_url == previous.m_url) {
+        m_mimeType = previous.m_mimeType;
+        m_typeDescription = previous.m_typeDescription;
+        m_iconName = previous.m_iconName;
+        m_displayName = previous.m_displayName;
+        m_targetUrl = previous.m_targetUrl;
+        return true;
+    }
+
+    detectType(details);
+    return false;
+}
+
+void FileItem::detectType(TypeDetails *details)
+{
+    const QMimeDatabase database;
+
+    if (m_info.isDir()) {
+        m_mimeType = database.mimeTypeForName(QStringLiteral("inode/directory"));
+    } else if (m_info.isFile()) {
+        // mimeTypeForFile() would stat the file again to rule out devices.
+        QFile file(m_info.filePath());
+        m_mimeType = database.mimeTypeForFileNameAndData(m_info.filePath(), &file);
+    } else {
+        m_mimeType = database.mimeTypeForFile(m_info);
+    }
+
+    // A type's description and icon cost a database lookup each, and the
+    // description a walk over the UI languages.
+    QString typeIcon;
+    const auto known = details ? details->constFind(m_mimeType.name()) : TypeDetails::const_iterator();
+
+    if (details && known != details->cend()) {
+        m_typeDescription = known->first;
+        typeIcon = known->second;
+    } else {
+        m_typeDescription = m_mimeType.comment();
+        typeIcon = m_mimeType.iconName();
+
+        if (details)
+            details->insert(m_mimeType.name(), {m_typeDescription, typeIcon});
+    }
+
+    if (m_iconName.isEmpty())
+        m_iconName = isDir() ? iconName() : typeIcon;
 }
 
 QString FileItem::iconName() const

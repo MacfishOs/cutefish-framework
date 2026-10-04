@@ -5,10 +5,42 @@
 #include "filesystemurl.h"
 
 #include <QDir>
+#include <QStandardPaths>
+#include <QTimeZone>
 
 namespace Cutefish::IO {
 
 namespace {
+
+// The MIME database as of a listing. QMimeDatabase rereads it at most every five
+// seconds, so types detected sooner after a change may be the old ones.
+struct TypeDatabase
+{
+    QString version;
+    bool settled = false;
+};
+
+TypeDatabase currentTypeDatabase()
+{
+    const QStringList paths =
+            QStandardPaths::locateAll(QStandardPaths::GenericDataLocation,
+                                      QStringLiteral("mime/mime.cache"))
+            + QStandardPaths::locateAll(QStandardPaths::GenericDataLocation,
+                                        QStringLiteral("mime/packages"),
+                                        QStandardPaths::LocateDirectory);
+
+    TypeDatabase database;
+    qint64 newest = 0;
+    for (const QString &path : paths) {
+        const qint64 modified =
+                QFileInfo(path).lastModified(QTimeZone::UTC).toMSecsSinceEpoch();
+        newest = qMax(newest, modified);
+        database.version += path + u' ' + QString::number(modified) + u'\n';
+    }
+    database.settled = QDateTime::currentMSecsSinceEpoch() - newest > 6000;
+
+    return database;
+}
 
 QString existingAncestor(QString path)
 {
@@ -154,6 +186,9 @@ void DirectoryLister::refresh()
         m_future = nullptr;
         m_context.reset();
 
+        m_typeDatabase = listing.typeDatabase;
+        m_typesSettled = listing.typesSettled;
+
         if (listing.url.isValid() && listing.url != m_url) {
             m_url = listing.url;
             watchDirectory();
@@ -186,9 +221,16 @@ void DirectoryLister::refresh()
         }
     });
 
+    // A refresh of the listed directory keeps the detected types of unchanged files.
     watcher->setFuture(Internal::runAsync([url = m_url, hidden = m_hidden, context,
-                                           preparer = m_itemPreparer, listed = m_listed] {
+                                           preparer = m_itemPreparer, listed = m_listed,
+                                           previous = m_listed ? m_items : FileItemList(),
+                                           knownDatabase = m_typeDatabase,
+                                           knownSettled = m_typesSettled] {
         Listing result;
+        const TypeDatabase database = currentTypeDatabase();
+        result.typeDatabase = database.version;
+        result.typesSettled = database.settled;
 
         try {
             context->checkpoint();
@@ -207,10 +249,23 @@ void DirectoryLister::refresh()
             result.rootItem = FileItem(result.url);
             result.rootItem.prepareMetadata();
 
+            const FileItem none;
+            QHash<QString, const FileItem *> previousByName;
+            if (result.url == url && knownSettled && database.version == knownDatabase) {
+                previousByName.reserve(previous.size());
+                // Names that decode to the same text cannot tell their files apart.
+                for (const auto &item : previous) {
+                    const FileItem *&entry = previousByName[item.name()];
+                    entry = entry ? &none : &item;
+                }
+            }
+
+            FileItem::TypeDetails details;
+
             for (auto &item : result.items) {
                 context->checkpoint();
-                item.prepareMetadata();
-                if (preparer)
+                const FileItem *old = previousByName.value(item.name(), &none);
+                if (!item.prepareMetadata(*old, &details) && preparer)
                     preparer(item);
             }
         } catch (const Failure &failure) {

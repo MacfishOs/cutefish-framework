@@ -2,7 +2,7 @@
 
 #include "task.h"
 
-#include <QSet>
+#include <QHash>
 
 namespace Cutefish::IO {
 
@@ -14,16 +14,14 @@ void DirectoryModel::setDirLister(DirectoryLister *lister)
     beginResetModel();
     m_lister = lister;
     m_items = lister->items();
-    m_rowsByUrl.clear();
-    for (int row = 0; row < m_items.size(); ++row)
-        m_rowsByUrl.insert(m_items[row].url(), row);
+    m_rowsValid = false;
     endResetModel();
 
     connect(lister, &DirectoryLister::itemsChanged, this, &DirectoryModel::synchronize);
     connect(lister, &DirectoryLister::directoryChanged, this, [this] {
         beginResetModel();
         m_items.clear();
-        m_rowsByUrl.clear();
+        m_rowsValid = false;
         endResetModel();
     });
 }
@@ -35,6 +33,14 @@ FileItem DirectoryModel::itemForIndex(const QModelIndex &idx) const
 
 QModelIndex DirectoryModel::indexForUrl(const QUrl &url) const
 {
+    if (!m_rowsValid) {
+        m_rowsByUrl.clear();
+        m_rowsByUrl.reserve(m_items.size());
+        for (int row = 0; row < m_items.size(); ++row)
+            m_rowsByUrl.insert(m_items[row].url(), row);
+        m_rowsValid = true;
+    }
+
     return index(m_rowsByUrl.value(url, -1), 0);
 }
 
@@ -135,51 +141,84 @@ void DirectoryModel::synchronize()
 {
     const auto incoming = m_lister->items();
 
-    QSet<QUrl> urls;
-    for (const auto &item : incoming)
-        urls.insert(item.url());
+    if (m_items.isEmpty()) {
+        if (!incoming.isEmpty()) {
+            beginInsertRows({}, 0, incoming.size() - 1);
+            m_items = incoming;
+            m_rowsValid = false;
+            endInsertRows();
+        }
+        return;
+    }
+
+    // A refresh usually lists the same files in the same order.
+    const int common = qMin(m_items.size(), incoming.size());
+    int same = 0;
+
+    while (same < common && m_items.at(same).url() == incoming.at(same).url())
+        ++same;
+
+    if (same == m_items.size() && same == incoming.size()) {
+        m_items = incoming;
+        emit dataChanged(index(0, 0), index(m_items.size() - 1, ColumnCount - 1));
+        return;
+    }
+
+    QHash<QUrl, qsizetype> positions;
+    positions.reserve(incoming.size());
+    for (qsizetype i = 0; i < incoming.size(); ++i)
+        positions.insert(incoming.at(i).url(), i);
+
+    // Names that are not UTF-8 can decode to one text, so two files can share a URL;
+    // their rows then match the last file with it, never by position.
+    const bool unique = positions.size() == incoming.size();
+    if (!unique)
+        same = 0;
+
+    // Where each row's file is in the new listing, or -1 once it is gone.
+    QList<qsizetype> sources(m_items.size());
+    for (int row = 0; row < m_items.size(); ++row)
+        sources[row] = row < same ? row : positions.value(m_items.at(row).url(), -1);
 
     for (int last = m_items.size() - 1; last >= 0;) {
-        if (urls.contains(m_items[last].url())) {
+        if (sources[last] >= 0) {
             --last;
             continue;
         }
 
         int first = last;
 
-        while (first > 0 && !urls.contains(m_items[first - 1].url()))
+        while (first > 0 && sources[first - 1] < 0)
             --first;
 
         beginRemoveRows({}, first, last);
         m_items.remove(first, last - first + 1);
+        sources.remove(first, last - first + 1);
+        m_rowsValid = false;
         endRemoveRows();
         last = first - 1;
     }
 
-    QHash<QUrl, int> existing;
-    for (int row = 0; row < m_items.size(); ++row)
-        existing.insert(m_items[row].url(), row);
-    m_rowsByUrl = existing;
-
-    FileItemList added;
-    for (const auto &item : incoming) {
-        if (existing.contains(item.url())) {
-            const int row = existing.value(item.url());
-            m_items[row] = item;
-        } else {
-            added.append(item);
-        }
+    QList<bool> kept(incoming.size(), false);
+    for (int row = 0; row < m_items.size(); ++row) {
+        kept[sources[row]] = true;
+        m_items[row] = incoming.at(sources[row]);
     }
 
     if (!m_items.isEmpty())
         emit dataChanged(index(0, 0), index(m_items.size() - 1, ColumnCount - 1));
 
+    FileItemList added;
+    for (qsizetype i = 0; i < incoming.size(); ++i) {
+        if (!kept[unique ? i : positions.value(incoming.at(i).url())])
+            added.append(incoming.at(i));
+    }
+
     if (!added.isEmpty()) {
         const int first = m_items.size();
         beginInsertRows({}, first, first + added.size() - 1);
         m_items.append(added);
-        for (int row = first; row < m_items.size(); ++row)
-            m_rowsByUrl.insert(m_items[row].url(), row);
+        m_rowsValid = false;
         endInsertRows();
     }
 }

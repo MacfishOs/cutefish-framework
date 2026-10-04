@@ -85,6 +85,8 @@ private:
         FileItem rootItem;
         QUrl url;
         Error error;
+        QString typeDatabase;
+        bool typesSettled = false;
     };
 
     QUrl m_url;
@@ -95,6 +97,8 @@ private:
     bool m_pending = false;
     bool m_listed = false;
     QString m_lastError;
+    QString m_typeDatabase;
+    bool m_typesSettled = false;
     quint64 m_generation = 0;
     FileWatcher m_watch;
     QTimer m_debounce;

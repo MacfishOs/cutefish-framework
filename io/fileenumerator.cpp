@@ -52,17 +52,20 @@ FileItemList FileEnumerator::list(const QUrl &url, bool hidden, OperationContext
     check(fd.value, path);
 
     FileItemList result;
+    const QString urlBase = url.path() + (url.path().endsWith('/') ? "" : "/");
+    const QString pathBase = path + (path.endsWith('/') ? "" : "/");
 
-    children(fd.value, path, [&](const QByteArray &name, const QString &) {
+    children(fd.value, path, [&](const QByteArray &name) {
         if (context)
             context->checkpoint(path);
 
         if (!hidden && name.startsWith('.'))
             return;
 
+        const QString decoded = QFile::decodeName(name);
         auto child = url;
-        child.setPath(url.path() + (url.path().endsWith('/') ? "" : "/") + QFile::decodeName(name));
-        result.append(FileItem(child));
+        child.setPath(urlBase + decoded);
+        result.append(FileItem(child, pathBase + decoded));
     });
 
     return result;

@@ -87,7 +87,10 @@ private:
 
     DirectoryLister *m_lister = nullptr;
     FileItemList m_items;
-    QHash<QUrl, int> m_rowsByUrl;
+    // Built on the first lookup after rows move; a listing of thousands of files
+    // would otherwise hash every URL on the GUI thread.
+    mutable QHash<QUrl, int> m_rowsByUrl;
+    mutable bool m_rowsValid = true;
 };
 
 } // namespace Cutefish::IO

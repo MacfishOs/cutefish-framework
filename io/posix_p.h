@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <memory>
+#include <type_traits>
 #include <unistd.h>
 
 namespace Cutefish::IO::Internal {
@@ -91,7 +92,10 @@ template <class Visitor> void children(int fd, const QString &path, Visitor visi
         if (name == "." || name == "..")
             continue;
 
-        visitor(name, path + '/' + QFile::decodeName(name));
+        if constexpr (std::is_invocable_v<Visitor, const QByteArray &>)
+            visitor(name);
+        else
+            visitor(name, path + '/' + QFile::decodeName(name));
     }
 }
 

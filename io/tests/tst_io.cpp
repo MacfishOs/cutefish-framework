@@ -5,9 +5,11 @@
 #include <QCryptographicHash>
 #include <QPersistentModelIndex>
 #include <QPixmap>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTimeZone>
 #include <QtTest>
 
 #include <fcntl.h>
@@ -519,6 +521,70 @@ private slots:
         QTRY_COMPARE(model.rowCount(), 2);
 
         QVERIFY(listed.size() >= 4);
+    }
+
+    void refreshDetectsChangedContents()
+    {
+        QTemporaryDir dir;
+        // Without an extension the type comes from the contents.
+        writeFile(dir.filePath("changed"), "%PDF-1.4\n");
+        writeFile(dir.filePath("kept"), "%PDF-1.4\n");
+
+        DirectoryLister lister;
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+        lister.openUrl(local(dir.path()));
+        QTRY_COMPARE(listed.count(), 1);
+
+        const auto typeOf = [&](const QString &name) {
+            for (const auto &item : lister.items()) {
+                if (item.name() == name)
+                    return item.mimetype();
+            }
+            return QString();
+        };
+        QCOMPARE(typeOf("changed"), QString("application/pdf"));
+        QCOMPARE(typeOf("kept"), QString("application/pdf"));
+
+        writeFile(dir.filePath("changed"), "#!/bin/sh\necho\n");
+        QTRY_COMPARE(typeOf("changed"), QString("application/x-shellscript"));
+        QCOMPARE(typeOf("kept"), QString("application/pdf"));
+
+        const auto item = lister.items().constFirst();
+        QCOMPARE(item.time(FileItem::ModificationTime, QTimeZone::UTC),
+                 item.time(FileItem::ModificationTime));
+    }
+
+    // Names that are not UTF-8 can decode to the same text, giving two files one URL.
+    void modelKeepsRowsForCollidingNames()
+    {
+        QTemporaryDir dir;
+        const QByteArray base = QFile::encodeName(dir.path());
+        const QList<QByteArray> names = {"a\xff", "a\xfe", "b"};
+        // QTemporaryDir cannot remove what it cannot name.
+        const auto removeNames = qScopeGuard([&] {
+            for (const QByteArray &name : names)
+                ::unlink(base + '/' + name);
+        });
+        for (const QByteArray &name : names)
+            QVERIFY(::close(::open(base + '/' + name, O_CREAT | O_WRONLY | O_CLOEXEC, 0644)) == 0);
+
+        DirectoryLister lister;
+        DirectoryModel model;
+        model.setDirLister(&lister);
+        QAbstractItemModelTester tester(&model,
+                                        QAbstractItemModelTester::FailureReportingMode::QtTest);
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+        lister.openUrl(local(dir.path()));
+        QTRY_COMPARE(listed.count(), 1);
+        QCOMPARE(model.rowCount(), 3);
+
+        for (int round = 0; round < 4; ++round) {
+            const int before = listed.count();
+            writeFile(dir.filePath(QStringLiteral("new%1").arg(round)));
+            QTRY_VERIFY(listed.count() > before);
+            QTRY_COMPARE(model.rowCount(), int(lister.items().size()));
+            QCOMPARE(model.rowCount(), 4 + round);
+        }
     }
 
     void watcherIgnoresUnrelatedSiblings()
