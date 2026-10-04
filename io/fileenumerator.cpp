@@ -4,7 +4,13 @@
 #include "filesystemurl.h"
 #include "posix_p.h"
 
+#include <QStringList>
+
+#include <algorithm>
+#include <deque>
+#include <linux/magic.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 
 namespace Cutefish::IO {
 
@@ -37,6 +43,30 @@ quint64 sizeAt(int parent, const QByteArray &name, const QString &path, Operatio
 
     ++ctx.files;
     return size;
+}
+
+// Kernel interfaces, whose trees are huge or never end and hold no user files.
+bool isKernelFileSystem(int fd)
+{
+    struct statfs fs;
+    if (::fstatfs(fd, &fs) < 0)
+        return false;
+
+    switch (fs.f_type) {
+    case PROC_SUPER_MAGIC:
+    case SYSFS_MAGIC:
+    case DEVPTS_SUPER_MAGIC:
+    case CGROUP_SUPER_MAGIC:
+    case CGROUP2_SUPER_MAGIC:
+    case DEBUGFS_MAGIC:
+    case TRACEFS_MAGIC:
+    case SECURITYFS_MAGIC:
+    case BPF_FS_MAGIC:
+    case PSTOREFS_MAGIC:
+        return true;
+    default:
+        return false;
+    }
 }
 
 } // namespace
@@ -89,6 +119,96 @@ FileItemList FileEnumerator::list(const QUrl &url, bool hidden, OperationContext
             }
         }
     });
+
+    return result;
+}
+
+FileItemList FileEnumerator::search(const QUrl &url, const QStringList &words, bool hidden,
+                                    OperationContext *context,
+                                    const std::function<void(FileItem &)> &found)
+{
+    struct Folder
+    {
+        QUrl url;
+        QString path;
+    };
+
+    FileItemList result;
+    FileItem::TypeDetails details;
+    std::deque<Folder> folders;
+    folders.push_back({url, FileSystemUrl(url).localPath()});
+    bool first = true;
+
+    while (!folders.empty()) {
+        const Folder folder = std::move(folders.front());
+        folders.pop_front();
+
+        if (context)
+            context->checkpoint();
+
+        const int fd = ::open(native(folder.path),
+                              O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (fd < 0 && first)
+            check(fd, folder.path);
+        first = false;
+        if (fd < 0)
+            continue;
+
+        if (isKernelFileSystem(fd)) {
+            ::close(fd);
+            continue;
+        }
+
+        DIR *raw = ::fdopendir(fd);
+        if (!raw) {
+            ::close(fd);
+            continue;
+        }
+
+        auto closeDir = [](DIR *value) {
+            ::closedir(value);
+        };
+        std::unique_ptr<DIR, decltype(closeDir)> dir(raw, closeDir);
+
+        const QString urlBase = folder.url.path() + (folder.url.path().endsWith('/') ? "" : "/");
+        const QString pathBase = folder.path + (folder.path.endsWith('/') ? "" : "/");
+
+        // A folder that fails halfway keeps what it listed.
+        while (auto *entry = ::readdir(dir.get())) {
+            if (context)
+                context->checkpoint();
+
+            const QByteArray name(entry->d_name);
+            if (name == "." || name == ".." || (!hidden && name.startsWith('.')))
+                continue;
+
+            bool isDir = entry->d_type == DT_DIR;
+            if (entry->d_type == DT_UNKNOWN) {
+                struct stat st;
+                isDir = ::fstatat(::dirfd(dir.get()), entry->d_name, &st, AT_SYMLINK_NOFOLLOW) == 0
+                        && S_ISDIR(st.st_mode);
+            }
+
+            const QString decoded = QFile::decodeName(name);
+            auto child = folder.url;
+            child.setPath(urlBase + decoded);
+
+            if (isDir)
+                folders.push_back({child, pathBase + decoded});
+
+            const bool matches = std::all_of(words.cbegin(), words.cend(), [&](const QString &word) {
+                return decoded.contains(word, Qt::CaseInsensitive);
+            });
+            if (!matches)
+                continue;
+
+            FileItem item(child, pathBase + decoded, decoded);
+            item.prepareMetadata(FileItem(), &details);
+            if (found)
+                found(item);
+            result.append(std::move(item));
+        }
+    }
 
     return result;
 }

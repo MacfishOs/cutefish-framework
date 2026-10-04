@@ -100,6 +100,7 @@ DirectoryLister::DirectoryLister(QObject *parent)
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(40);
     m_retry.setInterval(2000);
+    m_foundTimer.setInterval(100);
 
     connect(&m_watch, &FileWatcher::changed, this, [this] {
         if (m_autoUpdate)
@@ -111,6 +112,7 @@ DirectoryLister::DirectoryLister(QObject *parent)
         if (m_autoUpdate)
             refresh();
     });
+    connect(&m_foundTimer, &QTimer::timeout, this, &DirectoryLister::takeFound);
 }
 
 DirectoryLister::~DirectoryLister()
@@ -132,6 +134,23 @@ void DirectoryLister::cancelListing()
 
     m_context.reset();
     m_pending = false;
+    m_foundTimer.stop();
+    m_found.reset();
+}
+
+void DirectoryLister::takeFound()
+{
+    FileItemList found;
+    {
+        const QMutexLocker locker(&m_found->mutex);
+        found.swap(m_found->items);
+    }
+
+    if (found.isEmpty())
+        return;
+
+    m_items.append(found);
+    emit itemsChanged();
 }
 
 void DirectoryLister::openUrl(const QUrl &url)
@@ -141,6 +160,31 @@ void DirectoryLister::openUrl(const QUrl &url)
     m_debounce.stop();
 
     m_url = url;
+    m_searchRoot.clear();
+    m_searchWords.clear();
+    m_rootItem = {};
+    m_items.clear();
+    m_watch.clear();
+    m_retry.stop();
+    m_listed = false;
+    m_lastError.clear();
+
+    emit directoryChanged();
+    refresh();
+}
+
+void DirectoryLister::search(const QUrl &root, const QString &text)
+{
+    const QStringList words = text.simplified().split(u' ', Qt::SkipEmptyParts);
+    if (words == m_searchWords && (words.isEmpty() || root == m_searchRoot))
+        return;
+
+    ++m_generation;
+    cancelListing();
+    m_debounce.stop();
+
+    m_searchRoot = words.isEmpty() ? QUrl() : root;
+    m_searchWords = words;
     m_rootItem = {};
     m_items.clear();
     m_watch.clear();
@@ -170,6 +214,13 @@ void DirectoryLister::stop()
 
 void DirectoryLister::watchDirectory()
 {
+    // A watch on every folder searched would cost more than searching again.
+    if (isSearching()) {
+        m_watch.clear();
+        m_retry.stop();
+        return;
+    }
+
     try {
         const QString path = FileSystemUrl(m_url).localPath();
 
@@ -218,6 +269,15 @@ void DirectoryLister::refresh()
     auto *watcher = new QFutureWatcher<Listing>(this);
     m_future = watcher;
 
+    // Later searches of the same words replace the results at once instead of
+    // emptying them first.
+    std::shared_ptr<Found> found;
+    if (isSearching() && !m_listed) {
+        found = std::make_shared<Found>();
+        m_found = found;
+        m_foundTimer.start();
+    }
+
     connect(watcher, &QFutureWatcher<Listing>::finished, this, [this, watcher, generation] {
         if (generation != m_generation || watcher != m_future)
             return;
@@ -226,6 +286,8 @@ void DirectoryLister::refresh()
         watcher->deleteLater();
         m_future = nullptr;
         m_context.reset();
+        m_foundTimer.stop();
+        m_found.reset();
 
         m_typeDatabase = listing.typeDatabase;
         m_typesSettled = listing.typesSettled;
@@ -265,7 +327,8 @@ void DirectoryLister::refresh()
     });
 
     // A refresh of the listed directory keeps the detected types of unchanged files.
-    watcher->setFuture(Internal::runAsync([url = m_url, hidden = m_hidden, context,
+    watcher->setFuture(Internal::runAsync([url = m_url, hidden = m_hidden, context, found,
+                                           searchRoot = m_searchRoot, words = m_searchWords,
                                            preparer = m_itemPreparer, listed = m_listed,
                                            previous = m_listed ? m_items : FileItemList(),
                                            knownDatabase = m_typeDatabase,
@@ -278,6 +341,24 @@ void DirectoryLister::refresh()
         try {
             context->checkpoint();
             result.url = url;
+
+            if (!words.isEmpty()) {
+                result.items = FileEnumerator::search(searchRoot, words, hidden, context.get(),
+                                                      [&](FileItem &item) {
+                    if (preparer)
+                        preparer(item);
+
+                    if (found) {
+                        const QMutexLocker locker(&found->mutex);
+                        found->items.append(item);
+                    }
+                });
+                result.rootItem = FileItem(url);
+                result.rootItem.prepareMetadata();
+                previous = {};
+
+                return result;
+            }
 
             if (url.isLocalFile()) {
                 const QFileInfo target(url.toLocalFile());

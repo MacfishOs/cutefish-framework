@@ -525,6 +525,85 @@ private slots:
         QVERIFY(listed.size() >= 4);
     }
 
+    void searchFindsNamesAtAnyDepth()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath("Projects/Report Drafts/old"));
+        QVERIFY(QDir(dir.path()).mkpath(".cache/report"));
+        writeFile(dir.filePath("annual report.txt"));
+        writeFile(dir.filePath("Projects/REPORT final.pdf"));
+        writeFile(dir.filePath("Projects/Report Drafts/old/report-1.txt"));
+        writeFile(dir.filePath("Projects/notes.txt"));
+        writeFile(dir.filePath(".cache/report/report.bin"));
+        QVERIFY(QFile::link(dir.filePath("Projects"), dir.filePath("Projects/loop")));
+
+        DirectoryLister lister;
+        DirectoryModel model;
+        model.setDirLister(&lister);
+        QAbstractItemModelTester tester(&model,
+                                        QAbstractItemModelTester::FailureReportingMode::QtTest);
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+
+        lister.openUrl(local(dir.filePath("Projects")));
+        QTRY_COMPARE(listed.count(), 1);
+
+        const auto names = [&] {
+            QStringList result;
+            for (const auto &item : lister.items())
+                result.append(QDir(dir.path()).relativeFilePath(item.localPath()));
+            result.sort();
+            return result;
+        };
+
+        // Every word, in any case; hidden folders are left out and links not followed.
+        lister.search(local(dir.path()), "  report ");
+        QVERIFY(lister.isSearching());
+        QTRY_COMPARE(listed.count(), 2);
+        QCOMPARE(names(), QStringList({"Projects/REPORT final.pdf", "Projects/Report Drafts",
+                                       "Projects/Report Drafts/old/report-1.txt",
+                                       "annual report.txt"}));
+        QCOMPARE(lister.url(), local(dir.filePath("Projects")));
+        QCOMPARE(model.rowCount(), 4);
+
+        lister.search(local(dir.path()), "report TXT");
+        QTRY_COMPARE(listed.count(), 3);
+        QCOMPARE(names(), QStringList({"Projects/Report Drafts/old/report-1.txt",
+                                       "annual report.txt"}));
+
+        lister.setShowHiddenFiles(true);
+        lister.emitChanges();
+        QTRY_COMPARE(listed.count(), 4);
+        QCOMPARE(names(), QStringList({"Projects/Report Drafts/old/report-1.txt",
+                                       "annual report.txt"}));
+
+        lister.search(local(dir.path()), "report");
+        QTRY_COMPARE(listed.count(), 5);
+        QVERIFY(names().contains(".cache/report/report.bin"));
+
+        // No text lists the directory again.
+        lister.search({}, " ");
+        QVERIFY(!lister.isSearching());
+        QTRY_COMPARE(listed.count(), 6);
+        QCOMPARE(names(), QStringList({"Projects/REPORT final.pdf", "Projects/Report Drafts",
+                                       "Projects/loop", "Projects/notes.txt"}));
+    }
+
+    void searchStopsWhenAFolderOpens()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath("inner"));
+        writeFile(dir.filePath("inner/match"));
+
+        DirectoryLister lister;
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+        lister.search(local(dir.path()), "match");
+        lister.openUrl(local(dir.filePath("inner")));
+        QVERIFY(!lister.isSearching());
+        QTRY_COMPARE(listed.count(), 1);
+        QCOMPARE(lister.items().size(), 1);
+        QCOMPARE(lister.items().constFirst().name(), QString("match"));
+    }
+
     void refreshDetectsChangedContents()
     {
         QTemporaryDir dir;

@@ -6,6 +6,7 @@
 #include "operationcontext.h"
 
 #include <QFutureWatcher>
+#include <QMutex>
 #include <QTimer>
 #include <memory>
 
@@ -57,6 +58,17 @@ public:
     }
 
     void openUrl(const QUrl &url);
+
+    // Lists the files at any depth under root whose names contain every word of
+    // text, in place of the directory's own, which an empty text lists again.
+    // The first search hands found files on while it runs; it keeps no watch.
+    void search(const QUrl &root, const QString &text);
+
+    bool isSearching() const
+    {
+        return !m_searchWords.isEmpty();
+    }
+
     void updateDirectory(const QUrl &url);
 
     void emitChanges()
@@ -79,6 +91,7 @@ private:
     void watchDirectory();
     void reportError(const QString &message);
     void cancelListing();
+    void takeFound();
 
     struct Listing
     {
@@ -88,6 +101,13 @@ private:
         Error error;
         QString typeDatabase;
         bool typesSettled = false;
+    };
+
+    // What a running search found since the last look.
+    struct Found
+    {
+        QMutex mutex;
+        FileItemList items;
     };
 
     QUrl m_url;
@@ -107,6 +127,10 @@ private:
     QFutureWatcher<Listing> *m_future = nullptr;
     std::shared_ptr<OperationContext> m_context;
     std::function<void(FileItem &)> m_itemPreparer;
+    QUrl m_searchRoot;
+    QStringList m_searchWords;
+    std::shared_ptr<Found> m_found;
+    QTimer m_foundTimer;
 };
 
 } // namespace Cutefish::IO
