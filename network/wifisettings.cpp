@@ -20,6 +20,7 @@
 
 #include "wifisettings.h"
 #include "networkclient.h"
+#include "wifiutils.h"
 
 #include <QDebug>
 #include <QUuid>
@@ -88,14 +89,7 @@ bool WifiSettings::addOtherConnection(const QString &ssid, const QString &userNa
         if (type == QLatin1String("wpa3-eap"))
             security.insert(QStringLiteral("pmf"), 3);
 
-        // A user name and password is PEAP or TTLS with MSCHAPv2 inside, whichever
-        // the server offers.
-        settings.insert(QStringLiteral("802-1x"),
-                        {{QStringLiteral("eap"), QStringList {QStringLiteral("peap"), QStringLiteral("ttls")}},
-                         {QStringLiteral("phase2-auth"), QStringLiteral("mschapv2")},
-                         {QStringLiteral("identity"), userName},
-                         {QStringLiteral("password"), password},
-                         {QStringLiteral("password-flags"), secretFlags}});
+        settings.insert(QStringLiteral("802-1x"), WifiUtils::passwordEap(userName, password, secretFlags));
     }
     if (!security.isEmpty())
         settings.insert(QStringLiteral("802-11-wireless-security"), security);

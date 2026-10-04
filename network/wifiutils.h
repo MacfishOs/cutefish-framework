@@ -6,6 +6,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QVariantMap>
 
 namespace WifiUtils {
 
@@ -25,6 +26,10 @@ CUTEFISH_NETWORK_EXPORT bool enterprise(Enums::SecurityType type);
 // Networks whose one secret the session's prompt asks for: a PSK, SAE password or WEP key.
 CUTEFISH_NETWORK_EXPORT bool needsPassword(Enums::SecurityType type);
 CUTEFISH_NETWORK_EXPORT QString securityLabel(Enums::SecurityType type);
+// The 802-1x setting for signing in with a user name and password: PEAP or TTLS with
+// MSCHAPv2 inside, whichever the server offers.
+CUTEFISH_NETWORK_EXPORT QVariantMap passwordEap(const QString &identity, const QString &password,
+                                                uint passwordFlags);
 
 // 0, 33, 66 or 100: the step of the signal icon, which the lists sort by.
 CUTEFISH_NETWORK_EXPORT int strengthStep(int strength);

@@ -293,6 +293,15 @@ QString securityLabel(Enums::SecurityType type)
     }
 }
 
+QVariantMap passwordEap(const QString &identity, const QString &password, uint passwordFlags)
+{
+    return {{QStringLiteral("eap"), QStringList {QStringLiteral("peap"), QStringLiteral("ttls")}},
+            {QStringLiteral("phase2-auth"), QStringLiteral("mschapv2")},
+            {QStringLiteral("identity"), identity},
+            {QStringLiteral("password"), password},
+            {QStringLiteral("password-flags"), passwordFlags}};
+}
+
 int strengthStep(int strength)
 {
     if (strength <= 0)

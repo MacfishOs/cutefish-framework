@@ -38,6 +38,120 @@ inline QVariant paths(const QStringList &paths)
     return QVariant::fromValue(list);
 }
 
+// NetworkManager's completion of a profile for the access point it is added and activated
+// with (nm_wifi_utils_complete_connection() for an infrastructure AP), then its 802-1x
+// verify(): the completed profile, or the error NetworkManager would refuse it with.
+inline QString completeForAccessPoint(NMVariantMapMap &profile, const QVariantMap &ap)
+{
+    constexpr uint privacy = 0x1;
+    constexpr uint keyPsk = 0x100, key8021x = 0x200, keySae = 0x400, keyOwe = 0x800 | 0x1000,
+                   keySuiteB = 0x2000;
+    const QString wsecName = QStringLiteral("802-11-wireless-security");
+    const QString eapName = QStringLiteral("802-1x");
+
+    QVariantMap &wifi = profile[QStringLiteral("802-11-wireless")];
+    const QByteArray ssid = ap.value(QStringLiteral("Ssid")).toByteArray();
+    if (!wifi.contains(QStringLiteral("ssid")))
+        wifi.insert(QStringLiteral("ssid"), ssid);
+    else if (wifi.value(QStringLiteral("ssid")).toByteArray() != ssid)
+        return QStringLiteral("802-11-wireless.ssid: connection does not match access point");
+    const QString mode = wifi.value(QStringLiteral("mode"), QStringLiteral("infrastructure")).toString();
+    if (mode != QLatin1String("infrastructure") && mode != QLatin1String("ap"))
+        return QStringLiteral("802-11-wireless.mode: connection does not match access point");
+    wifi.insert(QStringLiteral("mode"), mode);
+
+    const uint flags = ap.value(QStringLiteral("Flags")).toUInt();
+    const uint wpa = ap.value(QStringLiteral("WpaFlags")).toUInt();
+    const uint rsn = ap.value(QStringLiteral("RsnFlags")).toUInt();
+    const bool has8021x = profile.contains(eapName);
+
+    if (!(flags & privacy) && !wpa && !rsn) {
+        if (profile.contains(wsecName) || has8021x)
+            return QStringLiteral("Access point is unencrypted but setting specifies security");
+        return {};
+    }
+
+    QVariantMap &wsec = profile[wsecName];
+    const QString keyMgmt = wsec.value(QStringLiteral("key-mgmt")).toString();
+    const QString authAlg = wsec.value(QStringLiteral("auth-alg")).toString();
+    const bool leap = wsec.contains(QStringLiteral("leap-username"));
+
+    if (!wpa && !rsn) {
+        if (keyMgmt.startsWith(QLatin1String("wpa")) || keyMgmt == QLatin1String("sae"))
+            return QStringLiteral("WEP access point but setting requires WPA");
+        if (leap) {
+            wsec.insert(QStringLiteral("key-mgmt"), QStringLiteral("ieee8021x"));
+            wsec.insert(QStringLiteral("auth-alg"), QStringLiteral("leap"));
+        } else if (has8021x || keyMgmt == QLatin1String("ieee8021x")) {
+            wsec.insert(QStringLiteral("key-mgmt"), QStringLiteral("ieee8021x"));
+            wsec.insert(QStringLiteral("auth-alg"), QStringLiteral("open"));
+        } else {
+            wsec.insert(QStringLiteral("key-mgmt"), QStringLiteral("none"));
+        }
+    } else {
+        if (keyMgmt == QLatin1String("ieee8021x") || leap)
+            return QStringLiteral("WPA authentication is incompatible with non-EAP (original) LEAP or Dynamic WEP");
+        if (!authAlg.isEmpty() && authAlg != QLatin1String("open"))
+            return QStringLiteral("WPA authentication is incompatible with Shared Key authentication");
+        if (wsec.contains(QStringLiteral("wep-key0")))
+            return QStringLiteral("WPA access point but setting requires WEP");
+        if (keyMgmt == QLatin1String("wpa-psk")) {
+            if (has8021x)
+                return QStringLiteral("WPA-PSK authentication is incompatible with 802.1x");
+            if (!((wpa | rsn) & keyPsk))
+                return QStringLiteral("Access point does not support PSK but setting requires it");
+        }
+        const bool wpaEap = keyMgmt == QLatin1String("wpa-eap") || keyMgmt == QLatin1String("wpa-eap-suite-b-192");
+        if (wpaEap && !has8021x)
+            return QStringLiteral("WPA-EAP authentication requires an 802.1x setting");
+        if (!keyMgmt.isEmpty() && !wpaEap && has8021x)
+            return QStringLiteral("802.1x setting requires 'wpa-eap' key management");
+        if ((wpaEap || has8021x) && !((wpa | rsn) & key8021x) && !(rsn & keySuiteB))
+            return QStringLiteral("Access point does not support 802.1x but setting requires it");
+
+        QString completed;
+        if (has8021x)
+            completed = QStringLiteral("wpa-eap");
+        else if ((rsn & keySae) && ((wpa | rsn) & keyPsk))
+            completed = keyMgmt == QLatin1String("sae") ? keyMgmt : QStringLiteral("wpa-psk");
+        else if (keyMgmt == QLatin1String("sae") || (rsn & keySae))
+            completed = QStringLiteral("sae");
+        else if (keyMgmt == QLatin1String("owe") || (rsn & keyOwe))
+            completed = QStringLiteral("owe");
+        else if (keyMgmt == QLatin1String("wpa-psk") || ((wpa | rsn) & keyPsk))
+            completed = QStringLiteral("wpa-psk");
+        else if (keyMgmt == QLatin1String("wpa-eap-suite-b-192") || (rsn & keySuiteB))
+            completed = QStringLiteral("wpa-eap-suite-b-192");
+        else
+            return QStringLiteral("Failed to determine AP security information");
+        wsec.insert(QStringLiteral("key-mgmt"), completed);
+    }
+
+    if (!has8021x)
+        return {};
+
+    // The methods' checks in libnm-core-impl/nm-setting-8021x.c.
+    const QVariantMap eap = profile.value(eapName);
+    const QStringList methods = eap.value(QStringLiteral("eap")).toStringList();
+    if (methods.isEmpty())
+        return QStringLiteral("802-1x.eap: property is missing");
+    for (const QString &method : methods) {
+        if (method == QLatin1String("tls")) {
+            if (!eap.contains(QStringLiteral("client-cert")) || !eap.contains(QStringLiteral("private-key")))
+                return QStringLiteral("802-1x.client-cert: property is missing");
+            continue;
+        }
+        if (method == QLatin1String("sim") || method == QLatin1String("otp") || method == QLatin1String("external"))
+            continue;
+        if (eap.value(QStringLiteral("identity")).toString().isEmpty())
+            return QStringLiteral("802-1x.identity: property is missing");
+        if ((method == QLatin1String("peap") || method == QLatin1String("ttls"))
+            && eap.contains(QStringLiteral("phase2-auth")) == eap.contains(QStringLiteral("phase2-autheap")))
+            return QStringLiteral("802-1x.phase2-auth, 802-1x.phase2-autheap: exactly one property must be set");
+    }
+    return {};
+}
+
 } // namespace FakeNM
 
 // NetworkManager on a private bus connection: its objects, profiles and the calls made to
@@ -177,7 +291,18 @@ public:
         } else if (member == QStringLiteral("AddConnection")) {
             reply << FakeNM::path(addConnection(qdbus_cast<NMVariantMapMap>(args.value(0))));
         } else if (member == QStringLiteral("AddAndActivateConnection")) {
-            const QString profile = addConnection(qdbus_cast<NMVariantMapMap>(args.value(0)));
+            NMVariantMapMap partial = qdbus_cast<NMVariantMapMap>(args.value(0));
+            const QString specificObject = args.value(2).value<QDBusObjectPath>().path();
+            if (objects.value(specificObject).contains(FakeNM::accessPoint)) {
+                const QString error = FakeNM::completeForAccessPoint(
+                        partial, objects.value(specificObject).value(FakeNM::accessPoint));
+                if (!error.isEmpty()) {
+                    connection.send(message.createErrorReply(
+                            QStringLiteral("org.freedesktop.NetworkManager.Settings.Connection.InvalidProperty"), error));
+                    return true;
+                }
+            }
+            const QString profile = addConnection(partial);
             const QString activeConnection =
                     activate(profile, args.value(1).value<QDBusObjectPath>().path(),
                              args.value(2).value<QDBusObjectPath>().path());

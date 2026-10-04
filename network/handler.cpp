@@ -114,16 +114,11 @@ void Handler::addAndActivateWireless(const QString &device, const QString &speci
     if (!m_client->has(specificObject, accessPointInterface))
         return;
 
-    const auto ap = [&](const char *name) {
-        return m_client->property(specificObject, accessPointInterface, QLatin1String(name));
-    };
-    const QByteArray ssid = ap("Ssid").toByteArray();
-    const QString name = WifiUtils::ssidLabel(ssid);
-    const Enums::SecurityType security = WifiUtils::security(
-            m_client->property(device, wirelessInterface, QStringLiteral("WirelessCapabilities")).toUInt(),
-            ap("Flags").toUInt(), ap("WpaFlags").toUInt(), ap("RsnFlags").toUInt(), ap("Mode").toUInt());
+    const QString name = WifiUtils::ssidLabel(
+            m_client->property(specificObject, accessPointInterface, QStringLiteral("Ssid")).toByteArray());
+    const Enums::SecurityType security = accessPointSecurity(device, specificObject);
 
-    // Enterprise networks need an identity and certificates, which Settings asks for.
+    // Enterprise networks need a user name; see addAndActivateEnterprise().
     if (WifiUtils::enterprise(security))
         return;
 
@@ -176,6 +171,66 @@ void Handler::addAndActivateWireless(const QString &device, const QString &speci
         settings.insert(wirelessSecurity, secrets);
     }
 
+    addAndActivate(settings, device, specificObject);
+}
+
+void Handler::addAndActivateEnterprise(const QString &device, const QString &specificObject,
+                                       const QString &userName, const QString &password)
+{
+    if (!m_client->has(specificObject, accessPointInterface))
+        return;
+
+    // A 192-bit network signs in with EAP-TLS, which needs certificates.
+    const Enums::SecurityType security = accessPointSecurity(device, specificObject);
+    if (security != Enums::WpaEap && security != Enums::Wpa2Eap)
+        return;
+
+    QVariantMap connection {
+        {QStringLiteral("id"),
+         WifiUtils::ssidLabel(m_client->property(specificObject, accessPointInterface, QStringLiteral("Ssid")).toByteArray())},
+    };
+    const bool shared = m_client->sharesNewConnections();
+    if (!shared)
+        connection.insert(QStringLiteral("permissions"), QStringList {NetworkClient::userPermission()});
+
+    // NetworkManager completes the SSID and wpa-eap key management from the access point;
+    // only the 802.1X sign-in has to be spelt out.
+    NMVariantMapMap settings;
+    settings.insert(QStringLiteral("connection"), connection);
+    settings.insert(QStringLiteral("802-1x"),
+                    WifiUtils::passwordEap(userName, password, shared ? SecretSystemOwned : SecretAgentOwned));
+    addAndActivate(settings, device, specificObject);
+}
+
+QVariantMap Handler::wirelessNetwork(const QString &accessPoint) const
+{
+    if (!m_client->has(accessPoint, accessPointInterface))
+        return {};
+
+    for (const QString &device : m_client->devices()) {
+        if (m_client->deviceType(device) != DeviceWifi || !m_client->accessPoints(device).contains(accessPoint))
+            continue;
+        return {{QStringLiteral("device"), device},
+                {QStringLiteral("name"),
+                 WifiUtils::ssidLabel(m_client->property(accessPoint, accessPointInterface, QStringLiteral("Ssid")).toByteArray())},
+                {QStringLiteral("security"), int(accessPointSecurity(device, accessPoint))}};
+    }
+    return {};
+}
+
+Enums::SecurityType Handler::accessPointSecurity(const QString &device, const QString &accessPoint) const
+{
+    const auto ap = [&](const char *name) {
+        return m_client->property(accessPoint, accessPointInterface, QLatin1String(name)).toUInt();
+    };
+    return WifiUtils::security(
+            m_client->property(device, wirelessInterface, QStringLiteral("WirelessCapabilities")).toUInt(),
+            ap("Flags"), ap("WpaFlags"), ap("RsnFlags"), ap("Mode"));
+}
+
+void Handler::addAndActivate(const NMVariantMapMap &settings, const QString &device,
+                             const QString &specificObject)
+{
     m_client->call(managerPath, managerInterface, QStringLiteral("AddAndActivateConnection"),
                    {QVariant::fromValue(settings), objectPath(device), objectPath(specificObject)}, this,
                    [this](const QDBusMessage &reply) {

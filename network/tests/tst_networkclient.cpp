@@ -4,6 +4,7 @@
 #include "../networkclient.h"
 #include "../networkmodel.h"
 #include "../vpnutils.h"
+#include "../wifiutils.h"
 #include "../wirelessitemsettings.h"
 #include "fixture.h"
 
@@ -157,6 +158,97 @@ private slots:
         nm->emitSignal(active, FakeNM::active, QStringLiteral("StateChanged"), {4u, 9u});
         QTRY_COMPARE(nm->count(QStringLiteral("Delete")), 1);
         QVERIFY(nm->last(QStringLiteral("Delete")).path().startsWith(FakeNM::managerPath + QStringLiteral("/Settings/")));
+    }
+
+    void enterpriseJoinSendsOnlyTheSignIn()
+    {
+        Handler handler;
+        const QVariantMap network = handler.wirelessNetwork(library);
+        QCOMPARE(network.value(QStringLiteral("device")).toString(), wifiDevice);
+        QCOMPARE(network.value(QStringLiteral("name")).toString(), QStringLiteral("Library"));
+        QCOMPARE(network.value(QStringLiteral("security")).toInt(), int(Enums::Wpa2Eap));
+        QVERIFY(handler.wirelessNetwork(FakeNM::managerPath + QStringLiteral("/AccessPoint/99")).isEmpty());
+
+        handler.addAndActivateEnterprise(wifiDevice, library, QStringLiteral("alice"), QStringLiteral("secret"));
+        QTRY_COMPARE(nm->count(QStringLiteral("AddAndActivateConnection")), 1);
+
+        const QDBusMessage call = nm->last(QStringLiteral("AddAndActivateConnection"));
+        QCOMPARE(call.arguments().value(2).value<QDBusObjectPath>().path(), library);
+        const auto settings = qdbus_cast<NMVariantMapMap>(call.arguments().value(0));
+
+        // Not a hidden network: NetworkManager fills in the SSID and key management.
+        QVERIFY(!settings.contains(QStringLiteral("802-11-wireless")));
+        QVERIFY(!settings.contains(QStringLiteral("802-11-wireless-security")));
+        const QVariantMap eap = settings.value(QStringLiteral("802-1x"));
+        QCOMPARE(eap.value(QStringLiteral("eap")).toStringList(),
+                 (QStringList {QStringLiteral("peap"), QStringLiteral("ttls")}));
+        QCOMPARE(eap.value(QStringLiteral("phase2-auth")).toString(), QStringLiteral("mschapv2"));
+        QCOMPARE(eap.value(QStringLiteral("identity")).toString(), QStringLiteral("alice"));
+        QCOMPARE(eap.value(QStringLiteral("password")).toString(), QStringLiteral("secret"));
+        QCOMPARE(eap.value(QStringLiteral("password-flags")).metaType(), QMetaType::fromType<uint>());
+        QCOMPARE(eap.value(QStringLiteral("password-flags")).toUInt(), 1u);
+        QCOMPARE(settings.value(QStringLiteral("connection")).value(QStringLiteral("id")).toString(),
+                 QStringLiteral("Library"));
+
+        // NetworkManager's completion took it, and made it a WPA-EAP profile for that network.
+        QTRY_COMPARE(NetworkClient::instance()->activeConnections().size(), 2);
+        const QString profile = NetworkClient::path(
+                nm->objects.value(otherActive()).value(FakeNM::active).value(QStringLiteral("Connection")));
+        const NMVariantMapMap completed = nm->settings.value(profile);
+        QCOMPARE(completed.value(QStringLiteral("802-11-wireless")).value(QStringLiteral("ssid")).toByteArray(),
+                 QByteArray("Library"));
+        QCOMPARE(completed.value(QStringLiteral("802-11-wireless-security")).value(QStringLiteral("key-mgmt")).toString(),
+                 QStringLiteral("wpa-eap"));
+
+        // A personal network is not joined this way, nor an enterprise one without a user name.
+        handler.addAndActivateEnterprise(wifiDevice, office, QStringLiteral("alice"), QStringLiteral("secret"));
+        handler.addAndActivateConnection(wifiDevice, library);
+        QTest::qWait(100);
+        QCOMPARE(nm->count(QStringLiteral("AddAndActivateConnection")), 1);
+    }
+
+    // The fake answers AddAndActivateConnection as NetworkManager's completion would, so the
+    // joins above are checked against it; these are the profiles it must refuse.
+    void fakeCompletesLikeNetworkManager_data()
+    {
+        QTest::addColumn<QString>("accessPoint");
+        QTest::addColumn<NMVariantMapMap>("profile");
+        QTest::addColumn<bool>("accepted");
+
+        const QVariantMap signIn = WifiUtils::passwordEap(QStringLiteral("alice"), QStringLiteral("secret"), 1u);
+        const QVariantMap psk {{QStringLiteral("psk"), QStringLiteral("secret pass")}, {QStringLiteral("psk-flags"), 1u}};
+
+        QTest::newRow("sign-in, enterprise") << library << NMVariantMapMap {{QStringLiteral("802-1x"), signIn}} << true;
+        QTest::newRow("password, personal")
+                << office << NMVariantMapMap {{QStringLiteral("802-11-wireless-security"), psk}} << true;
+        QTest::newRow("nothing, open") << cafe << NMVariantMapMap {} << true;
+        QTest::newRow("sign-in, personal") << office << NMVariantMapMap {{QStringLiteral("802-1x"), signIn}} << false;
+        QTest::newRow("password, enterprise")
+                << library << NMVariantMapMap {{QStringLiteral("802-11-wireless-security"), psk}} << false;
+        QTest::newRow("sign-in, open") << cafe << NMVariantMapMap {{QStringLiteral("802-1x"), signIn}} << false;
+
+        QVariantMap anonymous = signIn;
+        anonymous.remove(QStringLiteral("identity"));
+        QTest::newRow("no user name") << library << NMVariantMapMap {{QStringLiteral("802-1x"), anonymous}} << false;
+        QVariantMap noInner = signIn;
+        noInner.remove(QStringLiteral("phase2-auth"));
+        QTest::newRow("no inner method") << library << NMVariantMapMap {{QStringLiteral("802-1x"), noInner}} << false;
+        QTest::newRow("other network's name")
+                << library
+                << NMVariantMapMap {{QStringLiteral("802-1x"), signIn},
+                                    {QStringLiteral("802-11-wireless"), {{QStringLiteral("ssid"), QByteArray("Office")}}}}
+                << false;
+    }
+
+    void fakeCompletesLikeNetworkManager()
+    {
+        QFETCH(QString, accessPoint);
+        QFETCH(NMVariantMapMap, profile);
+        QFETCH(bool, accepted);
+
+        const QString error =
+                FakeNM::completeForAccessPoint(profile, nm->objects.value(accessPoint).value(FakeNM::accessPoint));
+        QVERIFY2(error.isEmpty() == accepted, qPrintable(error));
     }
 
     void updateKeepsWhatItDoesNotChange()

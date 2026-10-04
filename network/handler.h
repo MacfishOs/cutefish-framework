@@ -21,6 +21,7 @@
 #ifndef CUTEFISH_NETWORK_HANDLER_H
 #define CUTEFISH_NETWORK_HANDLER_H
 
+#include "enums.h"
 #include "networkdbustypes.h"
 
 #include <network_export.h>
@@ -68,6 +69,12 @@ public Q_SLOTS:
      */
     void addAndActivateConnection(const QString &device, const QString &specificObject,
                                   const QString &password = QString());
+    // Joins the WPA or WPA2 Enterprise network `specificObject` with a user name and password.
+    void addAndActivateEnterprise(const QString &device, const QString &specificObject,
+                                  const QString &userName, const QString &password);
+    // The adapter, name and security of an access point in range: {device, name, security};
+    // empty once it is gone.
+    QVariantMap wirelessNetwork(const QString &accessPoint) const;
     void deactivateConnection(const QString &connection, const QString &device);
     void removeConnection(const QString &connection);
     void requestScan(const QString &interface = QString());
@@ -106,6 +113,9 @@ Q_SIGNALS:
 private:
     void addAndActivateWireless(const QString &device, const QString &specificObject,
                                 const QString &password, bool askForPassword);
+    Enums::SecurityType accessPointSecurity(const QString &device, const QString &accessPoint) const;
+    void addAndActivate(const NMVariantMapMap &settings, const QString &device,
+                        const QString &specificObject);
     void forgetUnlessActivated(const QString &connection, const QString &active);
     void importVpnAs(const QString &file, QStringList types, const QString &error);
     void addPrivateVpn(NMVariantMapMap profile);
