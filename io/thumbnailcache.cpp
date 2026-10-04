@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "thumbnailcache.h"
 #include "thumbnailers_p.h"
 
@@ -80,6 +83,56 @@ void setMetadata(QImage &image, const QString &uri, qint64 mtime, qint64 size)
     image.setText(mtimeKey, QString::number(mtime));
     image.setText(sizeKey, QString::number(size));
 }
+
+// Where the thumbnail of one file at one size lives in the cache.
+struct Entry
+{
+    bool valid = false;
+    bool insideCache = false;
+    QString path;
+    QSize cacheSize;
+    QString uri;
+    qint64 mtime = 0;
+    qint64 size = 0;
+    QString root;
+    QString directory;
+    QString target;
+    QString failDirectory;
+    QString failTarget;
+};
+
+Entry locate(const QString &filePath, const QSize &requestedSize)
+{
+    Entry entry;
+    if (!requestedSize.isValid() || requestedSize.isEmpty())
+        return entry;
+
+    const QUrl url(filePath);
+    entry.path = url.isLocalFile() ? url.toLocalFile() : filePath;
+    const QFileInfo info(entry.path);
+    if (!info.isFile())
+        return entry;
+
+    const Flavor &flavor = flavorFor(requestedSize);
+    entry.valid = true;
+    entry.cacheSize = QSize(flavor.size, flavor.size);
+    entry.root = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+            + QStringLiteral("/thumbnails");
+    entry.insideCache = info.absoluteFilePath().startsWith(entry.root + '/');
+
+    const QByteArray encodedUri = QUrl::fromLocalFile(info.absoluteFilePath()).toEncoded();
+    const QString name =
+            QString::fromLatin1(QCryptographicHash::hash(encodedUri, QCryptographicHash::Md5).toHex())
+            + QStringLiteral(".png");
+    entry.uri = QString::fromLatin1(encodedUri);
+    entry.mtime = info.lastModified().toSecsSinceEpoch();
+    entry.size = info.size();
+    entry.directory = entry.root + '/' + QLatin1StringView(flavor.name);
+    entry.target = entry.directory + '/' + name;
+    entry.failDirectory = entry.root + QStringLiteral("/fail/cutefish");
+    entry.failTarget = entry.failDirectory + '/' + name;
+    return entry;
+}
 }
 
 ThumbnailCache *ThumbnailCache::self()
@@ -95,63 +148,65 @@ bool ThumbnailCache::canThumbnail(const QString &mimeType)
 
 Thumbnail ThumbnailCache::requestThumbnail(const QString &filePath, const QSize &requestedSize)
 {
-    if (!requestedSize.isValid() || requestedSize.isEmpty())
+    const Entry entry = locate(filePath, requestedSize);
+    if (!entry.valid)
         return {};
-
-    const QUrl url(filePath);
-    const QString path = url.isLocalFile() ? url.toLocalFile() : filePath;
-    const QFileInfo info(path);
-    if (!info.isFile())
-        return {};
-
-    const Flavor &flavor = flavorFor(requestedSize);
-    const QSize cacheSize(flavor.size, flavor.size);
-    const QString root = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
-            + QStringLiteral("/thumbnails");
 
     // The spec forbids thumbnailing the cache itself, which would otherwise feed on its output.
-    if (info.absoluteFilePath().startsWith(root + '/'))
-        return {{}, generateThumbnail(path, cacheSize)};
+    if (entry.insideCache)
+        return {{}, generateThumbnail(entry.path, entry.cacheSize)};
 
-    const QByteArray encodedUri = QUrl::fromLocalFile(info.absoluteFilePath()).toEncoded();
-    const QString uri = QString::fromLatin1(encodedUri);
-    const QString name =
-            QString::fromLatin1(QCryptographicHash::hash(encodedUri, QCryptographicHash::Md5).toHex())
-            + QStringLiteral(".png");
-    const qint64 mtime = info.lastModified().toSecsSinceEpoch();
-    const qint64 size = info.size();
+    const QImage cached(entry.target);
+    if (isCurrent(cached, entry.uri, entry.mtime, entry.size))
+        return {entry.target, cached};
 
-    const QString directory = root + '/' + QLatin1StringView(flavor.name);
-    const QString target = directory + '/' + name;
-    const QImage cached(target);
-    if (isCurrent(cached, uri, mtime, size))
-        return {target, cached};
-
-    const QString failDirectory = root + QStringLiteral("/fail/cutefish");
-    const QString failTarget = failDirectory + '/' + name;
-    if (isCurrent(QImage(failTarget), uri, mtime, size))
+    if (isCurrent(QImage(entry.failTarget), entry.uri, entry.mtime, entry.size))
         return {};
 
-    QImage image = generateThumbnail(path, cacheSize);
+    QImage image = generateThumbnail(entry.path, entry.cacheSize);
     if (image.isNull()) {
         // Remember the failure so broken images are not decoded again on every scroll.
         QImage marker(1, 1, QImage::Format_ARGB32);
         marker.fill(Qt::transparent);
-        setMetadata(marker, uri, mtime, size);
+        setMetadata(marker, entry.uri, entry.mtime, entry.size);
 
-        if (ensurePrivateDirectory(root) && ensurePrivateDirectory(failDirectory))
-            writeCacheFile(failTarget, marker);
+        if (ensurePrivateDirectory(entry.root) && ensurePrivateDirectory(entry.failDirectory))
+            writeCacheFile(entry.failTarget, marker);
 
         return {};
     }
 
-    setMetadata(image, uri, mtime, size);
+    setMetadata(image, entry.uri, entry.mtime, entry.size);
 
     // An unwritable cache must not hide the thumbnail; only the path goes missing.
-    if (!ensurePrivateDirectory(root) || !ensurePrivateDirectory(directory))
+    if (!ensurePrivateDirectory(entry.root) || !ensurePrivateDirectory(entry.directory))
         return {{}, image};
 
-    return {writeCacheFile(target, image), image};
+    return {writeCacheFile(entry.target, image), image};
+}
+
+bool ThumbnailCache::hasCachedThumbnail(const QString &filePath, const QSize &requestedSize)
+{
+    const Entry entry = locate(filePath, requestedSize);
+    if (!entry.valid || entry.insideCache)
+        return false;
+
+    // Without decoding it, an entry older than the file is the likely stale one.
+    const QFileInfo cached(entry.target);
+    return cached.isFile() && cached.lastModified().toSecsSinceEpoch() >= entry.mtime;
+}
+
+Thumbnail ThumbnailCache::cachedThumbnail(const QString &filePath, const QSize &requestedSize)
+{
+    const Entry entry = locate(filePath, requestedSize);
+    if (!entry.valid || entry.insideCache)
+        return {};
+
+    const QImage cached(entry.target);
+    if (!isCurrent(cached, entry.uri, entry.mtime, entry.size))
+        return {};
+
+    return {entry.target, cached};
 }
 
 QImage ThumbnailCache::generateThumbnail(const QString &source, const QSize &requestedSize)

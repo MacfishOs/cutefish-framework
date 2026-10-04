@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "thumbnailcache.h"
+#include "thumbnailprovider.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -135,6 +136,39 @@ private slots:
         const Thumbnail thumbnail = ThumbnailCache::self()->requestThumbnail(localUrl(image), QSize(64, 64));
         QCOMPARE(thumbnail.image.size(), QSize(128, 64));
         QVERIFY(!QFileInfo::exists(m_tools.filePath("arguments")));
+    }
+
+    void cachedThumbnailsAreReadWithoutGenerating()
+    {
+        const QString image = m_files.filePath("served.png");
+        QImage source(40, 20, QImage::Format_RGB32);
+        source.fill(Qt::red);
+        QVERIFY(source.save(image));
+
+        const QUrl url(QStringLiteral("image://thumbnailcache/") + localUrl(image) + QStringLiteral("?mtime=1"));
+        const QString id = url.toString(QUrl::RemoveScheme | QUrl::RemoveAuthority).mid(1);
+        CachedThumbnailProvider provider;
+        QSize size;
+        QVERIFY(!ThumbnailProvider::isCached(url, QSize(96, 96)));
+        QVERIFY(provider.requestImage(id, &size, QSize(96, 96)).isNull());
+
+        QVERIFY(!ThumbnailCache::self()->requestThumbnail(localUrl(image), QSize(96, 96)).image.isNull());
+        QVERIFY(ThumbnailProvider::isCached(url, QSize(96, 96)));
+        QVERIFY(!ThumbnailProvider::isCached(url, QSize(200, 200)));
+        const QImage served = provider.requestImage(id, &size, QSize(120, 100));
+        QCOMPARE(size, QSize(128, 64));
+        QCOMPARE(served.pixelColor(0, 0), QColor(Qt::red));
+
+        // A changed file leaves a stale entry behind, which is not served.
+        QVERIFY(QFile(image).resize(QFileInfo(image).size() + 1));
+        QVERIFY(provider.requestImage(id, &size, QSize(96, 96)).isNull());
+
+        // Nor is one older than the file offered at all.
+        QFile file(image);
+        QVERIFY(file.open(QIODevice::ReadWrite));
+        QVERIFY(file.setFileTime(QDateTime::currentDateTime().addSecs(60), QFileDevice::FileModificationTime));
+        file.close();
+        QVERIFY(!ThumbnailProvider::isCached(url, QSize(96, 96)));
     }
 
     void failureIsRemembered()
