@@ -2,6 +2,7 @@
 
 #include "error.h"
 #include "filesystemurl.h"
+#include "mimesniffer_p.h"
 
 #include <QDir>
 #include <QFile>
@@ -19,6 +20,7 @@ FileItem::FileItem(const QUrl &url)
         m_info = QFileInfo(FileSystemUrl(url).localPath());
         m_info.refresh();
         m_url = url;
+        m_name = url.fileName();
     } catch (const Failure &) {
     }
 }
@@ -96,8 +98,7 @@ void FileItem::detectType(TypeDetails *details)
         m_mimeType = database.mimeTypeForName(QStringLiteral("inode/directory"));
     } else if (m_info.isFile()) {
         // mimeTypeForFile() would stat the file again to rule out devices.
-        QFile file(m_info.filePath());
-        m_mimeType = database.mimeTypeForFileNameAndData(m_info.filePath(), &file);
+        m_mimeType = Internal::MimeSniffer::self()->mimeTypeForFile(m_info.filePath());
     } else {
         m_mimeType = database.mimeTypeForFile(m_info);
     }

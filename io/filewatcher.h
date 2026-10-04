@@ -22,6 +22,9 @@ signals:
 
 private:
     int m_fd = -1;
+    QString m_path;
+    // Cleared once a watch is removed or its directory moves or goes away.
+    bool m_valid = false;
     QList<int> m_watches;
     int m_parentWatch = -1;
     QByteArray m_parentEntry;

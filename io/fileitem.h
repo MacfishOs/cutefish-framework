@@ -39,7 +39,7 @@ public:
 
     QString name() const
     {
-        return m_url.fileName();
+        return m_name;
     }
 
     QString text() const
@@ -132,6 +132,13 @@ public:
         return determineMimeType().name();
     }
 
+    // Whether both were prepared from a file or directory of the same kind, size and
+    // times, which answers for size(), isDir(), isLink() and the modification time.
+    bool sameStat(const FileItem &other) const
+    {
+        return m_stamp.kind && m_stamp == other.m_stamp;
+    }
+
     QString typeDescription() const
     {
         return m_typeDescription;
@@ -147,9 +154,11 @@ public:
 private:
     friend class FileEnumerator;
 
-    // For a child the enumerator found in a directory it already resolved.
-    FileItem(const QUrl &url, const QString &localPath)
+    // For a child the enumerator found in a directory it already resolved; name is
+    // what url's fileName() decodes to.
+    FileItem(const QUrl &url, const QString &localPath, const QString &name)
         : m_url(url)
+        , m_name(name)
         , m_info(localPath)
     {
     }
@@ -174,6 +183,8 @@ private:
     void detectType(TypeDetails *details);
 
     QUrl m_url;
+    // The URL's file name, which sorting and refreshes ask for many times.
+    QString m_name;
     QFileInfo m_info;
     Stamp m_stamp;
     QMimeType m_mimeType;

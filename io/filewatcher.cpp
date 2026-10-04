@@ -40,6 +40,10 @@ FileWatcher::FileWatcher(QObject *parent)
                 if (!(event->mask & IN_IGNORED) && !unrelatedSibling)
                     dirty = true;
 
+                if ((event->mask & (IN_IGNORED | IN_DELETE_SELF | IN_MOVE_SELF))
+                    && m_watches.contains(event->wd))
+                    m_valid = false;
+
                 offset += sizeof(inotify_event) + event->len;
             }
         }
@@ -63,12 +67,18 @@ void FileWatcher::clear()
         ::inotify_rm_watch(m_fd, wd);
 
     m_watches.clear();
+    m_path.clear();
+    m_valid = false;
     m_parentWatch = -1;
     m_parentEntry.clear();
 }
 
 bool FileWatcher::watch(const QString &path)
 {
+    // Adding a directory watch walks every child dentry; keep one that still holds.
+    if (m_valid && path == m_path)
+        return true;
+
     clear();
 
     if (m_fd < 0) {
@@ -97,6 +107,9 @@ bool FileWatcher::watch(const QString &path)
                 watched = true;
         }
     }
+
+    m_path = path;
+    m_valid = watched;
 
     if (!watched)
         emit error(tr("Cannot watch %1; polling for changes").arg(path));

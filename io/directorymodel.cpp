@@ -1,8 +1,10 @@
 #include "directorymodel.h"
 
+#include "backgroundrelease.h"
 #include "task.h"
 
 #include <QHash>
+#include <QSet>
 
 namespace Cutefish::IO {
 
@@ -20,7 +22,7 @@ void DirectoryModel::setDirLister(DirectoryLister *lister)
     connect(lister, &DirectoryLister::itemsChanged, this, &DirectoryModel::synchronize);
     connect(lister, &DirectoryLister::directoryChanged, this, [this] {
         beginResetModel();
-        m_items.clear();
+        releaseInBackground(std::exchange(m_items, {}));
         m_rowsValid = false;
         endResetModel();
     });
@@ -34,7 +36,7 @@ FileItem DirectoryModel::itemForIndex(const QModelIndex &idx) const
 QModelIndex DirectoryModel::indexForUrl(const QUrl &url) const
 {
     if (!m_rowsValid) {
-        m_rowsByUrl.clear();
+        releaseInBackground(std::exchange(m_rowsByUrl, {}));
         m_rowsByUrl.reserve(m_items.size());
         for (int row = 0; row < m_items.size(); ++row)
             m_rowsByUrl.insert(m_items[row].url(), row);
@@ -159,8 +161,57 @@ void DirectoryModel::synchronize()
         ++same;
 
     if (same == m_items.size() && same == incoming.size()) {
-        m_items = incoming;
+        releaseInBackground(std::exchange(m_items, incoming));
         emit dataChanged(index(0, 0), index(m_items.size() - 1, ColumnCount - 1));
+        return;
+    }
+
+    // Files added or removed in one place leave the same files at both ends.
+    int tail = 0;
+    while (tail < common - same
+           && m_items.at(m_items.size() - 1 - tail).url()
+                   == incoming.at(incoming.size() - 1 - tail).url())
+        ++tail;
+
+    const int oldEnd = m_items.size() - tail;
+    const int newEnd = incoming.size() - tail;
+
+    QSet<QUrl> between;
+    between.reserve(newEnd - same);
+    for (int i = same; i < newEnd; ++i)
+        between.insert(incoming.at(i).url());
+
+    bool moved = false;
+    for (int row = same; row < oldEnd && !moved; ++row)
+        moved = between.contains(m_items.at(row).url());
+
+    // No file in between kept its row: replace those rows, and the model mirrors
+    // the listing without matching every URL.
+    if (!moved) {
+        FileItemList released;
+
+        if (oldEnd > same) {
+            beginRemoveRows({}, same, oldEnd - 1);
+            for (int row = same; row < oldEnd; ++row)
+                released.append(std::move(m_items[row]));
+            m_items.remove(same, oldEnd - same);
+            m_rowsValid = false;
+            endRemoveRows();
+        }
+
+        if (newEnd > same) {
+            beginInsertRows({}, same, newEnd - 1);
+            releaseInBackground(std::exchange(m_items, incoming));
+            m_rowsValid = false;
+            endInsertRows();
+        } else {
+            releaseInBackground(std::exchange(m_items, incoming));
+        }
+
+        releaseInBackground(std::move(released));
+
+        if (!m_items.isEmpty())
+            emit dataChanged(index(0, 0), index(m_items.size() - 1, ColumnCount - 1));
         return;
     }
 
@@ -174,6 +225,10 @@ void DirectoryModel::synchronize()
     const bool unique = positions.size() == incoming.size();
     if (!unique)
         same = 0;
+
+    // The rows replaced or removed, freed off this thread.
+    FileItemList released;
+    released.reserve(m_items.size());
 
     // Where each row's file is in the new listing, or -1 once it is gone.
     QList<qsizetype> sources(m_items.size());
@@ -192,6 +247,8 @@ void DirectoryModel::synchronize()
             --first;
 
         beginRemoveRows({}, first, last);
+        for (int row = first; row <= last; ++row)
+            released.append(std::move(m_items[row]));
         m_items.remove(first, last - first + 1);
         sources.remove(first, last - first + 1);
         m_rowsValid = false;
@@ -202,8 +259,10 @@ void DirectoryModel::synchronize()
     QList<bool> kept(incoming.size(), false);
     for (int row = 0; row < m_items.size(); ++row) {
         kept[sources[row]] = true;
-        m_items[row] = incoming.at(sources[row]);
+        released.append(std::exchange(m_items[row], incoming.at(sources[row])));
     }
+
+    releaseInBackground(std::move(released));
 
     if (!m_items.isEmpty())
         emit dataChanged(index(0, 0), index(m_items.size() - 1, ColumnCount - 1));
@@ -221,6 +280,8 @@ void DirectoryModel::synchronize()
         m_rowsValid = false;
         endInsertRows();
     }
+
+    releaseInBackground(std::move(positions));
 }
 
 } // namespace Cutefish::IO

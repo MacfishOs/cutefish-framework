@@ -1,8 +1,10 @@
 #include "directory.h"
+#include "mimesniffer_p.h"
 #include "task.h"
 
 #include <QAbstractItemModelTester>
 #include <QCryptographicHash>
+#include <QMimeDatabase>
 #include <QPersistentModelIndex>
 #include <QPixmap>
 #include <QScopeGuard>
@@ -554,6 +556,161 @@ private slots:
                  item.time(FileItem::ModificationTime));
     }
 
+    // The sniffer answers what QMimeDatabase does, names and contents alike.
+    void sniffedTypesMatchQt()
+    {
+        QTemporaryDir dir;
+        const QByteArray elf = readFile(QCoreApplication::applicationFilePath()).left(20000);
+        const QByteArray transportStream =
+                QByteArray(1, 0x47) + QByteArray(187, 0) + QByteArray(1, 0x47) + QByteArray(187, 0);
+        const QList<QPair<QString, QByteArray>> files = {
+                {"program", elf},
+                {"libsample.so.6", elf},
+                {"page.1", "plain words\n"},
+                {"script", "#!/bin/sh\necho\n"},
+                {"empty", {}},
+                {"empty.ts", {}},
+                {"strings.ts", "<?xml version=\"1.0\"?>\n<TS version=\"2.1\"></TS>\n"},
+                {"video.ts", transportStream},
+                {"function.m", "function y = f(x)\nend\n"},
+                {"README", "read me\n"},
+                {"Makefile", "all:\n"},
+                {"PHOTO.JPG", "\xff\xd8\xff\xe0"},
+                {"source.C", "int main() {}\n"},
+                {"binary", QByteArray("\x00\x01\x02\x03", 4)},
+                {"document", "%PDF-1.4\n"},
+                {"notes~", "backup\n"},
+                {"123.vdr", "recording"},
+                {"callgrind.out.1", "events: Ir\n"},
+        };
+
+        const QMimeDatabase database;
+        for (const auto &[name, data] : files) {
+            const QString path = dir.filePath(name);
+            writeFile(path, data);
+            QCOMPARE(name + u' ' + Internal::MimeSniffer::self()->mimeTypeForFile(path).name(),
+                     name + u' ' + database.mimeTypeForFile(path).name());
+        }
+    }
+
+    // A first listing detects types on several threads.
+    void listingDetectsEveryType()
+    {
+        QTemporaryDir dir;
+        for (int i = 0; i < 400; ++i)
+            writeFile(dir.filePath(QString::number(i)), i % 2 ? "%PDF-1.4\n" : "#!/bin/sh\n");
+
+        DirectoryLister lister;
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+        lister.openUrl(local(dir.path()));
+        QTRY_COMPARE(listed.count(), 1);
+        QCOMPARE(lister.items().size(), 400);
+
+        for (const auto &item : lister.items()) {
+            QCOMPARE(item.name() + u' ' + item.mimetype(),
+                     item.name() + (item.name().toInt() % 2 ? " application/pdf"
+                                                            : " application/x-shellscript"));
+        }
+    }
+
+    // The name an item keeps is the one its URL decodes to.
+    void listedNamesMatchTheirUrls()
+    {
+        QTemporaryDir dir;
+        const QByteArray base = QFile::encodeName(dir.path());
+        const QList<QByteArray> names = {"a%20b", "100%", "c#d", "e?f", "g h", "[x]", "semi;colon",
+                                         "back\\slash", "\xc3\xbc", "x\xff", "plus+sign"};
+        const auto removeNames = qScopeGuard([&] {
+            for (const QByteArray &name : names)
+                ::unlink(base + '/' + name);
+        });
+        for (const QByteArray &name : names)
+            QVERIFY(::close(::open(base + '/' + name, O_CREAT | O_WRONLY | O_CLOEXEC, 0644)) == 0);
+
+        DirectoryLister lister;
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+        lister.openUrl(local(dir.path()));
+        QTRY_COMPARE(listed.count(), 1);
+        QCOMPARE(lister.items().size(), names.size());
+
+        for (const auto &item : lister.items()) {
+            QCOMPARE(item.name(), item.url().fileName());
+            QCOMPARE(QFileInfo(item.localPath()).fileName(), item.name());
+        }
+    }
+
+    // A folder this large builds its items on several threads.
+    void largeListingHasEveryFileOnce()
+    {
+        QTemporaryDir dir;
+        constexpr int Count = 20500;
+        for (int i = 0; i < Count; ++i)
+            QVERIFY(::close(::open(QFile::encodeName(dir.filePath(QString::number(i))),
+                                   O_CREAT | O_WRONLY | O_CLOEXEC, 0644)) == 0);
+
+        DirectoryLister lister;
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+        lister.openUrl(local(dir.path()));
+        QTRY_COMPARE_WITH_TIMEOUT(listed.count(), 1, 30000);
+
+        QList<bool> seen(Count, false);
+        for (const auto &item : lister.items()) {
+            const int index = item.name().toInt();
+            QVERIFY(!seen[index]);
+            seen[index] = true;
+            QCOMPARE(item.url(), local(dir.filePath(item.name())));
+            QCOMPARE(item.localPath(), dir.filePath(item.name()));
+        }
+        QVERIFY(!seen.contains(false));
+    }
+
+    // Files added or removed in one place leave the other rows where they are.
+    void modelFollowsChangesBetweenUnchangedRows()
+    {
+        QTemporaryDir dir;
+        for (int i = 0; i < 60; ++i)
+            writeFile(dir.filePath(QString::number(i)));
+
+        DirectoryLister lister;
+        DirectoryModel model;
+        model.setDirLister(&lister);
+        QAbstractItemModelTester tester(&model,
+                                        QAbstractItemModelTester::FailureReportingMode::QtTest);
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+        lister.openUrl(local(dir.path()));
+        QTRY_COMPARE(listed.count(), 1);
+
+        const auto sortedUrls = [](const FileItemList &items) {
+            QStringList urls;
+            for (const auto &item : items)
+                urls.append(item.url().toString());
+            urls.sort();
+            return urls;
+        };
+        const auto modelItems = [&] {
+            FileItemList items;
+            for (int row = 0; row < model.rowCount(); ++row)
+                items.append(model.itemForIndex(model.index(row, 0)));
+            return items;
+        };
+
+        QPersistentModelIndex kept(model.indexForUrl(local(dir.filePath("30"))));
+        QVERIFY(kept.isValid());
+
+        writeFile(dir.filePath("added"));
+        QTRY_COMPARE(model.rowCount(), 61);
+        QCOMPARE(sortedUrls(modelItems()), sortedUrls(lister.items()));
+
+        QVERIFY(QFile::remove(dir.filePath("10")));
+        QTRY_COMPARE(model.rowCount(), 60);
+        QCOMPARE(sortedUrls(modelItems()), sortedUrls(lister.items()));
+
+        QVERIFY(kept.isValid());
+        QCOMPARE(model.itemForIndex(kept).name(), QString("30"));
+        QVERIFY(model.indexForUrl(local(dir.filePath("added"))).isValid());
+        QVERIFY(!model.indexForUrl(local(dir.filePath("10"))).isValid());
+    }
+
     // Names that are not UTF-8 can decode to the same text, giving two files one URL.
     void modelKeepsRowsForCollidingNames()
     {
@@ -603,6 +760,28 @@ private slots:
 
         writeFile(watched + "/inside");
         QTRY_COMPARE(changed.count(), 1);
+    }
+
+    // A kept watch must not outlive its directory: one recreated at the path is watched anew.
+    void watcherFollowsRecreatedDirectory()
+    {
+        QTemporaryDir directory;
+        const auto watched = directory.filePath("watched");
+        QVERIFY(QDir().mkpath(watched));
+
+        FileWatcher watcher;
+        QSignalSpy changed(&watcher, &FileWatcher::changed);
+        QVERIFY(watcher.watch(watched));
+
+        QVERIFY(QDir(watched).removeRecursively());
+        QVERIFY(QDir().mkpath(watched));
+        QTRY_VERIFY(changed.count() > 0);
+        QVERIFY(watcher.watch(watched));
+
+        QTest::qWait(80);
+        changed.clear();
+        writeFile(watched + "/inside");
+        QTRY_VERIFY(changed.count() > 0);
     }
 
     void watcherDirectoryRemoval()

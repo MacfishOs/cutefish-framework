@@ -15,13 +15,13 @@ set(IO_PUBLIC_HEADERS
     volumemanager.h error.h filepath.h filesystemurl.h fileitem.h fileenumerator.h
     operationcontext.h localfilesystem.h filesystem.h
     filewatcher.h directorylister.h directorymodel.h directory.h task.h taskprogress.h
-    thumbnailcache.h thumbnailprovider.h)
+    thumbnailcache.h thumbnailprovider.h backgroundrelease.h)
 
 add_library(cutefish-framework-io STATIC ${IO_PUBLIC_HEADERS}
     volumemanager.cpp error.cpp filepath.cpp filesystemurl.cpp fileitem.cpp fileenumerator.cpp
     operationcontext.cpp localfilesystem.cpp trash.cpp filewatcher.cpp
     directorylister.cpp directorymodel.cpp task.cpp thumbnailcache.cpp thumbnailprovider.cpp
-    thumbnailers.cpp thumbnailers_p.h async.h posix_p.h)
+    thumbnailers.cpp thumbnailers_p.h mimesniffer.cpp mimesniffer_p.h async.h posix_p.h)
 add_library(Cutefish::IO ALIAS cutefish-framework-io)
 
 set_target_properties(cutefish-framework-io PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
@@ -40,6 +40,11 @@ if(BUILD_TESTING OR FILEMANAGER_BUILD_TESTS)
     set_target_properties(tst_cutefish_io PROPERTIES AUTOMOC ON)
     target_link_libraries(tst_cutefish_io PRIVATE Cutefish::IO Qt6::Test Qt6::Gui)
     add_test(NAME cutefish-io COMMAND tst_cutefish_io)
+
+    add_executable(tst_mimesniffer tests/tst_mimesniffer.cpp)
+    set_target_properties(tst_mimesniffer PROPERTIES AUTOMOC ON)
+    target_link_libraries(tst_mimesniffer PRIVATE Cutefish::IO Qt6::Test)
+    add_test(NAME mimesniffer COMMAND tst_mimesniffer)
 
     add_executable(tst_thumbnailers tests/tst_thumbnailers.cpp)
     set_target_properties(tst_thumbnailers PROPERTIES AUTOMOC ON)

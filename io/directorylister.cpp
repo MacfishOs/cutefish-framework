@@ -8,6 +8,8 @@
 #include <QStandardPaths>
 #include <QTimeZone>
 
+#include <atomic>
+
 namespace Cutefish::IO {
 
 namespace {
@@ -52,6 +54,42 @@ QString existingAncestor(QString path)
     }
 
     return path;
+}
+
+// Stats every item and reads the files whose names do not decide their type,
+// spread over pool threads for a first listing or a large folder.
+void prepareItems(FileItemList &items, const QHash<QString, const FileItem *> &previousByName,
+                  const std::function<void(FileItem &)> &preparer, const OperationContext *context)
+{
+    constexpr qsizetype BlockSize = 64;
+
+    // Detached here: the workers write their own items only.
+    FileItem *const data = items.data();
+    const qsizetype count = items.size();
+    const qsizetype blocks = (count + BlockSize - 1) / BlockSize;
+    std::atomic<qsizetype> nextBlock = 0;
+
+    // A refresh keeps most types and only stats. Threads cut that from 220 to 40 ms
+    // for 50,000 files, for 5-15% more CPU time per refresh; at 10,000 they saved nothing.
+    const bool spread = previousByName.isEmpty() || count >= Internal::LargeFolder;
+
+    Internal::runOnFreeThreads(spread ? Internal::blockHelpers(blocks) : 0,
+                               [&](const std::atomic_bool &stop) {
+        const FileItem none;
+        FileItem::TypeDetails details;
+
+        for (qsizetype block = nextBlock++; block < blocks && !stop; block = nextBlock++) {
+            const qsizetype end = qMin(count, (block + 1) * BlockSize);
+
+            for (qsizetype index = block * BlockSize; index < end; ++index) {
+                context->checkpoint();
+                FileItem &item = data[index];
+                const FileItem *old = previousByName.value(item.name(), &none);
+                if (!item.prepareMetadata(*old, &details) && preparer)
+                    preparer(item);
+            }
+        }
+    });
 }
 
 } // namespace
@@ -132,18 +170,21 @@ void DirectoryLister::stop()
 
 void DirectoryLister::watchDirectory()
 {
-    m_watch.clear();
-
     try {
         const QString path = FileSystemUrl(m_url).localPath();
 
         // A path that is gone gets no watch and no polling; the listing either
         // moves to its parent or reports it once.
-        if (!QFileInfo(path).isDir() || m_watch.watch(path))
+        if (!QFileInfo(path).isDir()) {
+            m_watch.clear();
             m_retry.stop();
-        else
+        } else if (m_watch.watch(path)) {
+            m_retry.stop();
+        } else {
             m_retry.start();
+        }
     } catch (const Failure &) {
+        m_watch.clear();
         m_retry.stop();
     }
 }
@@ -199,6 +240,8 @@ void DirectoryLister::refresh()
                 return;
         }
 
+        // Not released in the background: the model frees the old rows, and changes
+        // them in place only while it holds them alone.
         m_items = listing.items;
         m_rootItem = listing.rootItem;
         emit itemsChanged();
@@ -226,7 +269,7 @@ void DirectoryLister::refresh()
                                            preparer = m_itemPreparer, listed = m_listed,
                                            previous = m_listed ? m_items : FileItemList(),
                                            knownDatabase = m_typeDatabase,
-                                           knownSettled = m_typesSettled] {
+                                           knownSettled = m_typesSettled]() mutable {
         Listing result;
         const TypeDatabase database = currentTypeDatabase();
         result.typeDatabase = database.version;
@@ -260,17 +303,13 @@ void DirectoryLister::refresh()
                 }
             }
 
-            FileItem::TypeDetails details;
-
-            for (auto &item : result.items) {
-                context->checkpoint();
-                const FileItem *old = previousByName.value(item.name(), &none);
-                if (!item.prepareMetadata(*old, &details) && preparer)
-                    preparer(item);
-            }
+            prepareItems(result.items, previousByName, preparer, context.get());
         } catch (const Failure &failure) {
             result.error = failure.error;
         }
+
+        // The model changes the old rows in place only while it holds them alone.
+        previous = {};
 
         return result;
     }));

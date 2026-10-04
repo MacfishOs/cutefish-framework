@@ -1,5 +1,6 @@
 #include "fileenumerator.h"
 
+#include "async.h"
 #include "filesystemurl.h"
 #include "posix_p.h"
 
@@ -51,10 +52,7 @@ FileItemList FileEnumerator::list(const QUrl &url, bool hidden, OperationContext
         return {};
     check(fd.value, path);
 
-    FileItemList result;
-    const QString urlBase = url.path() + (url.path().endsWith('/') ? "" : "/");
-    const QString pathBase = path + (path.endsWith('/') ? "" : "/");
-
+    QList<QByteArray> names;
     children(fd.value, path, [&](const QByteArray &name) {
         if (context)
             context->checkpoint(path);
@@ -62,10 +60,34 @@ FileItemList FileEnumerator::list(const QUrl &url, bool hidden, OperationContext
         if (!hidden && name.startsWith('.'))
             return;
 
-        const QString decoded = QFile::decodeName(name);
-        auto child = url;
-        child.setPath(urlBase + decoded);
-        result.append(FileItem(child, pathBase + decoded));
+        names.append(name);
+    });
+
+    // Building the items costs more than reading the names: a large folder spreads it.
+    constexpr qsizetype BlockSize = 256;
+    const qsizetype count = names.size();
+    const qsizetype blocks = (count + BlockSize - 1) / BlockSize;
+    std::atomic<qsizetype> nextBlock = 0;
+
+    FileItemList result(count);
+    FileItem *const items = result.data();
+    const QString urlBase = url.path() + (url.path().endsWith('/') ? "" : "/");
+    const QString pathBase = path + (path.endsWith('/') ? "" : "/");
+
+    runOnFreeThreads(count >= LargeFolder ? blockHelpers(blocks) : 0,
+                     [&](const std::atomic_bool &stop) {
+        for (qsizetype block = nextBlock++; block < blocks && !stop; block = nextBlock++) {
+            if (context)
+                context->checkpoint();
+
+            const qsizetype end = qMin(count, (block + 1) * BlockSize);
+            for (qsizetype index = block * BlockSize; index < end; ++index) {
+                const QString decoded = QFile::decodeName(names.at(index));
+                auto child = url;
+                child.setPath(urlBase + decoded);
+                items[index] = FileItem(child, pathBase + decoded, decoded);
+            }
+        }
     });
 
     return result;

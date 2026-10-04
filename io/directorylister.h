@@ -49,7 +49,8 @@ public:
         m_autoUpdate = enabled;
     }
 
-    // The copied callback runs on a worker and must not access GUI objects.
+    // The copied callback runs on workers, for several items at once, and must not
+    // access GUI objects.
     void setItemPreparer(std::function<void(FileItem &)> preparer)
     {
         m_itemPreparer = std::move(preparer);
