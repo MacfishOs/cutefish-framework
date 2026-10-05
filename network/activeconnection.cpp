@@ -48,12 +48,13 @@ void ActiveConnection::update()
                 m_client->property(accessPoint, accessPointInterface, QStringLiteral("Strength")).toInt());
     }
 
-    if (name != m_wirelessName) {
-        m_wirelessName = name;
+    // Store both before emitting: a binding woken by the name reads the icon too.
+    const bool nameChanged = name != m_wirelessName;
+    const bool iconChanged = icon != m_wirelessIcon;
+    m_wirelessName = name;
+    m_wirelessIcon = icon;
+    if (nameChanged)
         Q_EMIT wirelessNameChanged();
-    }
-    if (icon != m_wirelessIcon) {
-        m_wirelessIcon = icon;
+    if (iconChanged)
         Q_EMIT wirelessIconChanged();
-    }
 }
