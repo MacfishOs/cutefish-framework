@@ -37,6 +37,10 @@ NightLight::NightLight(QObject *parent)
                 SLOT(onCustomEndChanged(int)));
     bus.connect(s_service, s_path, s_interface, QStringLiteral("availableChanged"), this,
                 SLOT(onAvailableChanged(bool)));
+    bus.connect(s_service, s_path, s_interface, QStringLiteral("sunsetChanged"), this,
+                SLOT(onSunsetChanged(int)));
+    bus.connect(s_service, s_path, s_interface, QStringLiteral("sunriseChanged"), this,
+                SLOT(onSunriseChanged(int)));
     load();
 }
 
@@ -60,6 +64,8 @@ void NightLight::load()
         onCustomStartChanged(values.value(QStringLiteral("customStart"), m_customStart).toInt());
         onCustomEndChanged(values.value(QStringLiteral("customEnd"), m_customEnd).toInt());
         onAvailableChanged(values.value(QStringLiteral("available")).toBool());
+        onSunsetChanged(values.value(QStringLiteral("sunset"), m_sunset).toInt());
+        onSunriseChanged(values.value(QStringLiteral("sunrise"), m_sunrise).toInt());
         if (!m_loaded) {
             m_loaded = true;
             emit loadedChanged();
@@ -162,6 +168,22 @@ void NightLight::onAvailableChanged(bool available)
         return;
     m_available = available;
     emit availableChanged();
+}
+
+void NightLight::onSunsetChanged(int minutes)
+{
+    if (minutes == m_sunset)
+        return;
+    m_sunset = minutes;
+    emit sunsetChanged();
+}
+
+void NightLight::onSunriseChanged(int minutes)
+{
+    if (minutes == m_sunrise)
+        return;
+    m_sunrise = minutes;
+    emit sunriseChanged();
 }
 
 void NightLight::call(const QString &method, const QVariant &value)

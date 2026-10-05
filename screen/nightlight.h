@@ -22,6 +22,8 @@ class NightLight : public QObject
     Q_PROPERTY(int customStart READ customStart WRITE setCustomStart NOTIFY customStartChanged)
     Q_PROPERTY(int customEnd READ customEnd WRITE setCustomEnd NOTIFY customEndChanged)
     Q_PROPERTY(bool preview READ preview WRITE setPreview NOTIFY previewChanged)
+    Q_PROPERTY(int sunset READ sunset NOTIFY sunsetChanged)
+    Q_PROPERTY(int sunrise READ sunrise NOTIFY sunriseChanged)
 
 public:
     enum Schedule {
@@ -55,6 +57,11 @@ public:
     int customEnd() const { return m_customEnd; }
     void setCustomEnd(int minutes);
 
+    // The next sunset and sunrise the schedule turns at, in minutes after midnight.
+    int sunset() const { return m_sunset; }
+
+    int sunrise() const { return m_sunrise; }
+
     // Shows the temperature while the night light is off; the service ends it
     // if this process leaves the bus.
     bool preview() const { return m_preview; }
@@ -69,6 +76,8 @@ signals:
     void customStartChanged();
     void customEndChanged();
     void previewChanged();
+    void sunsetChanged();
+    void sunriseChanged();
 
 private slots:
     void load();
@@ -78,6 +87,8 @@ private slots:
     void onCustomStartChanged(int minutes);
     void onCustomEndChanged(int minutes);
     void onAvailableChanged(bool available);
+    void onSunsetChanged(int minutes);
+    void onSunriseChanged(int minutes);
 
 private:
     void call(const QString &method, const QVariant &value);
@@ -90,4 +101,6 @@ private:
     int m_customStart = 18 * 60;
     int m_customEnd = 6 * 60;
     bool m_preview = false;
+    int m_sunset = 18 * 60;
+    int m_sunrise = 6 * 60;
 };
