@@ -105,6 +105,7 @@ private slots:
         QVERIFY(bus.registerVirtualObject(QStringLiteral("/"), &fake, QDBusConnection::SubPath));
         QQmlEngine engine;
         engine.addImportPath(QStringLiteral(BLUETOOTH_IMPORT_PATH));
+        engine.addImportPath(QStringLiteral(STUB_IMPORT_PATH));
         QQmlComponent host(&engine);
         host.setData(R"(
             import QtQuick
@@ -172,12 +173,13 @@ private slots:
         QVERIFY(bus.registerService(QStringLiteral("org.bluez")));
         QQmlEngine engine;
         engine.addImportPath(QStringLiteral(BLUETOOTH_IMPORT_PATH));
-        engine.addImageProvider(QStringLiteral("icontheme"), new TestIconProvider);
+        engine.addImportPath(QStringLiteral(STUB_IMPORT_PATH));
         QSignalSpy warnings(&engine, &QQmlEngine::warnings);
         QQmlComponent host(&engine);
         host.setData(R"(
             import QtQuick
             import QtQuick.Controls
+            import FishUI
             ApplicationWindow {
                 width: 900
                 height: 650
@@ -190,6 +192,8 @@ private slots:
                      QUrl());
         std::unique_ptr<QObject> window(host.create());
         QVERIFY2(window, qPrintable(host.errorString()));
+        // After FishUI's import, which installs the real provider in its place.
+        engine.addImageProvider(QStringLiteral("icontheme"), new TestIconProvider);
         engine.rootContext()->setContextProperty(QStringLiteral("rootWindow"), window.get());
         QQmlComponent component(&engine,
                                 QUrl::fromLocalFile(QStringLiteral(SETTINGS_BLUETOOTH_PAGE)));

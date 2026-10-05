@@ -30,8 +30,11 @@ if(TARGET cutefish-framework-bluetooth AND EXISTS "${settings_page}")
     find_package(Qt6 REQUIRED COMPONENTS Quick)
     add_executable(tst_bluetoothqml tst_bluetoothqml.cpp)
     target_link_libraries(tst_bluetoothqml PRIVATE cutefish-framework-bluetooth Qt6::Quick Qt6::Test)
+    # An unversioned import would load the installed network plugin over the stubs.
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/stubs/Cutefish/Network/qmldir" "module Cutefish.Network\n")
     target_compile_definitions(tst_bluetoothqml PRIVATE
         BLUETOOTH_IMPORT_PATH="${CMAKE_CURRENT_BINARY_DIR}/.."
+        STUB_IMPORT_PATH="${CMAKE_CURRENT_BINARY_DIR}/stubs"
         SETTINGS_BLUETOOTH_PAGE="${settings_page}"
     )
     add_test(NAME bluetooth-qml COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_bluetoothqml>)
