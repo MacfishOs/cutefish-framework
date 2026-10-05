@@ -24,6 +24,7 @@ public:
     void setAlwaysOnTop(wl_surface *surface, bool alwaysOnTop);
     void setResizeAroundCenter(wl_surface *surface, bool center);
     void setServerResize(wl_surface *surface, bool enabled);
+    void setRestoreId(wl_surface *surface, const QString &id);
 
 Q_SIGNALS:
     void availableChanged();

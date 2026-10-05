@@ -111,4 +111,12 @@ void WaylandWindowHints::setServerResize(wl_surface *surface, bool enabled)
     flushDisplay();
 }
 
+void WaylandWindowHints::setRestoreId(wl_surface *surface, const QString &id)
+{
+    if (!m_manager || !surface)
+        return;
+    cutefish_window_hints_v1_set_restore_id(m_manager, surface, id.toUtf8().constData());
+    flushDisplay();
+}
+
 } // namespace Cutefish

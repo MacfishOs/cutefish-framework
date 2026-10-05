@@ -20,6 +20,9 @@ class WindowHints : public QObject
                        NOTIFY resizeAroundCenterChanged)
     // The compositor owns the resize handles along the window's edges.
     Q_PROPERTY(bool serverResize READ serverResize WRITE setServerResize NOTIFY serverResizeChanged)
+    // Non-empty: the window reopens where the last one with this id was left,
+    // for the rest of the session. Set it before the window is first shown.
+    Q_PROPERTY(QString restoreId READ restoreId WRITE setRestoreId NOTIFY restoreIdChanged)
     // True while the user resizes the window by an edge or corner.
     Q_PROPERTY(bool interactiveResize READ interactiveResize NOTIFY interactiveResizeChanged)
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
@@ -37,6 +40,8 @@ public:
     void setResizeAroundCenter(bool center);
     bool serverResize() const { return m_serverResize; }
     void setServerResize(bool enabled);
+    QString restoreId() const { return m_restoreId; }
+    void setRestoreId(const QString &id);
     bool interactiveResize() const { return m_interactiveResize; }
     bool available() const;
 
@@ -45,6 +50,7 @@ Q_SIGNALS:
     void alwaysOnTopChanged();
     void resizeAroundCenterChanged();
     void serverResizeChanged();
+    void restoreIdChanged();
     void interactiveResizeChanged();
     void availableChanged();
 
@@ -64,6 +70,7 @@ private:
     bool m_alwaysOnTop = false;
     bool m_resizeAroundCenter = false;
     bool m_serverResize = false;
+    QString m_restoreId;
     bool m_interactiveResize = false;
     bool m_surfaceDying = false;
 };
