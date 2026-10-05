@@ -12,15 +12,16 @@
 
 using Cutefish::Notification;
 
-namespace {
-const QString kService = QStringLiteral("org.freedesktop.Notifications");
-const QString kPath = QStringLiteral("/org/freedesktop/Notifications");
+static const QString kService = QStringLiteral("org.freedesktop.Notifications");
+static const QString kPath = QStringLiteral("/org/freedesktop/Notifications");
 
 // The fake lives on a connection of its own, so every call crosses the bus.
-QDBusConnection fakeBus()
+static QDBusConnection fakeBus()
 {
     return QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("fake"));
 }
+
+namespace {
 
 struct Call {
     QString appName;
@@ -32,7 +33,8 @@ struct Call {
     QVariantMap hints;
     int timeout;
 };
-}
+
+} // namespace
 
 class FakeServer : public QObject, protected QDBusContext
 {

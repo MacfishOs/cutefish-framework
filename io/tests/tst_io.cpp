@@ -21,16 +21,14 @@
 
 using namespace Cutefish::IO;
 
-namespace {
-
-void writeFile(const QString &path, const QByteArray &data = "contents")
+static void writeFile(const QString &path, const QByteArray &data = "contents")
 {
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly) || file.write(data) != data.size())
         throw Failure(EIO, path);
 }
 
-QByteArray readFile(const QString &path)
+static QByteArray readFile(const QString &path)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
@@ -39,7 +37,7 @@ QByteArray readFile(const QString &path)
     return file.readAll();
 }
 
-template <class F> int errorCode(F action)
+template <class F> static int errorCode(F action)
 {
     try {
         action();
@@ -50,12 +48,10 @@ template <class F> int errorCode(F action)
     return 0;
 }
 
-QUrl local(const QString &path)
+static QUrl local(const QString &path)
 {
     return QUrl::fromLocalFile(path);
 }
-
-} // namespace
 
 class IOTest : public QObject
 {

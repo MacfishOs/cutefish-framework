@@ -9,17 +9,15 @@
 #include <QDBusPendingReply>
 #include <QDBusVariant>
 
-namespace {
-const QString service = QStringLiteral("com.cutefish.Services");
-const QString path = QStringLiteral("/com/cutefish/Services/Battery");
-const QString interface = QStringLiteral("com.cutefish.Services.Battery");
+static const QString service = QStringLiteral("com.cutefish.Services");
+static const QString path = QStringLiteral("/com/cutefish/Services/Battery");
+static const QString interface = QStringLiteral("com.cutefish.Services.Battery");
 
-const QString upowerService = QStringLiteral("org.freedesktop.UPower");
-const QString upowerPath = QStringLiteral("/org/freedesktop/UPower");
-const QString propertiesInterface = QStringLiteral("org.freedesktop.DBus.Properties");
+static const QString upowerService = QStringLiteral("org.freedesktop.UPower");
+static const QString upowerPath = QStringLiteral("/org/freedesktop/UPower");
+static const QString propertiesInterface = QStringLiteral("org.freedesktop.DBus.Properties");
 
-BatteryStatus *s_instance = nullptr;
-} // namespace
+static BatteryStatus *s_instance = nullptr;
 
 BatteryStatus *BatteryStatus::instance()
 {

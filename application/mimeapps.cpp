@@ -10,8 +10,7 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 
-namespace {
-QStringList readEntries(const QStringList &lines, const QString &group, const QString &key)
+static QStringList readEntries(const QStringList &lines, const QString &group, const QString &key)
 {
     QString current;
     for (const QString &line : lines) {
@@ -27,8 +26,8 @@ QStringList readEntries(const QStringList &lines, const QString &group, const QS
     return {};
 }
 
-void writeEntry(QStringList &lines, const QString &group, const QString &key,
-                const QStringList &values)
+static void writeEntry(QStringList &lines, const QString &group, const QString &key,
+                       const QStringList &values)
 {
     const QString entry = key + '=' + values.join(';') + ';';
     QString current;
@@ -58,7 +57,7 @@ void writeEntry(QStringList &lines, const QString &group, const QString &key,
 }
 
 // An entry may carry a "+" (include) or "-" (exclude) prefix and an ":action" suffix.
-QString terminalId(const QString &line)
+static QString terminalId(const QString &line)
 {
     QString entry = line.trimmed();
     if (entry.startsWith('+') || entry.startsWith('-'))
@@ -66,7 +65,7 @@ QString terminalId(const QString &line)
     return entry.section(':', 0, 0);
 }
 
-bool writeLines(const QString &path, const QStringList &lines)
+static bool writeLines(const QString &path, const QStringList &lines)
 {
     QSaveFile output(path);
     if (!output.open(QIODevice::WriteOnly))
@@ -74,7 +73,6 @@ bool writeLines(const QString &path, const QStringList &lines)
     const auto data = (lines.join('\n') + '\n').toUtf8();
     return output.write(data) == data.size() && output.commit();
 }
-} // namespace
 
 QString MimeApps::userListPath()
 {

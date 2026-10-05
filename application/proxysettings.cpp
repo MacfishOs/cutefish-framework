@@ -3,16 +3,14 @@
 
 #include <QUrl>
 
-namespace
-{
-const QString kProxyGroup = QStringLiteral("system/proxy");
+static const QString kProxyGroup = QStringLiteral("system/proxy");
 
-QString serverGroup(const QString &scheme)
+static QString serverGroup(const QString &scheme)
 {
     return kProxyGroup + QLatin1Char('/') + scheme;
 }
 
-ProxySettings::Server loadServer(const KeyFile::Group &values, int defaultPort)
+static ProxySettings::Server loadServer(const KeyFile::Group &values, int defaultPort)
 {
     ProxySettings::Server server;
     server.host = GSettingsKeyfile::toString(values.value(QStringLiteral("host")));
@@ -20,7 +18,7 @@ ProxySettings::Server loadServer(const KeyFile::Group &values, int defaultPort)
     return server;
 }
 
-void saveServer(const QString &scheme, const ProxySettings::Server &server)
+static void saveServer(const QString &scheme, const ProxySettings::Server &server)
 {
     GSettingsKeyfile::writeGroup(serverGroup(scheme), {
         {QStringLiteral("host"), server.host},
@@ -28,7 +26,7 @@ void saveServer(const QString &scheme, const ProxySettings::Server &server)
     });
 }
 
-QString hostPort(const ProxySettings::Server &server)
+static QString hostPort(const ProxySettings::Server &server)
 {
     QString host = server.host;
     if (host.contains(QLatin1Char(':')) && !host.startsWith(QLatin1Char('[')))
@@ -36,7 +34,7 @@ QString hostPort(const ProxySettings::Server &server)
     return host + QLatin1Char(':') + QString::number(server.port);
 }
 
-QString modeName(ProxySettings::Mode mode)
+static QString modeName(ProxySettings::Mode mode)
 {
     switch (mode) {
     case ProxySettings::Auto:
@@ -48,14 +46,13 @@ QString modeName(ProxySettings::Mode mode)
     }
 }
 
-ProxySettings::Mode modeFromName(const QString &name)
+static ProxySettings::Mode modeFromName(const QString &name)
 {
     if (name == QLatin1String("auto"))
         return ProxySettings::Auto;
     if (name == QLatin1String("manual"))
         return ProxySettings::Manual;
     return ProxySettings::None;
-}
 }
 
 bool ProxySettings::Server::isValid() const

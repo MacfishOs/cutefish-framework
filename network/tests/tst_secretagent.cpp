@@ -9,21 +9,19 @@
 
 #include <memory>
 
-namespace {
-
-const QString agentPath = QStringLiteral("/org/freedesktop/NetworkManager/SecretAgent");
-const QString agentInterface = QStringLiteral("org.freedesktop.NetworkManager.SecretAgent");
-const QString connectionPath = QStringLiteral("/org/freedesktop/NetworkManager/Settings/7");
-const QString uuid = QStringLiteral("5e3c1b64-3b43-4a2c-9d53-0d6c1a1f4f10");
-const QString wirelessSecurity = QStringLiteral("802-11-wireless-security");
+static const QString agentPath = QStringLiteral("/org/freedesktop/NetworkManager/SecretAgent");
+static const QString agentInterface = QStringLiteral("org.freedesktop.NetworkManager.SecretAgent");
+static const QString connectionPath = QStringLiteral("/org/freedesktop/NetworkManager/Settings/7");
+static const QString uuid = QStringLiteral("5e3c1b64-3b43-4a2c-9d53-0d6c1a1f4f10");
+static const QString wirelessSecurity = QStringLiteral("802-11-wireless-security");
 
 // NMSecretAgentGetSecretsFlags
-constexpr uint allowInteraction = 0x1;
-constexpr uint requestNew = 0x2;
-constexpr uint userRequested = 0x4;
-constexpr uint noErrors = 0x40000000;
+static constexpr uint allowInteraction = 0x1;
+static constexpr uint requestNew = 0x2;
+static constexpr uint userRequested = 0x4;
+static constexpr uint noErrors = 0x40000000;
 
-NMVariantMapMap wpaConnection(uint pskFlags = 0)
+static NMVariantMapMap wpaConnection(uint pskFlags = 0)
 {
     NMVariantMapMap connection;
     connection[QStringLiteral("connection")] = {{QStringLiteral("id"), QStringLiteral("Cafe")},
@@ -33,7 +31,7 @@ NMVariantMapMap wpaConnection(uint pskFlags = 0)
     return connection;
 }
 
-NMVariantMapMap vpnConnection(const QString &service, const QMap<QString, QString> &data)
+static NMVariantMapMap vpnConnection(const QString &service, const QMap<QString, QString> &data)
 {
     NMVariantMapMap connection;
     connection[QStringLiteral("connection")] = {{QStringLiteral("id"), QStringLiteral("Office")},
@@ -43,11 +41,9 @@ NMVariantMapMap vpnConnection(const QString &service, const QMap<QString, QStrin
     return connection;
 }
 
-const QString openvpn = QStringLiteral("org.freedesktop.NetworkManager.openvpn");
-const QMap<QString, QString> passwordData {{QStringLiteral("connection-type"), QStringLiteral("password")},
-                                           {QStringLiteral("password-flags"), QStringLiteral("1")}};
-
-} // namespace
+static const QString openvpn = QStringLiteral("org.freedesktop.NetworkManager.openvpn");
+static const QMap<QString, QString> passwordData {{QStringLiteral("connection-type"), QStringLiteral("password")},
+                                                  {QStringLiteral("password-flags"), QStringLiteral("1")}};
 
 class SecretAgentTest : public QObject
 {

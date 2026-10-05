@@ -6,11 +6,7 @@
 
 namespace QtAccountsService {
 
-namespace {
-
-const QString userPathPrefix = QStringLiteral("/org/freedesktop/Accounts/User");
-
-}
+static const QString userPathPrefix = QStringLiteral("/org/freedesktop/Accounts/User");
 
 AccountsManagerPrivate::AccountsManagerPrivate(AccountsManager *manager,
                                                const QDBusConnection &bus)

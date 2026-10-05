@@ -45,13 +45,13 @@ void Internal::eraseAt(int parent, const QByteArray &name, const QString &path,
     ctx.advance(0);
 }
 
-namespace {
-
 // Copies drive their own writeback so the page cache holds a bounded amount of unwritten data:
 // progress follows the disk, and a slow drive can be ejected soon after the copy ends.
-constexpr off_t kWritebackChunk = 8 * 1024 * 1024;
-constexpr off_t kWritebackLimit = 32 * 1024 * 1024;
-constexpr size_t kWritebackFiles = 256;
+static constexpr off_t kWritebackChunk = 8 * 1024 * 1024;
+static constexpr off_t kWritebackLimit = 32 * 1024 * 1024;
+static constexpr size_t kWritebackFiles = 256;
+
+namespace {
 
 class Writeback
 {
@@ -105,8 +105,10 @@ private:
     off_t m_pending = 0;
 };
 
-void copyAt(int sourceParent, const QByteArray &source, int targetParent, const QByteArray &target,
-            const QString &path, OperationContext &ctx, Writeback &writeback)
+} // namespace
+
+static void copyAt(int sourceParent, const QByteArray &source, int targetParent, const QByteArray &target,
+                   const QString &path, OperationContext &ctx, Writeback &writeback)
 {
     ctx.checkpoint(path);
 
@@ -283,7 +285,7 @@ void copyAt(int sourceParent, const QByteArray &source, int targetParent, const 
     ++ctx.files;
 }
 
-void validateDestination(const QString &source, const QString &destination)
+static void validateDestination(const QString &source, const QString &destination)
 {
     const auto src = QFileInfo(source).canonicalFilePath();
     const auto dstParent = QFileInfo(QFileInfo(destination).absolutePath()).canonicalFilePath();
@@ -297,7 +299,7 @@ void validateDestination(const QString &source, const QString &destination)
         throw Failure(EINVAL, destination);
 }
 
-void mergeStaged(int source, int target, const QString &path, OperationContext &ctx)
+static void mergeStaged(int source, int target, const QString &path, OperationContext &ctx)
 {
     children(source, path, [&](const QByteArray &name, const QString &childPath) {
         ctx.checkpoint(childPath);
@@ -320,8 +322,8 @@ void mergeStaged(int source, int target, const QString &path, OperationContext &
     });
 }
 
-QString publish(int parent, const QByteArray &temporary, const QString &source,
-                const QString &destination, ConflictPolicy policy, OperationContext &ctx)
+static QString publish(int parent, const QByteArray &temporary, const QString &source,
+                       const QString &destination, ConflictPolicy policy, OperationContext &ctx)
 {
     QByteArray name = native(QFileInfo(destination).fileName());
     int suffix = 1;
@@ -378,8 +380,6 @@ QString publish(int parent, const QByteArray &temporary, const QString &source,
         name = native(base + QString(" (%1)").arg(suffix++) + extension);
     }
 }
-
-} // namespace
 
 QString LocalFileSystem::copy(const QString &source, const QString &destination,
                               ConflictPolicy policy, OperationContext &ctx)

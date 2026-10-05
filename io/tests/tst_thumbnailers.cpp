@@ -15,27 +15,23 @@
 
 #include <unistd.h>
 
-namespace {
-
-void writeFile(const QString &path, const QByteArray &data)
+static void writeFile(const QString &path, const QByteArray &data)
 {
     QFile file(path);
     QVERIFY(file.open(QIODevice::WriteOnly));
     QCOMPARE(file.write(data), data.size());
 }
 
-QByteArray readFile(const QString &path)
+static QByteArray readFile(const QString &path)
 {
     QFile file(path);
     return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
 }
 
-QString localUrl(const QString &path)
+static QString localUrl(const QString &path)
 {
     return QUrl::fromLocalFile(path).toString();
 }
-
-} // namespace
 
 class ThumbnailersTest : public QObject
 {

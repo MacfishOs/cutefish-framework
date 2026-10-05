@@ -37,26 +37,24 @@
 
 using namespace NetworkDBus;
 
-namespace {
-
 // The shell's secret agent, which asks for a new network's password up front.
-const QString promptService = QStringLiteral("com.cutefish.SecretAgent");
-const QString promptPath = QStringLiteral("/SecretAgent");
-const QString promptInterface = QStringLiteral("com.cutefish.SecretAgent");
+static const QString promptService = QStringLiteral("com.cutefish.SecretAgent");
+static const QString promptPath = QStringLiteral("/SecretAgent");
+static const QString promptInterface = QStringLiteral("com.cutefish.SecretAgent");
 
-const QString wirelessSecurity = QStringLiteral("802-11-wireless-security");
+static const QString wirelessSecurity = QStringLiteral("802-11-wireless-security");
 
 // Activations and profile changes may wait on an administrator password.
-constexpr int kAuthorizedCallTimeoutMs = 2 * 60 * 1000;
-constexpr int kForgetWatchTimeoutMs = 2 * 60 * 1000;
+static constexpr int kAuthorizedCallTimeoutMs = 2 * 60 * 1000;
+static constexpr int kForgetWatchTimeoutMs = 2 * 60 * 1000;
 
-QVariant objectPath(const QString &path)
+static QVariant objectPath(const QString &path)
 {
     return QVariant::fromValue(QDBusObjectPath(path.isEmpty() ? QStringLiteral("/") : path));
 }
 
 // At most 32 bytes, cut on a character boundary.
-QByteArray ssidBytes(const QString &name)
+static QByteArray ssidBytes(const QString &name)
 {
     QByteArray bytes = name.toUtf8();
     if (bytes.size() <= 32)
@@ -66,8 +64,6 @@ QByteArray ssidBytes(const QString &name)
         --size;
     return bytes.left(size);
 }
-
-} // namespace
 
 Handler::Handler(QObject *parent)
     : QObject(parent)

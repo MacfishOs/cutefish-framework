@@ -9,9 +9,7 @@
 #include <QMap>
 #include <QStandardPaths>
 
-namespace {
-
-QStringList splitList(const QString &value)
+static QStringList splitList(const QString &value)
 {
     QStringList result;
     for (const QString &item : value.split(QLatin1Char(';'), Qt::SkipEmptyParts))
@@ -19,7 +17,7 @@ QStringList splitList(const QString &value)
     return result;
 }
 
-QString unescapeValue(const QString &value)
+static QString unescapeValue(const QString &value)
 {
     // One pass, so an escaped backslash cannot start another escape.
     QString result;
@@ -60,13 +58,13 @@ QString unescapeValue(const QString &value)
     return result;
 }
 
-bool parseBool(const QString &value)
+static bool parseBool(const QString &value)
 {
     return value.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0;
 }
 
 // TryExec may be a bare name to look up in PATH or an absolute path.
-bool executableExists(const QString &program)
+static bool executableExists(const QString &program)
 {
     if (program.contains(QLatin1Char('/'))) {
         const QFileInfo info(program);
@@ -75,7 +73,7 @@ bool executableExists(const QString &program)
     return !QStandardPaths::findExecutable(program).isEmpty();
 }
 
-bool listContainsDesktop(const QStringList &list, const QStringList &desktops)
+static bool listContainsDesktop(const QStringList &list, const QStringList &desktops)
 {
     for (const QString &wanted : list) {
         for (const QString &current : desktops) {
@@ -87,7 +85,7 @@ bool listContainsDesktop(const QStringList &list, const QStringList &desktops)
 }
 
 // XDG locale matching order: lang_COUNTRY@MODIFIER, lang_COUNTRY, lang@MODIFIER, lang.
-QStringList localeCandidates(const QString &language)
+static QStringList localeCandidates(const QString &language)
 {
     const int modifierStart = language.indexOf(QLatin1Char('@'));
     const QString modifier = modifierStart < 0 ? QString() : language.mid(modifierStart);
@@ -106,10 +104,10 @@ QStringList localeCandidates(const QString &language)
     return candidates;
 }
 
-QString localizedValue(const QMap<QString, QString> &values,
-                       const QMap<QString, QString> &localized,
-                       const QString &key,
-                       const QStringList &candidates)
+static QString localizedValue(const QMap<QString, QString> &values,
+                              const QMap<QString, QString> &localized,
+                              const QString &key,
+                              const QStringList &candidates)
 {
     for (const QString &candidate : candidates) {
         const auto it = localized.constFind(key + QLatin1Char('[') + candidate
@@ -121,7 +119,7 @@ QString localizedValue(const QMap<QString, QString> &values,
     return values.value(key);
 }
 
-QStringList tokenizeExec(const QString &exec)
+static QStringList tokenizeExec(const QString &exec)
 {
     QStringList result;
     QString token;
@@ -165,8 +163,8 @@ QStringList tokenizeExec(const QString &exec)
     return result;
 }
 
-QString substituteToken(const QString &token, const DesktopEntry *entry,
-                        const QStringList &arguments)
+static QString substituteToken(const QString &token, const DesktopEntry *entry,
+                               const QStringList &arguments)
 {
     QString result;
 
@@ -195,8 +193,6 @@ QString substituteToken(const QString &token, const DesktopEntry *entry,
 
     return result;
 }
-
-} // namespace
 
 DesktopEntry::DesktopEntry(const QString &id, QObject *parent)
     : QObject(parent)

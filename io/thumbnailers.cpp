@@ -17,18 +17,17 @@
 #include <signal.h>
 #include <unistd.h>
 
-namespace {
 // Decoders of untrusted media can hang; a stuck one must not hold a pool thread for good.
-constexpr int timeoutMs = 10000;
-constexpr qint64 refreshIntervalMs = 3000;
+static constexpr int timeoutMs = 10000;
+static constexpr qint64 refreshIntervalMs = 3000;
 
-QString canonicalName(const QString &mimeType)
+static QString canonicalName(const QString &mimeType)
 {
     const QMimeType type = QMimeDatabase().mimeTypeForName(mimeType);
     return type.isValid() ? type.name() : mimeType;
 }
 
-QStringList thumbnailerDirectories()
+static QStringList thumbnailerDirectories()
 {
     QStringList directories;
     for (const QString &data : QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation))
@@ -37,7 +36,7 @@ QStringList thumbnailerDirectories()
     return directories;
 }
 
-bool isRunnable(const QString &program)
+static bool isRunnable(const QString &program)
 {
     if (program.isEmpty())
         return false;
@@ -48,14 +47,18 @@ bool isRunnable(const QString &program)
     return !QStandardPaths::findExecutable(program).isEmpty();
 }
 
+namespace {
+
 struct Entry
 {
     QStringList command;
     QStringList mimeTypes;
 };
 
+} // namespace
+
 // The key file subset thumbnailers use: one group, plain keys, no localized values.
-Entry parseEntry(const QString &path)
+static Entry parseEntry(const QString &path)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -97,8 +100,8 @@ Entry parseEntry(const QString &path)
     return {command, mimeTypes.split(u';', Qt::SkipEmptyParts)};
 }
 
-QStringList expand(const QStringList &command, const QString &input, const QString &output,
-                   int size)
+static QStringList expand(const QStringList &command, const QString &input, const QString &output,
+                          int size)
 {
     QStringList arguments;
     for (const QString &argument : command) {
@@ -125,7 +128,6 @@ QStringList expand(const QStringList &command, const QString &input, const QStri
     }
 
     return arguments;
-}
 }
 
 Thumbnailers *Thumbnailers::self()

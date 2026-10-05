@@ -15,25 +15,28 @@
 #include <QUrl>
 
 namespace {
+
 struct Flavor
 {
     int size;
     const char *name;
 };
 
+} // namespace
+
 // Sizes and names follow the freedesktop.org Thumbnail Managing Standard.
-constexpr Flavor flavors[] = {
+static constexpr Flavor flavors[] = {
     {128, "normal"},
     {256, "large"},
     {512, "x-large"},
     {1024, "xx-large"},
 };
 
-const QString uriKey = QStringLiteral("Thumb::URI");
-const QString mtimeKey = QStringLiteral("Thumb::MTime");
-const QString sizeKey = QStringLiteral("Thumb::Size");
+static const QString uriKey = QStringLiteral("Thumb::URI");
+static const QString mtimeKey = QStringLiteral("Thumb::MTime");
+static const QString sizeKey = QStringLiteral("Thumb::Size");
 
-const Flavor &flavorFor(const QSize &requestedSize)
+static const Flavor &flavorFor(const QSize &requestedSize)
 {
     const int extent = qMax(requestedSize.width(), requestedSize.height());
     for (const Flavor &flavor : flavors) {
@@ -44,7 +47,7 @@ const Flavor &flavorFor(const QSize &requestedSize)
     return flavors[std::size(flavors) - 1];
 }
 
-bool ensurePrivateDirectory(const QString &path)
+static bool ensurePrivateDirectory(const QString &path)
 {
     if (QFileInfo(path).isDir())
         return true;
@@ -56,7 +59,7 @@ bool ensurePrivateDirectory(const QString &path)
 }
 
 // QImageReader::text() splits keys at the first colon, so only a decoded image sees Thumb::*.
-bool isCurrent(const QImage &image, const QString &uri, qint64 mtime, qint64 size)
+static bool isCurrent(const QImage &image, const QString &uri, qint64 mtime, qint64 size)
 {
     if (image.isNull() || image.text(uriKey) != uri)
         return false;
@@ -71,18 +74,20 @@ bool isCurrent(const QImage &image, const QString &uri, qint64 mtime, qint64 siz
     return cachedSize.isEmpty() || cachedSize.toLongLong() == size;
 }
 
-bool isReadableMimeType(const QString &mimeType)
+static bool isReadableMimeType(const QString &mimeType)
 {
     static const QList<QByteArray> readable = QImageReader::supportedMimeTypes();
     return readable.contains(mimeType.toLatin1());
 }
 
-void setMetadata(QImage &image, const QString &uri, qint64 mtime, qint64 size)
+static void setMetadata(QImage &image, const QString &uri, qint64 mtime, qint64 size)
 {
     image.setText(uriKey, uri);
     image.setText(mtimeKey, QString::number(mtime));
     image.setText(sizeKey, QString::number(size));
 }
+
+namespace {
 
 // Where the thumbnail of one file at one size lives in the cache.
 struct Entry
@@ -101,7 +106,9 @@ struct Entry
     QString failTarget;
 };
 
-Entry locate(const QString &filePath, const QSize &requestedSize)
+} // namespace
+
+static Entry locate(const QString &filePath, const QSize &requestedSize)
 {
     Entry entry;
     if (!requestedSize.isValid() || requestedSize.isEmpty())
@@ -132,7 +139,6 @@ Entry locate(const QString &filePath, const QSize &requestedSize)
     entry.failDirectory = entry.root + QStringLiteral("/fail/cutefish");
     entry.failTarget = entry.failDirectory + '/' + name;
     return entry;
-}
 }
 
 ThumbnailCache *ThumbnailCache::self()

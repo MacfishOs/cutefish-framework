@@ -10,9 +10,10 @@
 
 using cutefish::display::ipc::ErrorCode;
 
+static const QString serviceName = QStringLiteral("com.cutefish.DisplayConfig.ClientTest");
+static const QString objectPath = QStringLiteral("/com/cutefish/DisplayConfig1");
+
 namespace {
-const QString serviceName = QStringLiteral("com.cutefish.DisplayConfig.ClientTest");
-const QString objectPath = QStringLiteral("/com/cutefish/DisplayConfig1");
 
 class FakeDisplayConfig : public QObject
 {
@@ -114,6 +115,7 @@ struct Result {
     bool succeeded = false;
     ErrorCode error = ErrorCode::None;
 };
+
 } // namespace
 
 class DisplayClientTest : public QObject

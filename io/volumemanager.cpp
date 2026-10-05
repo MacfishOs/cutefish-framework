@@ -10,23 +10,19 @@
 
 namespace Cutefish::IO {
 
-namespace {
+static const QString service = QStringLiteral("org.freedesktop.UDisks2");
+static const QString root = QStringLiteral("/org/freedesktop/UDisks2");
+static const QString blockInterface = service + ".Block";
+static const QString driveInterface = service + ".Drive";
+static const QString filesystemInterface = service + ".Filesystem";
 
-const QString service = QStringLiteral("org.freedesktop.UDisks2");
-const QString root = QStringLiteral("/org/freedesktop/UDisks2");
-const QString blockInterface = service + ".Block";
-const QString driveInterface = service + ".Drive";
-const QString filesystemInterface = service + ".Filesystem";
-
-QString decodePath(QByteArray bytes)
+static QString decodePath(QByteArray bytes)
 {
     if (bytes.endsWith('\0'))
         bytes.chop(1);
 
     return QFile::decodeName(bytes);
 }
-
-} // namespace
 
 VolumeManager::VolumeManager(QObject *parent)
     : VolumeManager(QDBusConnection::systemBus(), parent)

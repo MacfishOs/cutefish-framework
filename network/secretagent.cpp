@@ -11,34 +11,32 @@
 
 using namespace NetworkDBus;
 
-namespace {
+static const QString connectionSetting = QStringLiteral("connection");
+static const QString wirelessSecurity = QStringLiteral("802-11-wireless-security");
+static const QString ieee8021x = QStringLiteral("802-1x");
+static const QString agentIdentifier = QStringLiteral("com.cutefish.network");
 
-const QString connectionSetting = QStringLiteral("connection");
-const QString wirelessSecurity = QStringLiteral("802-11-wireless-security");
-const QString ieee8021x = QStringLiteral("802-1x");
-const QString agentIdentifier = QStringLiteral("com.cutefish.network");
-
-const QString noSecrets = QStringLiteral("org.freedesktop.NetworkManager.SecretAgent.NoSecrets");
-const QString userCanceled = QStringLiteral("org.freedesktop.NetworkManager.SecretAgent.UserCanceled");
-const QString agentCanceled = QStringLiteral("org.freedesktop.NetworkManager.SecretAgent.AgentCanceled");
-const QString permissionDenied =
+static const QString noSecrets = QStringLiteral("org.freedesktop.NetworkManager.SecretAgent.NoSecrets");
+static const QString userCanceled = QStringLiteral("org.freedesktop.NetworkManager.SecretAgent.UserCanceled");
+static const QString agentCanceled = QStringLiteral("org.freedesktop.NetworkManager.SecretAgent.AgentCanceled");
+static const QString permissionDenied =
         QStringLiteral("org.freedesktop.NetworkManager.SecretAgent.PermissionDenied");
 
 // NetworkManager keeps one flags property for all four WEP keys.
-QString flagsKey(const QString &key)
+static QString flagsKey(const QString &key)
 {
     if (key.startsWith(QLatin1String("wep-key")) && key.size() == 8)
         return QStringLiteral("wep-key-flags");
     return key + QLatin1String("-flags");
 }
 
-bool savedByAgent(uint flags)
+static bool savedByAgent(uint flags)
 {
     return (flags & SecretAgentOwned) && !(flags & SecretNotSaved);
 }
 
 // A VPN's data and secrets: string to string, nested in the vpn setting.
-QMap<QString, QString> stringMap(const QVariant &value)
+static QMap<QString, QString> stringMap(const QVariant &value)
 {
     QMap<QString, QString> map;
     const QVariantMap entries = NetworkDBus::plain(value).toMap();
@@ -46,8 +44,6 @@ QMap<QString, QString> stringMap(const QVariant &value)
         map.insert(it.key(), it.value().toString());
     return map;
 }
-
-} // namespace
 
 // The object NetworkManager calls. It stays out of the QML type, which also serves the
 // session's own com.cutefish.SecretAgent interface.

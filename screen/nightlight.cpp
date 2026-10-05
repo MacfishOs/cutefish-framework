@@ -9,13 +9,9 @@
 #include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
 
-namespace {
-
-const QString s_service = QStringLiteral("com.cutefish.Services");
-const QString s_path = QStringLiteral("/com/cutefish/Services/NightLight");
-const QString s_interface = QStringLiteral("com.cutefish.Services.NightLight");
-
-} // namespace
+static const QString s_service = QStringLiteral("com.cutefish.Services");
+static const QString s_path = QStringLiteral("/com/cutefish/Services/NightLight");
+static const QString s_interface = QStringLiteral("com.cutefish.Services.NightLight");
 
 NightLight::NightLight(QObject *parent)
     : QObject(parent)

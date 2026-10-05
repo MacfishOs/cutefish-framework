@@ -10,9 +10,7 @@
 #include <locale.h>
 #include <langinfo.h>
 
-namespace
-{
-QString posixLanguage(const QString &code)
+static QString posixLanguage(const QString &code)
 {
     const QLocale locale(code);
     if (locale.language() == QLocale::C)
@@ -28,14 +26,14 @@ QString posixLanguage(const QString &code)
     return name;
 }
 
-QString utf8Locale(QString name)
+static QString utf8Locale(QString name)
 {
     const int modifier = name.indexOf('@');
     name.insert(modifier < 0 ? name.size() : modifier, ".UTF-8");
     return name;
 }
 
-bool isAvailable(const QString &name)
+static bool isAvailable(const QString &name)
 {
     locale_t locale = newlocale(LC_ALL_MASK, name.toUtf8().constData(), nullptr);
     if (!locale)
@@ -44,7 +42,7 @@ bool isAvailable(const QString &name)
     return true;
 }
 
-bool isUtf8Locale(const QString &name)
+static bool isUtf8Locale(const QString &name)
 {
     locale_t locale = newlocale(LC_ALL_MASK, name.toUtf8().constData(), nullptr);
     if (!locale)
@@ -54,7 +52,7 @@ bool isUtf8Locale(const QString &name)
     return encoding == "UTF-8" || encoding == "UTF8";
 }
 
-QString fallbackLocale()
+static QString fallbackLocale()
 {
     if (isAvailable("en_US.UTF-8"))
         return QStringLiteral("en_US.UTF-8");
@@ -73,7 +71,6 @@ QString fallbackLocale()
         return QStringLiteral("C.UTF-8");
     }();
     return installedLocale;
-}
 }
 
 QString LanguageEnvironment::systemLanguage()

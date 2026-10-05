@@ -4,9 +4,7 @@
 #include <QDBusMetaType>
 #include <QDBusVariant>
 
-namespace {
-
-QVariant read(const QDBusArgument &argument)
+static QVariant read(const QDBusArgument &argument)
 {
     switch (argument.currentType()) {
     case QDBusArgument::BasicType:
@@ -62,8 +60,6 @@ QVariant read(const QDBusArgument &argument)
         return {};
     }
 }
-
-} // namespace
 
 QVariant NetworkDBus::plain(const QVariant &value)
 {

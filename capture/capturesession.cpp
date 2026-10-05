@@ -25,10 +25,8 @@
 
 Q_LOGGING_CATEGORY(cfCapture, "cutefish.capture", QtWarningMsg)
 
-namespace {
-
 // The DRM node with this st_rdev, which is how the compositor names its device.
-QString nodeFor(dev_t device)
+static QString nodeFor(dev_t device)
 {
     QDirIterator nodes(QStringLiteral("/dev/dri"), QDir::System | QDir::Files);
     while (nodes.hasNext()) {
@@ -43,7 +41,7 @@ QString nodeFor(dev_t device)
 // An implicit modifier (INVALID) is what a driver without modifiers reports for
 // a buffer allocated linear by flag, as amdgpu does; only the flag form makes
 // one. Some backends also refuse the modifier form for LINEAR itself.
-gbm_bo *allocateBo(gbm_device *gbm, const QSize &size, uint32_t format, uint64_t modifier)
+static gbm_bo *allocateBo(gbm_device *gbm, const QSize &size, uint32_t format, uint64_t modifier)
 {
     const auto width = uint32_t(size.width());
     const auto height = uint32_t(size.height());
@@ -56,8 +54,6 @@ gbm_bo *allocateBo(gbm_device *gbm, const QSize &size, uint32_t format, uint64_t
     }
     return gbm_bo_create(gbm, width, height, format, GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
 }
-
-} // namespace
 
 struct CaptureSessionListeners {
     static void bufferSize(void *data, ext_image_copy_capture_session_v1 *, uint32_t width,

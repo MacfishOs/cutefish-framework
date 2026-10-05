@@ -6,10 +6,8 @@
 #include <cctype>
 
 namespace CutefishAudio {
-namespace {
-constexpr int ObjectRole = Qt::UserRole + 1;
-constexpr int SortByDefaultRole = ObjectRole + 1;
-}
+static constexpr int ObjectRole = Qt::UserRole + 1;
+static constexpr int SortByDefaultRole = ObjectRole + 1;
 
 AudioModel::AudioModel(AudioObject::Kind kind, Backend *backend, QObject *parent)
     : QAbstractListModel(parent)

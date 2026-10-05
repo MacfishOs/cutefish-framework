@@ -31,11 +31,11 @@
 
 using namespace NetworkDBus;
 
-namespace {
+static const QString connectionSetting = QStringLiteral("connection");
+static const QString wirelessSetting = QStringLiteral("802-11-wireless");
+static const QString wirelessSecurity = QStringLiteral("802-11-wireless-security");
 
-const QString connectionSetting = QStringLiteral("connection");
-const QString wirelessSetting = QStringLiteral("802-11-wireless");
-const QString wirelessSecurity = QStringLiteral("802-11-wireless-security");
+namespace {
 
 // How networks are told apart: by what joining one asks for, not by the exact scheme, so
 // a router whose bands differ only in WPA2 and WPA3 is still one network.
@@ -46,7 +46,9 @@ enum class SecurityClass {
     Enterprise,
 };
 
-SecurityClass classOf(Enums::SecurityType type)
+} // namespace
+
+static SecurityClass classOf(Enums::SecurityType type)
 {
     switch (type) {
     case Enums::StaticWep:
@@ -66,7 +68,7 @@ SecurityClass classOf(Enums::SecurityType type)
     }
 }
 
-SecurityClass profileClass(const NetworkClient *client, const QString &profile)
+static SecurityClass profileClass(const NetworkClient *client, const QString &profile)
 {
     if (!client->settings(profile).contains(wirelessSecurity))
         return SecurityClass::Open;
@@ -81,25 +83,25 @@ SecurityClass profileClass(const NetworkClient *client, const QString &profile)
     return SecurityClass::Personal;
 }
 
-bool isPort(const NetworkClient *client, const QString &profile)
+static bool isPort(const NetworkClient *client, const QString &profile)
 {
     return !client->setting(profile, connectionSetting, QStringLiteral("controller")).toString().isEmpty()
             || !client->setting(profile, connectionSetting, QStringLiteral("master")).toString().isEmpty();
 }
 
-QDateTime lastUsed(const NetworkClient *client, const QString &profile)
+static QDateTime lastUsed(const NetworkClient *client, const QString &profile)
 {
     const qulonglong seconds = client->setting(profile, connectionSetting, QStringLiteral("timestamp")).toULongLong();
     return seconds ? QDateTime::fromSecsSinceEpoch(qint64(seconds)) : QDateTime();
 }
 
-QString profileOf(const NetworkClient *client, const QString &active)
+static QString profileOf(const NetworkClient *client, const QString &active)
 {
     return NetworkClient::path(client->property(active, activeInterface, QStringLiteral("Connection")));
 }
 
 // The profiles NetworkManager would activate on the device, and the one it has active.
-QStringList profilesFor(const NetworkClient *client, const QString &device, const QString &type)
+static QStringList profilesFor(const NetworkClient *client, const QString &device, const QString &type)
 {
     QStringList profiles;
     QStringList candidates = client->property(device, deviceInterface, QStringLiteral("AvailableConnections")).toStringList();
@@ -116,7 +118,7 @@ QStringList profilesFor(const NetworkClient *client, const QString &device, cons
     return profiles;
 }
 
-QString firstAddress(const QVariantList &addressData, bool skipLinkLocal)
+static QString firstAddress(const QVariantList &addressData, bool skipLinkLocal)
 {
     QString fallback;
     for (const QVariant &entry : addressData) {
@@ -128,8 +130,6 @@ QString firstAddress(const QVariantList &addressData, bool skipLinkLocal)
     }
     return fallback;
 }
-
-} // namespace
 
 NetworkModel::NetworkModel(QObject *parent)
     : QAbstractListModel(parent)

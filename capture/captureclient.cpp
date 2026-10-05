@@ -11,11 +11,9 @@
 #include "linux-dmabuf-v1-client-protocol.h"
 #include "xdg-output-unstable-v1-client-protocol.h"
 
-namespace {
-
 // Only a release tells the compositor; a plain destroy leaves the server
 // object until the connection closes.
-void releaseOutput(const CaptureClient::Output &output)
+static void releaseOutput(const CaptureClient::Output &output)
 {
     if (output.xdgOutput)
         zxdg_output_v1_destroy(output.xdgOutput);
@@ -24,8 +22,6 @@ void releaseOutput(const CaptureClient::Output &output)
     else
         wl_output_destroy(output.output);
 }
-
-} // namespace
 
 struct CaptureClientListeners {
     static void global(void *data, wl_registry *registry, uint32_t name, const char *interface,

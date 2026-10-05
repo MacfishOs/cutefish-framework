@@ -8,8 +8,7 @@
 
 #include <algorithm>
 
-namespace {
-const QStringList imageNameFilters = {
+static const QStringList imageNameFilters = {
     QStringLiteral("*.jpg"),  QStringLiteral("*.jpeg"), QStringLiteral("*.png"),
     QStringLiteral("*.webp"), QStringLiteral("*.bmp"),  QStringLiteral("*.tif"),
     QStringLiteral("*.tiff"), QStringLiteral("*.avif"),
@@ -17,7 +16,7 @@ const QStringList imageNameFilters = {
 
 // Sorted by file name, not by path: a wallpaper library may hold
 // subdirectories, and what is read in the grid is the name.
-void sortByFileName(QStringList &paths)
+static void sortByFileName(QStringList &paths)
 {
     QCollator collator;
     collator.setNumericMode(true);
@@ -28,7 +27,7 @@ void sortByFileName(QStringList &paths)
     });
 }
 
-QStringList wallpapersIn(const QStringList &directories)
+static QStringList wallpapersIn(const QStringList &directories)
 {
     QStringList result;
     for (const QString &directory : directories) {
@@ -42,7 +41,6 @@ QStringList wallpapersIn(const QStringList &directories)
     sortByFileName(result);
     return result;
 }
-} // namespace
 
 Wallpaper::Wallpaper(QObject *parent)
     : Appearance(parent)

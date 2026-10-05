@@ -17,30 +17,28 @@
 
 namespace Cutefish {
 
-namespace {
-
-constexpr qreal friction = 4.5;
-constexpr qreal springFrequency = 18.0;
-constexpr qreal rubberBandResistance = 0.55;
-constexpr qreal minimumFlickSpeed = 40.0;
-constexpr qreal maximumFlickSpeed = 6000.0;
-constexpr qreal stopSpeed = 5.0;
-constexpr qreal velocityTimeout = 80;
+static constexpr qreal friction = 4.5;
+static constexpr qreal springFrequency = 18.0;
+static constexpr qreal rubberBandResistance = 0.55;
+static constexpr qreal minimumFlickSpeed = 40.0;
+static constexpr qreal maximumFlickSpeed = 6000.0;
+static constexpr qreal stopSpeed = 5.0;
+static constexpr qreal velocityTimeout = 80;
 // The flick velocity is a line fitted to the last samples of this window.
-constexpr qreal velocityWindow = 100;
-constexpr int velocitySamples = 10;
+static constexpr qreal velocityWindow = 100;
+static constexpr int velocitySamples = 10;
 // Frames predict past the last sample only while samples arrive at a steady rate.
-constexpr qreal minimumSampleInterval = 2;
-constexpr qreal maximumSampleInterval = 20;
-constexpr qreal maximumPrediction = 8;
+static constexpr qreal minimumSampleInterval = 2;
+static constexpr qreal maximumSampleInterval = 20;
+static constexpr qreal maximumPrediction = 8;
 // A release faster than this turns the page however little it moved.
-constexpr qreal pageFlickSpeed = 400.0;
-constexpr qreal snapDuration = 180;
-constexpr qreal snapPageDuration = 220;
-constexpr qreal minimumSnapDuration = 120;
-constexpr qreal never = -std::numeric_limits<qreal>::infinity();
+static constexpr qreal pageFlickSpeed = 400.0;
+static constexpr qreal snapDuration = 180;
+static constexpr qreal snapPageDuration = 220;
+static constexpr qreal minimumSnapDuration = 120;
+static constexpr qreal never = -std::numeric_limits<qreal>::infinity();
 
-qreal monotonicClock()
+static qreal monotonicClock()
 {
     static QElapsedTimer timer;
     if (!timer.isValid())
@@ -48,24 +46,22 @@ qreal monotonicClock()
     return timer.nsecsElapsed() / 1e6;
 }
 
-qreal (*currentClock)() = monotonicClock;
+static qreal (*currentClock)() = monotonicClock;
 // Event timestamps come from the compositor's clock; its offset to ours is the
 // smallest delivery delay seen.
-qreal eventClockOffset = 0;
-bool eventClockKnown = false;
+static qreal eventClockOffset = 0;
+static bool eventClockKnown = false;
 
-qreal bounded(qreal position, qreal minimum, qreal maximum)
+static qreal bounded(qreal position, qreal minimum, qreal maximum)
 {
     return qBound(minimum, position, maximum);
 }
 
-QList<Scroller *> &allScrollers()
+static QList<Scroller *> &allScrollers()
 {
     static QList<Scroller *> scrollers;
     return scrollers;
 }
-
-} // namespace
 
 // The frame clock of one window, shared by the scrollers shown in it.
 class ScrollFrames : public QObject

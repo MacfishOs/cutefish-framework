@@ -9,10 +9,8 @@
 #include <QDBusPendingReply>
 #include <QVariantMap>
 
-namespace {
-const QString kService = QStringLiteral("org.freedesktop.Notifications");
-const QString kPath = QStringLiteral("/org/freedesktop/Notifications");
-}
+static const QString kService = QStringLiteral("org.freedesktop.Notifications");
+static const QString kPath = QStringLiteral("/org/freedesktop/Notifications");
 
 namespace Cutefish {
 

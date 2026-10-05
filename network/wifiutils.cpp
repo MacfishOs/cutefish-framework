@@ -26,8 +26,10 @@ struct LocaleEncodings {
     QList<const char *> encodings;
 };
 
+} // namespace
+
 // NetworkManager's table in libnm-core-impl/nm-utils.c, by language and then country.
-const LocaleEncodings localeEncodings[] = {
+static const LocaleEncodings localeEncodings[] = {
     {"zh_cn", {"GB18030", "EUC-CN", "GB2312"}},
     {"zh_sg", {"GB18030", "EUC-CN", "GB2312"}},
     {"zh_hk", {"BIG5", "BIG5-HKSCS", "EUC-TW"}},
@@ -60,7 +62,7 @@ const LocaleEncodings localeEncodings[] = {
     {"uk", {"KOI8-U", "KOI8-R", "WINDOWS-1251"}},
 };
 
-QList<const char *> encodingsForLocale()
+static QList<const char *> encodingsForLocale()
 {
     const QString name = QLocale::system().name().toLower();
     for (const auto &entry : localeEncodings) {
@@ -75,7 +77,7 @@ QList<const char *> encodingsForLocale()
     return {};
 }
 
-bool decode(const QByteArray &bytes, const char *encoding, QString *text)
+static bool decode(const QByteArray &bytes, const char *encoding, QString *text)
 {
     iconv_t converter = iconv_open("UTF-8", encoding);
     if (converter == iconv_t(-1))
@@ -97,7 +99,7 @@ bool decode(const QByteArray &bytes, const char *encoding, QString *text)
 }
 
 // A control character in a label would break the line it sits in.
-QString printable(QString text)
+static QString printable(QString text)
 {
     for (QChar &c : text) {
         if (c.category() == QChar::Other_Control)
@@ -106,7 +108,7 @@ QString printable(QString text)
     return text;
 }
 
-bool supportsCiphers(uint caps, uint flags, bool staticWep)
+static bool supportsCiphers(uint caps, uint flags, bool staticWep)
 {
     bool pair = staticWep;
     if (!staticWep) {
@@ -121,13 +123,13 @@ bool supportsCiphers(uint caps, uint flags, bool staticWep)
     return pair && group;
 }
 
-bool pskCipher(uint caps, uint flags)
+static bool pskCipher(uint caps, uint flags)
 {
     return ((flags & PairTkip) && (caps & CapTkip)) || ((flags & PairCcmp) && (caps & CapCcmp));
 }
 
 // nm_utils_security_valid() for an access point that is in range.
-bool valid(Enums::SecurityType type, uint caps, bool adhoc, uint apFlags, uint wpa, uint rsn)
+static bool valid(Enums::SecurityType type, uint caps, bool adhoc, uint apFlags, uint wpa, uint rsn)
 {
     switch (type) {
     case Enums::NoneSecurity:
@@ -173,7 +175,7 @@ bool valid(Enums::SecurityType type, uint caps, bool adhoc, uint apFlags, uint w
 }
 
 // What the access point advertises, for devices that report no capabilities.
-Enums::SecurityType advertised(uint apFlags, uint wpa, uint rsn)
+static Enums::SecurityType advertised(uint apFlags, uint wpa, uint rsn)
 {
     if (rsn & KeyMgmtEapSuiteB192)
         return Enums::Wpa3SuiteB192;
@@ -193,8 +195,6 @@ Enums::SecurityType advertised(uint apFlags, uint wpa, uint rsn)
         return Enums::StaticWep;
     return Enums::NoneSecurity;
 }
-
-} // namespace
 
 namespace WifiUtils {
 

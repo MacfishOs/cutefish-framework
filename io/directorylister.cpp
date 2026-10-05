@@ -22,7 +22,9 @@ struct TypeDatabase
     bool settled = false;
 };
 
-TypeDatabase currentTypeDatabase()
+} // namespace
+
+static TypeDatabase currentTypeDatabase()
 {
     const QStringList paths =
             QStandardPaths::locateAll(QStandardPaths::GenericDataLocation,
@@ -44,7 +46,7 @@ TypeDatabase currentTypeDatabase()
     return database;
 }
 
-QString existingAncestor(QString path)
+static QString existingAncestor(QString path)
 {
     while (!QFileInfo(path).isDir()) {
         const QString parent = QFileInfo(path).absolutePath();
@@ -58,8 +60,8 @@ QString existingAncestor(QString path)
 
 // Stats every item and reads the files whose names do not decide their type,
 // spread over pool threads for a first listing or a large folder.
-void prepareItems(FileItemList &items, const QHash<QString, const FileItem *> &previousByName,
-                  const std::function<void(FileItem &)> &preparer, const OperationContext *context)
+static void prepareItems(FileItemList &items, const QHash<QString, const FileItem *> &previousByName,
+                         const std::function<void(FileItem &)> &preparer, const OperationContext *context)
 {
     constexpr qsizetype BlockSize = 64;
 
@@ -91,8 +93,6 @@ void prepareItems(FileItemList &items, const QHash<QString, const FileItem *> &p
         }
     });
 }
-
-} // namespace
 
 DirectoryLister::DirectoryLister(QObject *parent)
     : QObject(parent)

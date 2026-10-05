@@ -3,9 +3,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 
-namespace {
-
-QStringList keys(const QList<VpnUtils::SecretField> &fields)
+static QStringList keys(const QList<VpnUtils::SecretField> &fields)
 {
     QStringList keys;
     for (const auto &field : fields)
@@ -13,9 +11,7 @@ QStringList keys(const QList<VpnUtils::SecretField> &fields)
     return keys;
 }
 
-const QString openvpn = QStringLiteral("org.freedesktop.NetworkManager.openvpn");
-
-} // namespace
+static const QString openvpn = QStringLiteral("org.freedesktop.NetworkManager.openvpn");
 
 class VpnUtilsTest : public QObject
 {

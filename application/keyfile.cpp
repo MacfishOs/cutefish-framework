@@ -7,9 +7,7 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 
-namespace
-{
-QStringList readLines(const QString &path)
+static QStringList readLines(const QString &path)
 {
     QStringList lines;
     QFile file(path);
@@ -20,12 +18,12 @@ QStringList readLines(const QString &path)
     return lines;
 }
 
-bool isGroupHeader(const QString &line)
+static bool isGroupHeader(const QString &line)
 {
     return line.startsWith(QLatin1Char('['));
 }
 
-QString gvariantString(const QString &value)
+static QString gvariantString(const QString &value)
 {
     QString escaped = value;
     escaped.replace(QLatin1Char('\\'), QLatin1String("\\\\"));
@@ -34,7 +32,7 @@ QString gvariantString(const QString &value)
     return QLatin1Char('\'') + escaped + QLatin1Char('\'');
 }
 
-QString gvariantValue(const QVariant &value)
+static QString gvariantValue(const QVariant &value)
 {
     switch (value.typeId()) {
     case QMetaType::Bool:
@@ -53,7 +51,7 @@ QString gvariantValue(const QVariant &value)
 }
 
 // Parses one quoted GVariant string starting at text[pos] and moves pos past it.
-bool parseString(const QString &text, int &pos, QString &result)
+static bool parseString(const QString &text, int &pos, QString &result)
 {
     if (pos >= text.size())
         return false;
@@ -102,11 +100,10 @@ bool parseString(const QString &text, int &pos, QString &result)
     return false;
 }
 
-void skipSpaces(const QString &text, int &pos)
+static void skipSpaces(const QString &text, int &pos)
 {
     while (pos < text.size() && text.at(pos).isSpace())
         ++pos;
-}
 }
 
 QMap<QString, KeyFile::Group> KeyFile::read(const QString &path)

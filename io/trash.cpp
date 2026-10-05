@@ -11,9 +11,7 @@ namespace Cutefish::IO {
 
 using namespace Internal;
 
-namespace {
-
-void ensureTrash()
+static void ensureTrash()
 {
     const auto root = FileSystemUrl::trashRoot();
 
@@ -30,6 +28,8 @@ void ensureTrash()
         check(::chmod(native(path), 0700), path);
     }
 }
+
+namespace {
 
 class TrashLock
 {
@@ -56,7 +56,9 @@ private:
     Fd m_fd;
 };
 
-QString trashInfo(const QUrl &url)
+} // namespace
+
+static QString trashInfo(const QUrl &url)
 {
     if (url.scheme() != "trash" || url.path().mid(1).contains('/') || url.fileName().isEmpty())
         throw Failure(EINVAL, url.toString());
@@ -64,8 +66,6 @@ QString trashInfo(const QUrl &url)
     FileSystemUrl validated(url);
     return FileSystemUrl::trashRoot() + "/info/" + url.fileName() + ".trashinfo";
 }
-
-} // namespace
 
 void LocalFileSystem::remove(const QUrl &url, OperationContext &ctx)
 {

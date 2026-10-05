@@ -12,10 +12,8 @@
 #include <spa/pod/parser.h>
 
 namespace CutefishAudio {
-namespace {
-
 template<typename T>
-QVector<T> arrayValues(const spa_pod *pod, quint32 type)
+static QVector<T> arrayValues(const spa_pod *pod, quint32 type)
 {
     if (!spa_pod_is_array(pod) || SPA_POD_ARRAY_VALUE_TYPE(pod) != type
         || SPA_POD_ARRAY_VALUE_SIZE(pod) != sizeof(T)) {
@@ -26,7 +24,7 @@ QVector<T> arrayValues(const spa_pod *pod, quint32 type)
     return QVector<T>(values, values + count);
 }
 
-QVariantList intValues(const spa_pod *object, quint32 key)
+static QVariantList intValues(const spa_pod *object, quint32 key)
 {
     QVariantList values;
     const spa_pod_prop *prop = spa_pod_find_prop(object, nullptr, key);
@@ -37,7 +35,7 @@ QVariantList intValues(const spa_pod *object, quint32 key)
     return values;
 }
 
-int availability(quint32 value)
+static int availability(quint32 value)
 {
     if (value == SPA_PARAM_AVAILABILITY_yes)
         return AudioObject::Available;
@@ -46,7 +44,7 @@ int availability(quint32 value)
     return AudioObject::Unknown;
 }
 
-void updateChoice(QVariantList &list, const QVariantMap &choice)
+static void updateChoice(QVariantList &list, const QVariantMap &choice)
 {
     for (QVariant &item : list) {
         if (item.toMap().value("index") == choice.value("index")) {
@@ -55,8 +53,6 @@ void updateChoice(QVariantList &list, const QVariantMap &choice)
         }
     }
     list.append(choice);
-}
-
 }
 
 AudioObject::AudioObject(Backend *backend, quint32 id, Kind kind)

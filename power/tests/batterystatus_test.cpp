@@ -8,6 +8,7 @@
 #include <QTest>
 
 namespace {
+
 // cutefish-services' battery object, on a connection of its own as in another process.
 class FakeBattery : public QObject
 {
@@ -37,6 +38,7 @@ public slots:
 signals:
     void chargePercentChanged(int value);
 };
+
 } // namespace
 
 class BatteryStatusTest : public QObject

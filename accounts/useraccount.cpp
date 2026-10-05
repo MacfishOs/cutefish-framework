@@ -12,13 +12,9 @@
 
 namespace QtAccountsService {
 
-namespace {
-
-const QString serviceName = QStringLiteral("org.freedesktop.Accounts");
-const QString userInterface = QStringLiteral("org.freedesktop.Accounts.User");
-const QString userPathPrefix = QStringLiteral("/org/freedesktop/Accounts/User");
-
-}
+static const QString serviceName = QStringLiteral("org.freedesktop.Accounts");
+static const QString userInterface = QStringLiteral("org.freedesktop.Accounts.User");
+static const QString userPathPrefix = QStringLiteral("/org/freedesktop/Accounts/User");
 
 UserAccountPrivate::UserAccountPrivate(const QDBusConnection &connection)
     : bus(connection)

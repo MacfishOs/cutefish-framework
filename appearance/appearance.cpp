@@ -5,11 +5,9 @@
 #include <QDBusReply>
 #include <QDBusServiceWatcher>
 
-namespace {
-constexpr auto Service = "com.cutefish.Services";
-constexpr auto ObjectPath = "/com/cutefish/Services/Appearance";
-constexpr auto Interface = "com.cutefish.Services.Appearance";
-} // namespace
+static constexpr auto Service = "com.cutefish.Services";
+static constexpr auto ObjectPath = "/com/cutefish/Services/Appearance";
+static constexpr auto Interface = "com.cutefish.Services.Appearance";
 
 Appearance::Appearance(QObject *parent)
     : QObject(parent)

@@ -11,8 +11,7 @@
 
 #include <atomic>
 
-namespace {
-QThreadPool &thumbnailPool()
+static QThreadPool &thumbnailPool()
 {
     static QThreadPool pool;
     static const bool configured = [] {
@@ -23,6 +22,8 @@ QThreadPool &thumbnailPool()
     Q_UNUSED(configured)
     return pool;
 }
+
+namespace {
 
 class ThumbnailResponse final : public QQuickImageResponse
 {
@@ -55,7 +56,8 @@ private:
     QImage m_image;
     std::atomic_bool m_cancelled = false;
 };
-}
+
+} // namespace
 
 QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id,
                                                              const QSize &requestedSize)

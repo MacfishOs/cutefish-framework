@@ -11,17 +11,17 @@
 
 #include <memory>
 
-namespace {
+static const QString service = QStringLiteral("org.freedesktop.secrets");
+static const QString servicePath = QStringLiteral("/org/freedesktop/secrets");
+static const QString serviceInterface = QStringLiteral("org.freedesktop.Secret.Service");
+static const QString collectionInterface = QStringLiteral("org.freedesktop.Secret.Collection");
+static const QString itemInterface = QStringLiteral("org.freedesktop.Secret.Item");
+static const QString promptInterface = QStringLiteral("org.freedesktop.Secret.Prompt");
+static const QString sessionInterface = QStringLiteral("org.freedesktop.Secret.Session");
+static const QString propertiesInterface = QStringLiteral("org.freedesktop.DBus.Properties");
+static const QString noPrompt = QStringLiteral("/");
 
-const QString service = QStringLiteral("org.freedesktop.secrets");
-const QString servicePath = QStringLiteral("/org/freedesktop/secrets");
-const QString serviceInterface = QStringLiteral("org.freedesktop.Secret.Service");
-const QString collectionInterface = QStringLiteral("org.freedesktop.Secret.Collection");
-const QString itemInterface = QStringLiteral("org.freedesktop.Secret.Item");
-const QString promptInterface = QStringLiteral("org.freedesktop.Secret.Prompt");
-const QString sessionInterface = QStringLiteral("org.freedesktop.Secret.Session");
-const QString propertiesInterface = QStringLiteral("org.freedesktop.DBus.Properties");
-const QString noPrompt = QStringLiteral("/");
+namespace {
 
 using Attributes = QMap<QString, QString>;
 

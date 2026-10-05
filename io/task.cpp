@@ -18,10 +18,8 @@
 
 namespace Cutefish::IO {
 
-namespace {
-
 // A copy within a filesystem that shares extents may take no space at all, so it is not counted.
-bool takesSpace(const QString &source, const QString &directory, bool move)
+static bool takesSpace(const QString &source, const QString &directory, bool move)
 {
     const auto sourcePath = Internal::native(source);
     const auto directoryPath = Internal::native(directory);
@@ -41,8 +39,8 @@ bool takesSpace(const QString &source, const QString &directory, bool move)
                 && type != BCACHEFS_SUPER_MAGIC);
 }
 
-TaskResult execute(const TaskRequest &request, OperationContext &ctx,
-                   const std::function<void(const TaskProgress &, bool)> &report)
+static TaskResult execute(const TaskRequest &request, OperationContext &ctx,
+                          const std::function<void(const TaskProgress &, bool)> &report)
 {
     TaskResult result;
     TaskProgress info;
@@ -238,8 +236,6 @@ TaskResult execute(const TaskRequest &request, OperationContext &ctx,
     ctx.conflict = conflictResolver;
     return result;
 }
-
-} // namespace
 
 Task::Task(TaskRequest request, QObject *parent)
     : QObject(parent)

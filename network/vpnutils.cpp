@@ -13,9 +13,9 @@
 
 using namespace NetworkDBus;
 
-namespace {
+static const QString servicePrefix = QStringLiteral("org.freedesktop.NetworkManager.");
 
-const QString servicePrefix = QStringLiteral("org.freedesktop.NetworkManager.");
+namespace {
 
 struct Plugin {
     QString name;
@@ -29,14 +29,16 @@ struct PluginCache {
     QList<Plugin> plugins;
 };
 
-PluginCache &cache()
+} // namespace
+
+static PluginCache &cache()
 {
     static PluginCache cache;
     return cache;
 }
 
 // The [VPN Connection] group of a plugin's .name file.
-Plugin readNameFile(const QString &path)
+static Plugin readNameFile(const QString &path)
 {
     Plugin plugin;
     QFile file(path);
@@ -67,7 +69,7 @@ Plugin readNameFile(const QString &path)
 }
 
 // Read again only when a directory changed: plugins come and go with packages.
-const QList<Plugin> &plugins()
+static const QList<Plugin> &plugins()
 {
     PluginCache &cache = ::cache();
     QList<QDateTime> stamps;
@@ -89,7 +91,7 @@ const QList<Plugin> &plugins()
     return cache.plugins;
 }
 
-QString shortName(const QString &serviceType)
+static QString shortName(const QString &serviceType)
 {
     for (const Plugin &plugin : plugins()) {
         if (plugin.services.contains(serviceType))
@@ -98,8 +100,6 @@ QString shortName(const QString &serviceType)
     return serviceType.startsWith(servicePrefix) ? serviceType.mid(servicePrefix.size())
                                                  : serviceType.section(QLatin1Char('.'), -1);
 }
-
-} // namespace
 
 namespace VpnUtils {
 

@@ -12,8 +12,6 @@
 static const char *kService = "com.cutefish.AppRuntime";
 static const char *kPath = "/AppRuntime";
 
-namespace
-{
 // The environment an ordinary application must be started in.
 //
 // cutefish-shell runs on a privileged Wayland connection it inherited as
@@ -22,7 +20,7 @@ namespace
 // private cutefish_shell_v1 and cutefish_window_management_v1 globals. The fd
 // itself is close-on-exec, but the variable naming it has to go as well, so
 // children fall back to the public WAYLAND_DISPLAY the session also set.
-QProcessEnvironment applicationEnvironment(const QString &activationToken)
+static QProcessEnvironment applicationEnvironment(const QString &activationToken)
 {
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.remove(QStringLiteral("WAYLAND_SOCKET"));
@@ -43,7 +41,7 @@ QProcessEnvironment applicationEnvironment(const QString &activationToken)
 }
 
 template<typename... Args>
-bool callBool(QDBusInterface *iface, const QString &method, const Args &...args)
+static bool callBool(QDBusInterface *iface, const QString &method, const Args &...args)
 {
     if (!iface->isValid())
         return false;
@@ -51,7 +49,6 @@ bool callBool(QDBusInterface *iface, const QString &method, const Args &...args)
     const QDBusReply<bool> reply = iface->call(method, args...);
 
     return reply.isValid() && reply.value();
-}
 }
 
 ApplicationRuntime *ApplicationRuntime::instance()

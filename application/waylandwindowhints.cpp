@@ -9,15 +9,11 @@
 
 namespace Cutefish {
 
-namespace {
-
-void flushDisplay()
+static void flushDisplay()
 {
     auto *native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
     wl_display_flush(native->display());
 }
-
-} // namespace
 
 WaylandWindowHints *WaylandWindowHints::instance()
 {

@@ -8,14 +8,10 @@
 
 using namespace Cutefish::IO;
 
-namespace {
-
-const QString service = "org.freedesktop.UDisks2";
-const QString root = "/org/freedesktop/UDisks2";
-const QString disk = root + "/block_devices/sdb1";
-const QString drive = root + "/drives/usb";
-
-} // namespace
+static const QString service = "org.freedesktop.UDisks2";
+static const QString root = "/org/freedesktop/UDisks2";
+static const QString disk = root + "/block_devices/sdb1";
+static const QString drive = root + "/drives/usb";
 
 class FakeUDisks : public QDBusVirtualObject
 {

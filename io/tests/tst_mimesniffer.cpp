@@ -11,10 +11,8 @@
 
 using Cutefish::IO::Internal::MimeSniffer;
 
-namespace {
-
 // moc cannot read a raw string literal holding quotes.
-const QByteArray UserPackage =
+static const QByteArray UserPackage =
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<mime-info xmlns=\"http://www.freedesktop.org/standards/shared-mime-info\">\n"
         "  <mime-type type=\"text/x-matlab\"><glob-deleteall/><glob pattern=\"*.mlab\"/></mime-type>\n"
@@ -26,8 +24,6 @@ const QByteArray UserPackage =
         "    <magic priority=\"90\"><match type=\"string\" value=\"CUTEFISH\" offset=\"0:64\"/></magic>\n"
         "  </mime-type>\n"
         "</mime-info>\n";
-
-} // namespace
 
 // A user MIME directory, before the system one, that deletes system globs from
 // the literal list, the suffix tree and the complex globs, and adds its own.

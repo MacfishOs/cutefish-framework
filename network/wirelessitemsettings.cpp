@@ -5,11 +5,7 @@
 
 using namespace NetworkDBus;
 
-namespace {
-
-const QString connectionSetting = QStringLiteral("connection");
-
-} // namespace
+static const QString connectionSetting = QStringLiteral("connection");
 
 WirelessItemSettings::WirelessItemSettings(QObject *parent)
     : QObject(parent)

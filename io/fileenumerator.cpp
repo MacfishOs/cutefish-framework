@@ -16,9 +16,7 @@ namespace Cutefish::IO {
 
 using namespace Internal;
 
-namespace {
-
-quint64 sizeAt(int parent, const QByteArray &name, const QString &path, OperationContext &ctx)
+static quint64 sizeAt(int parent, const QByteArray &name, const QString &path, OperationContext &ctx)
 {
     ctx.checkpoint(path);
 
@@ -46,7 +44,7 @@ quint64 sizeAt(int parent, const QByteArray &name, const QString &path, Operatio
 }
 
 // Kernel interfaces, whose trees are huge or never end and hold no user files.
-bool isKernelFileSystem(int fd)
+static bool isKernelFileSystem(int fd)
 {
     struct statfs fs;
     if (::fstatfs(fd, &fs) < 0)
@@ -68,8 +66,6 @@ bool isKernelFileSystem(int fd)
         return false;
     }
 }
-
-} // namespace
 
 FileItemList FileEnumerator::list(const QUrl &url, bool hidden, OperationContext *context)
 {

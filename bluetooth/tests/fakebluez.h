@@ -5,12 +5,10 @@
 #include <QDBusVariant>
 #include <QDBusVirtualObject>
 
-namespace {
-const QString adapter = QStringLiteral("/org/bluez/hci0");
-const QString device = adapter + QStringLiteral("/dev_AA_BB_CC_DD_EE_FF");
-const QString adapterInterface = QStringLiteral("org.bluez.Adapter1");
-const QString deviceInterface = QStringLiteral("org.bluez.Device1");
-} // namespace
+static const QString adapter = QStringLiteral("/org/bluez/hci0");
+static const QString device = adapter + QStringLiteral("/dev_AA_BB_CC_DD_EE_FF");
+static const QString adapterInterface = QStringLiteral("org.bluez.Adapter1");
+static const QString deviceInterface = QStringLiteral("org.bluez.Device1");
 
 class FakeBluez : public QDBusVirtualObject
 {

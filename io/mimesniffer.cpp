@@ -21,17 +21,15 @@
 
 namespace Cutefish::IO::Internal {
 
-namespace {
-
 // Qt reads this much of a file for content matching (QIODEVICE_BUFFERSIZE).
-constexpr qint64 SniffLength = 16384;
+static constexpr qint64 SniffLength = 16384;
 
 // Qt's own directory for a built-in database, searched after the XDG ones.
-const QString InternalDirectory = QStringLiteral(":/qt-project.org/qmime");
+static const QString InternalDirectory = QStringLiteral(":/qt-project.org/qmime");
 
-const QString DefaultType = QStringLiteral("application/octet-stream");
+static const QString DefaultType = QStringLiteral("application/octet-stream");
 
-QStringList mimeDirectories()
+static QStringList mimeDirectories()
 {
     return QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("mime"),
                                      QStandardPaths::LocateDirectory)
@@ -39,7 +37,7 @@ QStringList mimeDirectories()
 }
 
 // What a reload has to notice: the directories, and each cache's replacement.
-QString databaseVersion(const QStringList &directories)
+static QString databaseVersion(const QStringList &directories)
 {
     QString version;
     for (const QString &directory : directories) {
@@ -50,6 +48,8 @@ QString databaseVersion(const QStringList &directories)
 
     return version;
 }
+
+namespace {
 
 // QMimeGlobMatchResult: the highest weight wins, then the longest pattern.
 struct NameMatches
@@ -267,9 +267,11 @@ private:
     bool m_deletes = false;
 };
 
+} // namespace
+
 // QMimeProviderBase::isMimeTypeGlobsExcluded(): whether a directory before this
 // one deletes the type's globs.
-bool globsExcluded(std::span<const TypeOverrides> earlier, const QString &type)
+static bool globsExcluded(std::span<const TypeOverrides> earlier, const QString &type)
 {
     for (const TypeOverrides &overrides : earlier) {
         if (overrides.deletesGlobs(type))
@@ -278,6 +280,8 @@ bool globsExcluded(std::span<const TypeOverrides> earlier, const QString &type)
 
     return false;
 }
+
+namespace {
 
 // QMimeBinaryProvider's reading of a mime.cache, which trusts its offsets too.
 class CacheFile
@@ -518,8 +522,10 @@ private:
     std::vector<Glob> m_globs;
 };
 
+} // namespace
+
 // QMimeDatabasePrivate's isTextFile().
-bool isTextFile(const QByteArray &data)
+static bool isTextFile(const QByteArray &data)
 {
     if (data.startsWith("\xFE\xFF") || data.startsWith("\xFF\xFE"))
         return true;
@@ -533,8 +539,6 @@ bool isTextFile(const QByteArray &data)
 
     return true;
 }
-
-} // namespace
 
 struct MimeSniffer::Database
 {

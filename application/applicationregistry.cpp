@@ -78,14 +78,16 @@ private:
     QString m_language;
 };
 
-QString normalized(const QString &value)
+} // namespace
+
+static QString normalized(const QString &value)
 {
     return value.trimmed().toLower();
 }
 
 // A bare prefix lets a short or unrelated id claim an entry ("code" and
 // "Code::Blocks"), so the prefix has to end where a word does.
-bool startsWithWord(const QString &value, const QString &prefix)
+static bool startsWithWord(const QString &value, const QString &prefix)
 {
     if (prefix.isEmpty() || !value.startsWith(prefix))
         return false;
@@ -96,8 +98,6 @@ bool startsWithWord(const QString &value, const QString &prefix)
     return next == QLatin1Char('-') || next == QLatin1Char('.') || next == QLatin1Char('_')
             || next == QLatin1Char(' ');
 }
-
-} // namespace
 
 DesktopEntryModel::DesktopEntryModel(QObject *parent)
     : QAbstractListModel(parent)

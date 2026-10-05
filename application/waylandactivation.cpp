@@ -22,7 +22,9 @@ struct Request {
     bool done = false;
 };
 
-void global(void *data, wl_registry *registry, uint32_t name, const char *interface, uint32_t)
+} // namespace
+
+static void global(void *data, wl_registry *registry, uint32_t name, const char *interface, uint32_t)
 {
     auto *request = static_cast<Request *>(data);
     if (std::strcmp(interface, xdg_activation_v1_interface.name) != 0 || request->activation)
@@ -31,18 +33,16 @@ void global(void *data, wl_registry *registry, uint32_t name, const char *interf
             wl_registry_bind(registry, name, &xdg_activation_v1_interface, 1));
 }
 
-void globalRemove(void *, wl_registry *, uint32_t)
+static void globalRemove(void *, wl_registry *, uint32_t)
 {
 }
 
-void tokenDone(void *data, xdg_activation_token_v1 *, const char *token)
+static void tokenDone(void *data, xdg_activation_token_v1 *, const char *token)
 {
     auto *request = static_cast<Request *>(data);
     request->token = QString::fromUtf8(token);
     request->done = true;
 }
-
-} // namespace
 
 QString WaylandActivation::requestToken()
 {
