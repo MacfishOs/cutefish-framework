@@ -99,6 +99,15 @@ static bool startsWithWord(const QString &value, const QString &prefix)
             || next == QLatin1Char(' ');
 }
 
+static bool isScript(const QString &fileName)
+{
+    static const QStringList suffixes = { QStringLiteral("py"), QStringLiteral("pl"),
+                                          QStringLiteral("rb"), QStringLiteral("sh"),
+                                          QStringLiteral("js"), QStringLiteral("lua"),
+                                          QStringLiteral("tcl") };
+    return suffixes.contains(QFileInfo(fileName).suffix());
+}
+
 DesktopEntryModel::DesktopEntryModel(QObject *parent)
     : QAbstractListModel(parent)
 {
@@ -256,6 +265,10 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
     const QString wantedExecutable = normalized(executablePath);
     const QString wantedName = normalized(executableName);
     const QStringList wantedPath = wantedExecutable.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    // A script's helpers share its data directory, so a script names its
+    // application by its own name and never through that directory.
+    const bool wantedScript = isScript(wantedName);
+    const QString wantedScriptName = wantedScript ? QFileInfo(wantedName).completeBaseName() : QString();
     const QStringList desktops = DesktopEntry::currentDesktops();
     // On equal scores, an entry meant for this desktop beats one for another
     // desktop sharing its window class, and either beats a NoDisplay helper.
@@ -285,6 +298,7 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
         const bool matchProcess = !entry->terminal();
         const QString executable = matchProcess ? wantedExecutable : QString();
         const QString executableName = matchProcess ? wantedName : QString();
+        const QString scriptName = matchProcess ? wantedScriptName : QString();
         int score = 0;
 
         if (!wantedAppId.isEmpty() && id == wantedAppId)
@@ -298,6 +312,8 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
         if (!executable.isEmpty() && program == executable)
             score = qMax(score, 85);
         if (!executableName.isEmpty() && programName == executableName)
+            score = qMax(score, 80);
+        if (!scriptName.isEmpty() && programName == scriptName)
             score = qMax(score, 80);
         if (!executable.isEmpty() && fileName == executable)
             score = qMax(score, 75);
@@ -323,7 +339,7 @@ DesktopEntry *ApplicationRegistry::resolveWindow(const QString &appId, const QSt
             score = qMax(score, 50);
         // A launcher script for a binary kept in a directory of its own name,
         // such as /usr/lib/thunderbird/thunderbird-bin.
-        if (matchProcess && !programName.isEmpty() && wantedPath.contains(programName))
+        if (matchProcess && !wantedScript && !programName.isEmpty() && wantedPath.contains(programName))
             score = qMax(score, 45);
 
         if (score == 0 || score < bestScore)

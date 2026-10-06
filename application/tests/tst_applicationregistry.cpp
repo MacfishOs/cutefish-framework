@@ -168,7 +168,12 @@ private slots:
                 "thunderbird", "/applications/thunderbird.desktop",
                 "[Desktop Entry]\nType=Application\nName=Thunderbird\nExec=thunderbird %u\n",
                 &thunderbird));
-        registry.applyScan({vim, python, obs, codeBlocks, thunderbird});
+        DesktopEntryData printers;
+        QVERIFY(DesktopEntry::parse(
+                "system-config-printer", "/applications/system-config-printer.desktop",
+                "[Desktop Entry]\nType=Application\nName=Print Settings\nExec=system-config-printer\n",
+                &printers));
+        registry.applyScan({vim, python, obs, codeBlocks, thunderbird, printers});
 
         // Terminal entries own no windows through their process.
         QVERIFY(!registry.resolveWindow("myscript", "myscript", "/usr/bin/python3.13",
@@ -185,6 +190,11 @@ private slots:
         QCOMPARE(registry.resolveWindow("unknown", "unknown", "/usr/lib/thunderbird/thunderbird-bin",
                                         "thunderbird-bin"),
                  registry.byId(thunderbird.id));
+        QCOMPARE(registry.resolveWindow({}, {}, "/usr/share/system-config-printer/system-config-printer.py",
+                                        "system-config-printer.py"),
+                 registry.byId(printers.id));
+        QVERIFY(!registry.resolveWindow({}, {}, "/usr/share/system-config-printer/applet.py",
+                                        "applet.py"));
         QCOMPARE(registry.resolveWindow("com.obsproject", "com.obsproject", {}, {}),
                  registry.byId(obs.id));
     }
