@@ -3,6 +3,7 @@
 #include <QGuiApplication>
 #include <QtGui/qguiapplication_platform.h>
 #include <wayland-client.h>
+#include <algorithm>
 #include <cstring>
 
 #include "cutefish-window-hints-v1-client-protocol.h"
@@ -112,6 +113,15 @@ void WaylandWindowHints::setRestoreId(wl_surface *surface, const QString &id)
     if (!m_manager || !surface)
         return;
     cutefish_window_hints_v1_set_restore_id(m_manager, surface, id.toUtf8().constData());
+    flushDisplay();
+}
+
+void WaylandWindowHints::setRestoreSize(wl_surface *surface, const QSize &size)
+{
+    if (!m_manager || !surface)
+        return;
+    cutefish_window_hints_v1_set_restore_size(m_manager, surface, std::max(size.width(), 0),
+                                              std::max(size.height(), 0));
     flushDisplay();
 }
 

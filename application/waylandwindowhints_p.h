@@ -2,6 +2,7 @@
 #define CUTEFISH_WAYLANDWINDOWHINTS_P_H
 
 #include <QObject>
+#include <QSize>
 #include <cstdint>
 
 struct wl_registry;
@@ -25,6 +26,7 @@ public:
     void setResizeAroundCenter(wl_surface *surface, bool center);
     void setServerResize(wl_surface *surface, bool enabled);
     void setRestoreId(wl_surface *surface, const QString &id);
+    void setRestoreSize(wl_surface *surface, const QSize &size);
 
 Q_SIGNALS:
     void availableChanged();

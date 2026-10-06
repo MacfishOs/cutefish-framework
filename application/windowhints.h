@@ -23,6 +23,9 @@ class WindowHints : public QObject
     // Non-empty: the window reopens where the last one with this id was left,
     // for the rest of the session. Set it before the window is first shown.
     Q_PROPERTY(QString restoreId READ restoreId WRITE setRestoreId NOTIFY restoreIdChanged)
+    // The size a window first shown maximized or full screen returns to.
+    // Set it before the window is first shown.
+    Q_PROPERTY(QSize restoreSize READ restoreSize WRITE setRestoreSize NOTIFY restoreSizeChanged)
     // True while the user resizes the window by an edge or corner.
     Q_PROPERTY(bool interactiveResize READ interactiveResize NOTIFY interactiveResizeChanged)
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
@@ -42,6 +45,8 @@ public:
     void setServerResize(bool enabled);
     QString restoreId() const { return m_restoreId; }
     void setRestoreId(const QString &id);
+    QSize restoreSize() const { return m_restoreSize; }
+    void setRestoreSize(const QSize &size);
     bool interactiveResize() const { return m_interactiveResize; }
     bool available() const;
 
@@ -51,6 +56,7 @@ Q_SIGNALS:
     void resizeAroundCenterChanged();
     void serverResizeChanged();
     void restoreIdChanged();
+    void restoreSizeChanged();
     void interactiveResizeChanged();
     void availableChanged();
 
@@ -71,6 +77,7 @@ private:
     bool m_resizeAroundCenter = false;
     bool m_serverResize = false;
     QString m_restoreId;
+    QSize m_restoreSize;
     bool m_interactiveResize = false;
     bool m_surfaceDying = false;
 };

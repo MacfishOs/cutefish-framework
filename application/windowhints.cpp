@@ -85,6 +85,15 @@ void WindowHints::setRestoreId(const QString &id)
     Q_EMIT restoreIdChanged();
 }
 
+void WindowHints::setRestoreSize(const QSize &size)
+{
+    if (m_restoreSize == size)
+        return;
+    m_restoreSize = size;
+    apply();
+    Q_EMIT restoreSizeChanged();
+}
+
 void WindowHints::setInteractiveResize(bool active)
 {
     if (m_interactiveResize == active)
@@ -158,6 +167,7 @@ void WindowHints::apply()
     WaylandWindowHints::instance()->setResizeAroundCenter(surface, m_resizeAroundCenter);
     WaylandWindowHints::instance()->setServerResize(surface, m_serverResize);
     WaylandWindowHints::instance()->setRestoreId(surface, m_restoreId);
+    WaylandWindowHints::instance()->setRestoreSize(surface, m_restoreSize);
 }
 
 } // namespace Cutefish

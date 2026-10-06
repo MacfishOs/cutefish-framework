@@ -44,6 +44,11 @@ private slots:
         hints->setRestoreId(QStringLiteral("preview"));
         hints->setRestoreId(QStringLiteral("preview"));
         QCOMPARE(restoreIdChanged.count(), 1);
+        QVERIFY(hints->restoreSize().isEmpty());
+        QSignalSpy restoreSizeChanged(hints, &Cutefish::WindowHints::restoreSizeChanged);
+        hints->setRestoreSize(QSize(300, 200));
+        hints->setRestoreSize(QSize(300, 200));
+        QCOMPARE(restoreSizeChanged.count(), 1);
         QVERIFY(!hints->interactiveResize());
         window.create();
         window.destroy();
@@ -53,6 +58,7 @@ private slots:
         QVERIFY(hints->resizeAroundCenter());
         QVERIFY(hints->serverResize());
         QCOMPARE(hints->restoreId(), QStringLiteral("preview"));
+        QCOMPARE(hints->restoreSize(), QSize(300, 200));
     }
 
     void qmlAndCppShareHintsAcrossSurfaceRecreation()
