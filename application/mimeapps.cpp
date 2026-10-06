@@ -2,13 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "mimeapps.h"
+#include "applicationregistry.h"
+#include "desktopentry.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QLockFile>
+#include <QMimeDatabase>
+#include <QMimeType>
 #include <QSaveFile>
 #include <QStandardPaths>
+
+#include <algorithm>
 
 static QStringList readEntries(const QStringList &lines, const QString &group, const QString &key)
 {
@@ -63,6 +70,22 @@ static QString terminalId(const QString &line)
     if (entry.startsWith('+') || entry.startsWith('-'))
         entry.remove(0, 1);
     return entry.section(':', 0, 0);
+}
+
+// Hidden entries only mask a system entry; programs that need a terminal are not
+// offered for opening files.
+static bool opensFiles(const DesktopEntry *entry)
+{
+    return !entry->hidden() && !entry->terminal();
+}
+
+static DesktopEntry *entryForDesktopId(QString desktopId)
+{
+    if (desktopId.endsWith(QLatin1String(".desktop")))
+        desktopId.chop(QLatin1String(".desktop").size());
+
+    DesktopEntry *entry = ApplicationRegistry::instance()->byId(desktopId);
+    return entry && opensFiles(entry) ? entry : nullptr;
 }
 
 static bool writeLines(const QString &path, const QStringList &lines)
@@ -123,6 +146,85 @@ bool MimeApps::setDefault(const QString &path, const QString &mimeType, const QS
     if (removed.removeAll(desktopId))
         writeEntry(lines, "Removed Associations", mimeType, removed);
     return writeLines(path, lines);
+}
+
+QStringList MimeApps::applications(const QMimeType &mimeType)
+{
+    const QList<DesktopEntry *> entries = ApplicationRegistry::instance()->entries();
+    QMimeDatabase mimeDatabase;
+    QList<QMimeType> mimeTypes;
+    QStringList apps;
+
+    // Without a MIME database every type is invalid, and so is each one's parent.
+    if (mimeType.isValid())
+        mimeTypes.append(mimeType);
+
+    while (apps.isEmpty() && !mimeTypes.isEmpty()) {
+        QStringList names;
+        for (const QMimeType &type : std::as_const(mimeTypes))
+            names << type.name() << type.aliases();
+
+        QList<DesktopEntry *> matches;
+        for (DesktopEntry *entry : entries) {
+            if (!opensFiles(entry))
+                continue;
+
+            const QStringList entryTypes = entry->mimeTypes();
+            if (std::any_of(entryTypes.cbegin(), entryTypes.cend(),
+                            [&names](const QString &type) { return names.contains(type); }))
+                matches.append(entry);
+        }
+
+        // The first one opens files without a default, so keep that the earliest installed.
+        std::stable_sort(matches.begin(), matches.end(), [](DesktopEntry *a, DesktopEntry *b) {
+            return QFileInfo(a->path()).birthTime() < QFileInfo(b->path()).birthTime();
+        });
+
+        QList<DesktopEntry *> added;
+        for (DesktopEntry *entry : std::as_const(matches)) {
+            // One program installed under two desktop files is offered once.
+            const bool duplicate = std::any_of(added.cbegin(), added.cend(),
+                                               [entry](const DesktopEntry *other) {
+                return other->exec() == entry->exec() && other->name() == entry->name();
+            });
+            if (duplicate)
+                continue;
+
+            added.append(entry);
+            apps.append(entry->path());
+        }
+
+        QList<QMimeType> parents;
+        for (const QMimeType &type : std::as_const(mimeTypes)) {
+            for (const QString &name : type.parentMimeTypes()) {
+                const QMimeType parent = mimeDatabase.mimeTypeForName(name);
+                if (parent.isValid())
+                    parents.append(parent);
+            }
+        }
+        mimeTypes = parents;
+    }
+
+    return apps;
+}
+
+QString MimeApps::chosenApplication(const QString &path, const QMimeType &mimeType)
+{
+    for (const QString &group :
+         {QStringLiteral("Default Applications"), QStringLiteral("Added Associations")}) {
+        const auto apps = associations(path, group, mimeType.name());
+        for (const QString &app : apps) {
+            if (const DesktopEntry *entry = entryForDesktopId(app))
+                return entry->path();
+        }
+    }
+    return {};
+}
+
+QString MimeApps::defaultApplication(const QString &path, const QMimeType &mimeType)
+{
+    const QString chosen = chosenApplication(path, mimeType);
+    return chosen.isEmpty() ? applications(mimeType).value(0) : chosen;
 }
 
 QString MimeApps::defaultTerminal(const QString &path)
