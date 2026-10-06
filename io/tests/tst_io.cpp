@@ -15,8 +15,11 @@
 #include <QtTest>
 
 #include <fcntl.h>
+#include <sched.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 using namespace Cutefish::IO;
@@ -376,6 +379,53 @@ private slots:
                  ENOTSUP);
 
         QVERIFY(!QFileInfo::exists(dir.filePath("target")));
+    }
+
+    void removeStopsAtMounts()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir().mkpath(dir.filePath("tree/mount")));
+        writeFile(dir.filePath("tree/file"));
+
+        // A private user and mount namespace lets the child mount without privileges.
+        const uid_t uid = ::getuid();
+        const gid_t gid = ::getgid();
+        const pid_t pid = ::fork();
+        QVERIFY(pid >= 0);
+        if (pid == 0) {
+            if (::unshare(CLONE_NEWUSER | CLONE_NEWNS) != 0)
+                ::_exit(77);
+
+            // Creating files needs the group mapped as well, which needs setgroups denied first.
+            const auto write = [](const char *path, const QByteArray &data) {
+                QFile file(QString::fromLatin1(path));
+                return file.open(QIODevice::WriteOnly) && file.write(data) == data.size();
+            };
+            if (!write("/proc/self/uid_map", "0 " + QByteArray::number(uid) + " 1")
+                || !write("/proc/self/setgroups", "deny")
+                || !write("/proc/self/gid_map", "0 " + QByteArray::number(gid) + " 1"))
+                ::_exit(77);
+
+            const QByteArray mount = QFile::encodeName(dir.filePath("tree/mount"));
+            if (::mount("none", mount, "tmpfs", 0, nullptr) != 0)
+                ::_exit(77);
+
+            try {
+                writeFile(dir.filePath("tree/mount/kept"));
+                OperationContext ctx;
+                const int code = errorCode([&] { LocalFileSystem::remove(dir.filePath("tree"), ctx); });
+                ::_exit(code == EBUSY && QFileInfo::exists(dir.filePath("tree/mount/kept")) ? 0 : 1);
+            } catch (...) {
+                ::_exit(2);
+            }
+        }
+
+        int status = 0;
+        QCOMPARE(::waitpid(pid, &status, 0), pid);
+        QVERIFY(WIFEXITED(status));
+        if (WEXITSTATUS(status) == 77)
+            QSKIP("Unprivileged user namespaces are unavailable");
+        QCOMPARE(WEXITSTATUS(status), 0);
     }
 
     void permissionErrors()

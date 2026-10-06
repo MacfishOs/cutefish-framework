@@ -14,6 +14,18 @@ namespace Cutefish::IO {
 
 using namespace Internal;
 
+// A mount is a different filesystem, or a bind of one; erasing through it would empty it.
+static bool isMountRoot(int parent, const QByteArray &name, const struct stat &st)
+{
+    struct statx stx;
+    if (::statx(parent, name, AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT, 0, &stx) == 0
+        && (stx.stx_attributes_mask & STATX_ATTR_MOUNT_ROOT))
+        return stx.stx_attributes & STATX_ATTR_MOUNT_ROOT;
+
+    struct stat parentSt;
+    return ::fstat(parent, &parentSt) == 0 && parentSt.st_dev != st.st_dev;
+}
+
 void Internal::eraseAt(int parent, const QByteArray &name, const QString &path,
                        OperationContext &ctx, bool cleanup)
 {
@@ -28,6 +40,9 @@ void Internal::eraseAt(int parent, const QByteArray &name, const QString &path,
     }
 
     if (S_ISDIR(st.st_mode)) {
+        if (isMountRoot(parent, name, st))
+            throw Failure(EBUSY, path);
+
         Fd fd(::openat(parent, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
         check(fd.value, path);
 
