@@ -5,6 +5,8 @@
 # Cutefish::Protocols instead of keeping their own copy.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WaylandClient REQUIRED IMPORTED_TARGET wayland-client)
+pkg_check_modules(WaylandProtocols REQUIRED wayland-protocols>=1.39)
+pkg_get_variable(WAYLAND_PROTOCOLS_DATADIR wayland-protocols pkgdatadir)
 find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner REQUIRED)
 
 set(protocols
@@ -14,11 +16,22 @@ set(protocols
     cutefish-window-management-v1
     wlr-data-control-unstable-v1
 )
+# cutefish_window_v1.create_capture_source makes an ext_image_capture_source_v1,
+# so its interface table is exported from here as well, with the toplevel
+# handle its own tables refer to.
+set(protocol_xml_ext-image-capture-source-v1
+    "${WAYLAND_PROTOCOLS_DATADIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml")
+set(protocol_xml_ext-foreign-toplevel-list-v1
+    "${WAYLAND_PROTOCOLS_DATADIR}/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml")
+list(APPEND protocols ext-foreign-toplevel-list-v1 ext-image-capture-source-v1)
 
 set(protocol_headers)
 set(protocol_sources)
 foreach(protocol IN LISTS protocols)
     set(xml "${CMAKE_CURRENT_SOURCE_DIR}/${protocol}.xml")
+    if(DEFINED protocol_xml_${protocol})
+        set(xml "${protocol_xml_${protocol}}")
+    endif()
     set(header "${CMAKE_CURRENT_BINARY_DIR}/${protocol}-client-protocol.h")
     set(code "${CMAKE_CURRENT_BINARY_DIR}/${protocol}-protocol.c")
     add_custom_command(OUTPUT "${header}"
