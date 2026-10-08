@@ -2,6 +2,7 @@
 #include "mimesniffer_p.h"
 #include "task.h"
 #include "trashdirectory_p.h"
+#include "trashmonitor.h"
 
 #include <QAbstractItemModelTester>
 #include <QCryptographicHash>
@@ -660,6 +661,36 @@ private slots:
         QVERIFY(QDir(FileSystemUrl::trashRoot() + "/info").isEmpty());
         QVERIFY(QFileInfo::exists(userTrash(automount) + "/files/unseen"));
         QVERIFY(QFileInfo::exists(userTrash(share) + "/files/remote"));
+    }
+
+    void trashMonitorSeesVolumes()
+    {
+        QTemporaryDir dir;
+        const auto volume = dir.filePath("volume");
+        QVERIFY(QDir().mkpath(volume));
+        writeMountTable(m_mountTable, {{volume, "ext4"}});
+        auto emptyTable = qScopeGuard([this] { writeFile(m_mountTable, {}); });
+
+        writeFile(dir.filePath("local"));
+        OperationContext ctx;
+        LocalFileSystem::trash(local(dir.filePath("local")), ctx);
+
+        TrashMonitor monitor;
+        QTRY_VERIFY(!monitor.isEmpty());
+
+        LocalFileSystem::emptyTrash(ctx);
+        QTRY_VERIFY(monitor.isEmpty());
+
+        // The first item trashed on a volume creates its trash.
+        QVERIFY(QDir().mkpath(userTrash(volume) + "/files"));
+        writeFile(userTrash(volume) + "/files/stick");
+        QTRY_VERIFY(!monitor.isEmpty());
+
+        LocalFileSystem::emptyTrash(ctx);
+        QTRY_VERIFY(monitor.isEmpty());
+
+        writeFile(userTrash(volume) + "/files/again");
+        QTRY_VERIFY(!monitor.isEmpty());
     }
 
     // A tmpfs in a private user and mount namespace stands in for a second drive.

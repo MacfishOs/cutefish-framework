@@ -15,14 +15,14 @@ set(IO_PUBLIC_HEADERS
     volumemanager.h error.h filepath.h filesystemurl.h fileitem.h fileenumerator.h
     operationcontext.h localfilesystem.h filesystem.h
     filewatcher.h directorylister.h directorymodel.h directory.h task.h taskprogress.h
-    thumbnailcache.h thumbnailprovider.h backgroundrelease.h)
+    thumbnailcache.h thumbnailprovider.h backgroundrelease.h trashmonitor.h)
 
 add_library(cutefish-framework-io STATIC ${IO_PUBLIC_HEADERS}
     volumemanager.cpp error.cpp filepath.cpp filesystemurl.cpp fileitem.cpp fileenumerator.cpp
     operationcontext.cpp localfilesystem.cpp trash.cpp filewatcher.cpp
     directorylister.cpp directorymodel.cpp task.cpp thumbnailcache.cpp thumbnailprovider.cpp
     thumbnailers.cpp thumbnailers_p.h mimesniffer.cpp mimesniffer_p.h async.h posix_p.h
-    trashdirectory.cpp trashdirectory_p.h)
+    trashdirectory.cpp trashdirectory_p.h trashmonitor.cpp)
 add_library(Cutefish::IO ALIAS cutefish-framework-io)
 
 set_target_properties(cutefish-framework-io PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
