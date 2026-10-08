@@ -21,10 +21,13 @@
 #include "handler.h"
 #include "configuration.h"
 #include "networkclient.h"
+#include "secretstore.h"
+#include "vpnschema.h"
 #include "vpnutils.h"
 #include "wifiutils.h"
 
 #include <QDBusConnection>
+#include <QDBusMetaType>
 #include <QDBusPendingCallWatcher>
 #include <QDebug>
 #include <QFile>
@@ -71,7 +74,11 @@ Handler::Handler(QObject *parent)
 {
     connect(m_client, &NetworkClient::changed, this, &Handler::update);
     connect(m_client, &NetworkClient::activeStateChanged, this,
-            [this](const QString &active, uint state, uint) { activeStateChanged(active, state); });
+            [this](const QString &active, uint state, uint reason) {
+                activeStateChanged(active, state);
+                if (state == ActiveDeactivated)
+                    reportVpnFailure(active, reason);
+            });
     connect(m_client, &NetworkClient::objectRemoved, this, [this](const QString &path) {
         // Gone without a final state: the activation never made it.
         if (m_forget.contains(path) || path == m_hotspotActivation)
@@ -280,6 +287,19 @@ void Handler::activeStateChanged(const QString &active, uint state)
     } else if (state == ActiveActivated) {
         m_forget.erase(it);
     }
+}
+
+void Handler::reportVpnFailure(const QString &active, uint reason)
+{
+    if (!m_client->property(active, activeInterface, QStringLiteral("Vpn")).toBool())
+        return;
+    // A lost uplink (DEVICE_DISCONNECTED) takes the VPN down without a failure of its own.
+    if (reason == 3)
+        return;
+    const QString message = VpnUtils::failureMessage(reason);
+    if (message.isEmpty())
+        return;
+    Q_EMIT vpnFailed(m_client->property(active, activeInterface, QStringLiteral("Id")).toString(), message);
 }
 
 void Handler::deactivateConnection(const QString &connection, const QString &device)
@@ -563,56 +583,249 @@ void Handler::importVpnAs(const QString &file, QStringList types, const QString 
     process->start();
 }
 
-void Handler::setVpnUserName(const QString &connection, const QString &userName)
-{
-    const QString service = m_client->setting(connection, QStringLiteral("vpn"), QStringLiteral("service-type")).toString();
-    const QVariantMap current = m_client->setting(connection, QStringLiteral("vpn"), QStringLiteral("data")).toMap();
-    QMap<QString, QString> data;
-    for (auto it = current.cbegin(); it != current.cend(); ++it)
-        data.insert(it.key(), it.value().toString());
-
-    const QString key = VpnUtils::userNameKey(service, data);
-    if (key.isEmpty() || data.value(key) == userName)
-        return;
-    if (userName.isEmpty())
-        data.remove(key);
-    else
-        data.insert(key, userName);
-
-    // vpn.data is a{ss}; without secrets in it, the update keeps the stored ones.
-    NMVariantMapMap settings = m_client->settings(connection);
-    settings[QStringLiteral("vpn")].insert(QStringLiteral("data"), QVariant::fromValue(data));
-    m_client->call(connection, connectionInterface, QStringLiteral("Update"), {QVariant::fromValue(settings)}, this,
-                   [](const QDBusMessage &reply) {
-                       if (reply.type() == QDBusMessage::ErrorMessage)
-                           qWarning() << "Cannot save the VPN user name:" << reply.errorMessage();
-                   },
-                   kAuthorizedCallTimeoutMs);
-}
-
-void Handler::addVpn(const QVariantMap &form)
-{
-    QString error;
-    const NMVariantMapMap profile = VpnUtils::manualProfile(form, &error);
-    if (profile.isEmpty())
-        Q_EMIT vpnAddFailed(error);
-    else
-        addPrivateVpn(profile);
-}
-
 QVariantList Handler::vpnKinds() const
 {
     return VpnUtils::manualKinds();
 }
 
+static QMap<QString, QString> vpnData(const NMVariantMapMap &settings)
+{
+    // Straight from D-Bus the a{ss} is still a QDBusArgument.
+    const QVariantMap current = NetworkDBus::plain(settings.value(QStringLiteral("vpn")).value(QStringLiteral("data"))).toMap();
+    QMap<QString, QString> data;
+    for (auto it = current.cbegin(); it != current.cend(); ++it)
+        data.insert(it.key(), it.value().toString());
+    return data;
+}
+
+QVariantMap Handler::vpnForm(const QString &kind, const QString &connection) const
+{
+    NMVariantMapMap settings;
+    QString shortName = kind;
+    if (!connection.isEmpty()) {
+        settings = m_client->settings(connection);
+        shortName = VpnUtils::kind(m_client, connection);
+    }
+    const bool wireguard = shortName == QLatin1String("wireguard");
+    const QVariantMap info = settings.value(QStringLiteral("connection"));
+    const bool ownNetworkOnly = settings.value(QStringLiteral("ipv4")).value(QStringLiteral("never-default")).toBool()
+            || settings.value(QStringLiteral("ipv6")).value(QStringLiteral("never-default")).toBool();
+
+    QVariantMap form {
+        {QStringLiteral("kind"), shortName},
+        {QStringLiteral("label"), VpnUtils::kindLabel(shortName)},
+        {QStringLiteral("installed"), wireguard || VpnUtils::pluginInstalled(QStringLiteral("org.freedesktop.NetworkManager.") + shortName)},
+        {QStringLiteral("package"), VpnUtils::package(shortName)},
+        {QStringLiteral("name"), info.value(QStringLiteral("id")).toString()},
+        {QStringLiteral("shared"), !connection.isEmpty() && info.value(QStringLiteral("permissions")).toStringList().isEmpty()},
+        {QStringLiteral("ownNetworkOnly"), ownNetworkOnly},
+        {QStringLiteral("exportable"), wireguard || VpnSchema::exportable(shortName)},
+        {QStringLiteral("exportPatterns"), wireguard ? QStringList {QStringLiteral("*.conf")} : VpnSchema::importPatterns(shortName)},
+    };
+    if (wireguard)
+        form.insert(QStringLiteral("wireguard"), VpnUtils::wireGuardForm(settings));
+    else
+        form.insert(QStringLiteral("fields"), VpnSchema::formFields(shortName, vpnData(settings)));
+    return form;
+}
+
+void Handler::getSecrets(const QString &connection, const QString &setting,
+                         std::function<void(const NMVariantMapMap &)> done)
+{
+    m_client->call(connection, connectionInterface, QStringLiteral("GetSecrets"), {setting}, this,
+                   [done](const QDBusMessage &reply) {
+                       // A profile without secrets of that kind, or one this user may not
+                       // read them from, gives an error: the form then starts empty.
+                       if (reply.type() == QDBusMessage::ReplyMessage)
+                           done(qdbus_cast<NMVariantMapMap>(reply.arguments().value(0)));
+                       else
+                           done({});
+                   },
+                   kAuthorizedCallTimeoutMs);
+}
+
+void Handler::loadVpnSecrets(const QString &connection)
+{
+    const QString uuid = m_client->setting(connection, QStringLiteral("connection"), QStringLiteral("uuid")).toString();
+    if (VpnUtils::kind(m_client, connection) == QLatin1String("wireguard")) {
+        getSecrets(connection, QStringLiteral("wireguard"), [this, connection](const NMVariantMapMap &secrets) {
+            const QVariantMap wireguard = secrets.value(QStringLiteral("wireguard"));
+            QVariantMap presharedKeys;
+            const auto peers = wireguard.value(QStringLiteral("peers")).value<QList<QVariantMap>>();
+            for (const QVariantMap &peer : peers) {
+                if (peer.contains(QStringLiteral("preshared-key")))
+                    presharedKeys.insert(peer.value(QStringLiteral("public-key")).toString(), peer.value(QStringLiteral("preshared-key")));
+            }
+            Q_EMIT vpnSecretsLoaded(connection, {{QStringLiteral("privateKey"), wireguard.value(QStringLiteral("private-key")).toString()},
+                                                 {QStringLiteral("presharedKeys"), presharedKeys}});
+        });
+        return;
+    }
+
+    // System-owned secrets come from NetworkManager, this user's from the keyring.
+    getSecrets(connection, QStringLiteral("vpn"), [this, connection, uuid](const NMVariantMapMap &secrets) {
+        const QVariantMap system = NetworkDBus::plain(secrets.value(QStringLiteral("vpn")).value(QStringLiteral("secrets"))).toMap();
+        if (!m_secrets)
+            m_secrets = new SecretStore(this);
+        m_secrets->load(uuid, QStringLiteral("vpn"), [this, connection, system](const QVariantMap &stored) {
+            QVariantMap all = system;
+            all.insert(stored);
+            Q_EMIT vpnSecretsLoaded(connection, all);
+        });
+    });
+}
+
+void Handler::saveVpn(const QString &connection, const QVariantMap &form)
+{
+    const bool adding = connection.isEmpty();
+    const auto fail = [this, adding](const QString &message) {
+        if (adding)
+            Q_EMIT vpnAddFailed(message);
+        else
+            Q_EMIT vpnSaveFailed(message);
+    };
+
+    NMVariantMapMap profile = adding ? NMVariantMapMap() : m_client->settings(connection);
+    const QString kind = adding ? form.value(QStringLiteral("kind")).toString() : VpnUtils::kind(m_client, connection);
+    const bool shared = form.value(QStringLiteral("shared")).toBool();
+    const QString name = form.value(QStringLiteral("name")).toString().trimmed();
+    QString error;
+
+    if (kind == QLatin1String("wireguard")) {
+        profile = VpnUtils::wireGuardSettings(form, profile, &error);
+        if (profile.isEmpty())
+            return fail(error);
+    } else {
+        QMap<QString, QString> data = vpnData(profile);
+        QMap<QString, QString> secrets;
+        // A shared profile's passwords are NetworkManager's to keep, a private one's this
+        // user's: a storage choice from the other arrangement moves over.
+        QVariantMap storage = form.value(QStringLiteral("storage")).toMap();
+        for (auto it = storage.begin(); it != storage.end(); ++it) {
+            const uint flags = it->toUInt();
+            if (shared && flags == SecretAgentOwned)
+                *it = uint(SecretSystemOwned);
+            else if (!shared && flags == SecretSystemOwned)
+                *it = uint(SecretAgentOwned);
+        }
+        if (!VpnSchema::apply(kind, form.value(QStringLiteral("values")).toMap(), storage,
+                              form.value(QStringLiteral("secrets")).toMap(), shared, data, secrets, &error))
+            return fail(error);
+
+        QVariantMap info = profile.value(QStringLiteral("connection"));
+        if (adding) {
+            info.insert(QStringLiteral("uuid"), QUuid::createUuid().toString(QUuid::WithoutBraces));
+            info.insert(QStringLiteral("type"), QStringLiteral("vpn"));
+            // Named after the server, as the file imports are named after their file.
+            QString fallback;
+            for (const VpnSchema::Field &field : VpnSchema::fields(kind)) {
+                if (field.required && fallback.isEmpty())
+                    fallback = data.value(field.key);
+            }
+            info.insert(QStringLiteral("id"), fallback.isEmpty() ? VpnUtils::kindLabel(kind) : fallback);
+        }
+        profile[QStringLiteral("connection")] = info;
+
+        QVariantMap vpn = profile.value(QStringLiteral("vpn"));
+        vpn.insert(QStringLiteral("service-type"), QStringLiteral("org.freedesktop.NetworkManager.") + kind);
+        vpn.insert(QStringLiteral("data"), QVariant::fromValue(data));
+        // Without secrets in the update, NetworkManager keeps the stored ones.
+        if (secrets.isEmpty())
+            vpn.remove(QStringLiteral("secrets"));
+        else
+            vpn.insert(QStringLiteral("secrets"), QVariant::fromValue(secrets));
+        profile[QStringLiteral("vpn")] = vpn;
+        for (const QString &family : {QStringLiteral("ipv4"), QStringLiteral("ipv6")}) {
+            if (!profile.value(family).contains(QStringLiteral("method")))
+                profile[family].insert(QStringLiteral("method"), QStringLiteral("auto"));
+        }
+    }
+
+    if (!name.isEmpty())
+        profile[QStringLiteral("connection")].insert(QStringLiteral("id"), name);
+    profile[QStringLiteral("connection")].insert(QStringLiteral("permissions"),
+                                                 shared ? QStringList() : QStringList {NetworkClient::userPermission()});
+    const bool ownNetworkOnly = form.value(QStringLiteral("ownNetworkOnly")).toBool();
+    for (const QString &family : {QStringLiteral("ipv4"), QStringLiteral("ipv6")}) {
+        if (ownNetworkOnly)
+            profile[family].insert(QStringLiteral("never-default"), true);
+        else
+            profile[family].remove(QStringLiteral("never-default"));
+    }
+
+    if (adding) {
+        addPrivateVpn(profile);
+        return;
+    }
+    m_client->call(connection, connectionInterface, QStringLiteral("Update"), {QVariant::fromValue(profile)}, this,
+                   [this, connection](const QDBusMessage &reply) {
+                       if (reply.type() == QDBusMessage::ReplyMessage)
+                           Q_EMIT vpnSaved(connection);
+                       else
+                           Q_EMIT vpnSaveFailed(reply.errorMessage());
+                   },
+                   kAuthorizedCallTimeoutMs);
+}
+
+void Handler::exportVpn(const QString &connection, const QUrl &file)
+{
+    const QString path = file.isLocalFile() ? file.toLocalFile() : file.toString();
+    if (VpnUtils::kind(m_client, connection) == QLatin1String("wireguard")) {
+        getSecrets(connection, QStringLiteral("wireguard"), [this, connection, path](const NMVariantMapMap &secrets) {
+            NMVariantMapMap settings = m_client->settings(connection);
+            const QVariantMap wireguard = secrets.value(QStringLiteral("wireguard"));
+            if (!wireguard.contains(QStringLiteral("private-key"))) {
+                Q_EMIT vpnExportFailed(tr("The private key can't be read, so the file would be incomplete."));
+                return;
+            }
+            settings[QStringLiteral("wireguard")].insert(QStringLiteral("private-key"), wireguard.value(QStringLiteral("private-key")));
+            // Peers come with their preshared keys only here.
+            if (wireguard.contains(QStringLiteral("peers")))
+                settings[QStringLiteral("wireguard")].insert(QStringLiteral("peers"), wireguard.value(QStringLiteral("peers")));
+
+            QFile out(path);
+            if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate) || out.write(VpnUtils::wireGuardConfig(settings)) < 0) {
+                Q_EMIT vpnExportFailed(out.errorString());
+                return;
+            }
+            // The file holds the private key.
+            out.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+            Q_EMIT vpnExported(path);
+        });
+        return;
+    }
+
+    // The plugin's writer runs in nmcli, like its reader.
+    const QString uuid = m_client->setting(connection, QStringLiteral("connection"), QStringLiteral("uuid")).toString();
+    auto *process = new QProcess(this);
+    process->setProgram(QStringLiteral("nmcli"));
+    process->setArguments({QStringLiteral("connection"), QStringLiteral("export"), QStringLiteral("uuid"), uuid, path});
+    connect(process, &QProcess::finished, this, [this, process, path](int code, QProcess::ExitStatus status) {
+        process->deleteLater();
+        const QString message = QString::fromUtf8(process->readAllStandardError()).trimmed();
+        if (status == QProcess::NormalExit && code == 0)
+            Q_EMIT vpnExported(path);
+        else
+            Q_EMIT vpnExportFailed(message.isEmpty() ? tr("The VPN couldn't be written to a file.") : message);
+    });
+    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError failure) {
+        if (failure != QProcess::FailedToStart)
+            return;
+        process->deleteLater();
+        Q_EMIT vpnExportFailed(tr("nmcli, which writes VPN files, is not installed."));
+    });
+    process->start();
+}
+
 void Handler::addPrivateVpn(NMVariantMapMap profile)
 {
-    // As GNOME does: the VPN is this user's, which needs no administrator password, and
-    // comes up only when asked to. A WireGuard profile would otherwise connect the moment
-    // it is added, its interface being its own.
+    // As the big desktops do: the VPN is this user's unless the form says otherwise, which
+    // needs no administrator password, and comes up only when asked to. A WireGuard profile
+    // would otherwise connect the moment it is added, its interface being its own.
     profile[QStringLiteral("connection")].insert(QStringLiteral("autoconnect"), false);
-    profile[QStringLiteral("connection")].insert(QStringLiteral("permissions"),
-                                                 QStringList {NetworkClient::userPermission()});
+    if (!profile.value(QStringLiteral("connection")).contains(QStringLiteral("permissions")))
+        profile[QStringLiteral("connection")].insert(QStringLiteral("permissions"),
+                                                     QStringList {NetworkClient::userPermission()});
 
     const QString uuid = profile.value(QStringLiteral("connection")).value(QStringLiteral("uuid")).toString();
     m_client->call(settingsPath, settingsInterface, QStringLiteral("AddConnection"), {QVariant::fromValue(profile)},

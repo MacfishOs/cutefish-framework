@@ -54,13 +54,8 @@ CUTEFISH_NETWORK_EXPORT QString userNameKey(const QString &serviceType, const QM
 // The server's message among the hints, if it sent one.
 CUTEFISH_NETWORK_EXPORT QString hintMessage(const QStringList &hints);
 
-// The kinds of VPN that can be set up by hand: {kind, label, installed, package}.
+// The kinds of VPN a form exists for: {kind, label, installed, package}, WireGuard first.
 CUTEFISH_NETWORK_EXPORT QVariantList manualKinds();
-// A profile from the Add VPN form: "kind", "name", "server", "userName", "password", and
-// per kind "authentication", "caFile", "certFile", "keyFile", "keyPassword",
-// "presharedKey", "privateKey", "publicKey", "address", "allowedIps" and "dns". Passwords
-// are the agent's to keep; empty with `error` set when something required is missing.
-CUTEFISH_NETWORK_EXPORT NMVariantMapMap manualProfile(const QVariantMap &form, QString *error);
 
 // Whether a file's start reads as a wg-quick configuration.
 CUTEFISH_NETWORK_EXPORT bool isWireGuardConfig(const QByteArray &content);
@@ -69,5 +64,18 @@ CUTEFISH_NETWORK_EXPORT bool isWireGuardConfig(const QByteArray &content);
 // `name`, and the interface is named after it.
 CUTEFISH_NETWORK_EXPORT NMVariantMapMap wireGuardProfile(const QByteArray &content, const QString &name,
                                                          QString *error);
+
+// A WireGuard profile as its form shows it: interfaceName, privateKey (empty, a secret),
+// addresses and dns as comma-separated text, listenPort, fwmark, mtu (0 for automatic),
+// peerRoutes, and peers [{publicKey, presharedKey (empty), hasPresharedKey, endpoint,
+// allowedIps, keepalive}].
+CUTEFISH_NETWORK_EXPORT QVariantMap wireGuardForm(const NMVariantMapMap &settings);
+// The profile the form describes, over `existing` when a profile is edited: a private key
+// or preshared key left empty keeps the stored one. Empty with `error` set when a value
+// is invalid.
+CUTEFISH_NETWORK_EXPORT NMVariantMapMap wireGuardSettings(const QVariantMap &form, const NMVariantMapMap &existing,
+                                                          QString *error);
+// The profile as a wg-quick file, with its secrets when `settings` holds them.
+CUTEFISH_NETWORK_EXPORT QByteArray wireGuardConfig(const NMVariantMapMap &settings);
 
 } // namespace VpnUtils

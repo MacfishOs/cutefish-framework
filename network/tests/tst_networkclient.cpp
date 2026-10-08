@@ -6,6 +6,7 @@
 #include "../vpnutils.h"
 #include "../wifiutils.h"
 #include "../wirelessitemsettings.h"
+#include "fakesecrets.h"
 #include "fixture.h"
 
 #include <QSignalSpy>
@@ -413,7 +414,32 @@ private slots:
                  int(NetworkModel::Deactivated));
     }
 
-    void vpnUserNameIsSavedInTheProfile()
+    void vpnFailureIsReported()
+    {
+        Handler handler;
+        QSignalSpy failed(&handler, &Handler::vpnFailed);
+        addVpn(officeVpn, QStringLiteral("Office VPN"), QStringLiteral("org.freedesktop.NetworkManager.openvpn"), 1000);
+        const QString active = FakeNM::managerPath + QStringLiteral("/ActiveConnection/61");
+        nm->add(active, {{FakeNM::active,
+                          {{QStringLiteral("Connection"), FakeNM::path(officeVpn)},
+                           {QStringLiteral("Devices"), FakeNM::paths({})},
+                           {QStringLiteral("Id"), QStringLiteral("Office VPN")},
+                           {QStringLiteral("State"), 1u},
+                           {QStringLiteral("Type"), QStringLiteral("vpn")},
+                           {QStringLiteral("Vpn"), true}}},
+                         {vpnInterface, {{QStringLiteral("VpnState"), 3u}}}});
+        QTRY_VERIFY(NetworkClient::instance()->activeConnections().contains(active));
+
+        // NO_SECRETS (the prompt was cancelled) and USER_DISCONNECTED are not failures.
+        nm->emitSignal(active, FakeNM::active, QStringLiteral("StateChanged"), {4u, 9u});
+        nm->emitSignal(active, FakeNM::active, QStringLiteral("StateChanged"), {4u, 2u});
+        nm->emitSignal(active, FakeNM::active, QStringLiteral("StateChanged"), {4u, 10u});
+        QTRY_COMPARE(failed.size(), 1);
+        QCOMPARE(failed.first().at(0).toString(), QStringLiteral("Office VPN"));
+        QCOMPARE(failed.first().at(1).toString(), VpnUtils::failureMessage(10));
+    }
+
+    void vpnFormIsSavedInTheProfile()
     {
         NetworkModel model;
         addVpn(officeVpn, QStringLiteral("Office VPN"), QStringLiteral("org.freedesktop.NetworkManager.openvpn"), 1000);
@@ -422,31 +448,96 @@ private slots:
         QVERIFY(row(model, QStringLiteral("Office VPN")).data(NetworkModel::VpnUserNameRole).toString().isEmpty());
 
         Handler handler;
-        handler.setVpnUserName(officeVpn, QStringLiteral("alice"));
-        QTRY_COMPARE(nm->count(QStringLiteral("Update")), 1);
+        const QVariantMap form = handler.vpnForm(QString(), officeVpn);
+        QCOMPARE(form.value(QStringLiteral("kind")).toString(), QStringLiteral("openvpn"));
+        QCOMPARE(form.value(QStringLiteral("name")).toString(), QStringLiteral("Office VPN"));
+        QVERIFY(form.value(QStringLiteral("shared")).toBool());
+        QVERIFY(!form.value(QStringLiteral("ownNetworkOnly")).toBool());
+        QVERIFY(form.value(QStringLiteral("exportable")).toBool());
+        QVariantMap values;
+        for (const QVariant &field : form.value(QStringLiteral("fields")).toList())
+            values.insert(field.toMap().value(QStringLiteral("key")).toString(), field.toMap().value(QStringLiteral("value")));
+        QCOMPARE(values.value(QStringLiteral("connection-type")).toString(), QStringLiteral("password"));
+
+        QSignalSpy saved(&handler, &Handler::vpnSaved);
+        values.insert(QStringLiteral("remote"), QStringLiteral("vpn.example.com"));
+        values.insert(QStringLiteral("username"), QStringLiteral("alice"));
+        handler.saveVpn(officeVpn, {{QStringLiteral("name"), QStringLiteral("Office HQ")},
+                                    {QStringLiteral("shared"), false},
+                                    {QStringLiteral("ownNetworkOnly"), true},
+                                    {QStringLiteral("values"), values},
+                                    {QStringLiteral("storage"), QVariantMap {{QStringLiteral("password"), uint(NetworkDBus::SecretSystemOwned)}}},
+                                    {QStringLiteral("secrets"), QVariantMap {{QStringLiteral("password"), QStringLiteral("s3cret")}}}});
+        QTRY_COMPARE(saved.size(), 1);
+        QCOMPARE(nm->count(QStringLiteral("Update")), 1);
         const auto settings = qdbus_cast<NMVariantMapMap>(nm->last(QStringLiteral("Update")).arguments().value(0));
+        const QVariantMap connection = settings.value(QStringLiteral("connection"));
+        QCOMPARE(connection.value(QStringLiteral("id")).toString(), QStringLiteral("Office HQ"));
+        QCOMPARE(connection.value(QStringLiteral("uuid")).toString(), QStringLiteral("office vpn"));
+        QCOMPARE(connection.value(QStringLiteral("permissions")).toStringList(), QStringList {NetworkClient::userPermission()});
+        QCOMPARE(settings.value(QStringLiteral("ipv4")).value(QStringLiteral("never-default")).toBool(), true);
         const auto data = settings.value(QStringLiteral("vpn")).value(QStringLiteral("data")).value<QDBusArgument>();
         QCOMPARE(data.currentSignature(), QStringLiteral("a{ss}"));
-        const auto values = qdbus_cast<QMap<QString, QString>>(data);
-        QCOMPARE(values.value(QStringLiteral("username")), QStringLiteral("alice"));
-        QTRY_COMPARE(row(model, QStringLiteral("Office VPN")).data(NetworkModel::VpnUserNameRole).toString(),
-                     QStringLiteral("alice"));
+        const auto values2 = qdbus_cast<QMap<QString, QString>>(data);
+        QCOMPARE(values2.value(QStringLiteral("username")), QStringLiteral("alice"));
+        // Private now, so the password is the agent's rather than the system's.
+        QCOMPARE(values2.value(QStringLiteral("password-flags")), QStringLiteral("1"));
+        const auto secrets = qdbus_cast<QMap<QString, QString>>(settings.value(QStringLiteral("vpn")).value(QStringLiteral("secrets")).value<QDBusArgument>());
+        QCOMPARE(secrets.value(QStringLiteral("password")), QStringLiteral("s3cret"));
+        QTRY_COMPARE(row(model, QStringLiteral("Office HQ")).data(NetworkModel::VpnUserNameRole).toString(), QStringLiteral("alice"));
+
+        QSignalSpy failed(&handler, &Handler::vpnSaveFailed);
+        values.insert(QStringLiteral("remote"), QString());
+        handler.saveVpn(officeVpn, {{QStringLiteral("values"), values}});
+        QCOMPARE(failed.size(), 1);
+        QCOMPARE(nm->count(QStringLiteral("Update")), 1);
+    }
+
+    void vpnSecretsComeFromBothStores()
+    {
+        addVpn(officeVpn, QStringLiteral("Office VPN"), QStringLiteral("org.freedesktop.NetworkManager.openvpn"), 1000);
+        nm->secrets[officeVpn] = {{QStringLiteral("vpn"), {{QStringLiteral("secrets"), QVariant::fromValue(QMap<QString, QString> {{QStringLiteral("cert-pass"), QStringLiteral("pem")}})}}}};
+        // This user's password sits in the keyring under the profile's uuid.
+        auto keyring = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("fake-secrets"));
+        FakeSecretService secrets;
+        secrets.items.insert(secrets.collectionPath + QStringLiteral("/1"),
+                             {{{QStringLiteral("connection-uuid"), QStringLiteral("office vpn")},
+                               {QStringLiteral("setting-name"), QStringLiteral("vpn")},
+                               {QStringLiteral("setting-key"), QStringLiteral("password")}},
+                              QByteArrayLiteral("hunter2")});
+        QVERIFY(keyring.registerVirtualObject(QStringLiteral("/org/freedesktop/secrets"), &secrets, QDBusConnection::SubPath));
+        QVERIFY(keyring.registerService(QStringLiteral("org.freedesktop.secrets")));
+
+        Handler handler;
+        QSignalSpy loaded(&handler, &Handler::vpnSecretsLoaded);
+        QTRY_VERIFY(!NetworkClient::instance()->settings(officeVpn).isEmpty());
+        handler.loadVpnSecrets(officeVpn);
+        QTRY_COMPARE(loaded.size(), 1);
+        const QVariantMap all = loaded.first().at(1).toMap();
+        QCOMPARE(all.value(QStringLiteral("cert-pass")).toString(), QStringLiteral("pem"));
+        QCOMPARE(all.value(QStringLiteral("password")).toString(), QStringLiteral("hunter2"));
+
+        keyring.unregisterService(QStringLiteral("org.freedesktop.secrets"));
+        keyring.unregisterObject(QStringLiteral("/org/freedesktop/secrets"), QDBusConnection::UnregisterTree);
+        QDBusConnection::disconnectFromBus(QStringLiteral("fake-secrets"));
     }
 
     void vpnAddedByHandIsPrivate()
     {
         Handler handler;
         QSignalSpy added(&handler, &Handler::vpnAdded);
-        handler.addVpn({{QStringLiteral("kind"), QStringLiteral("l2tp")},
-                        {QStringLiteral("name"), QStringLiteral("Branch")},
-                        {QStringLiteral("server"), QStringLiteral("vpn.example.com")},
-                        {QStringLiteral("userName"), QStringLiteral("alice")},
-                        {QStringLiteral("password"), QStringLiteral("s3cret")},
-                        {QStringLiteral("presharedKey"), QStringLiteral("shared")}});
+        handler.saveVpn(QString(), {{QStringLiteral("kind"), QStringLiteral("l2tp")},
+                                    {QStringLiteral("name"), QStringLiteral("Branch")},
+                                    {QStringLiteral("values"), QVariantMap {{QStringLiteral("gateway"), QStringLiteral("vpn.example.com")},
+                                                                           {QStringLiteral("user"), QStringLiteral("alice")},
+                                                                           {QStringLiteral("ipsec-enabled"), true}}},
+                                    {QStringLiteral("secrets"), QVariantMap {{QStringLiteral("password"), QStringLiteral("s3cret")},
+                                                                            {QStringLiteral("ipsec-psk"), QStringLiteral("shared")}}}});
         QTRY_COMPARE(added.size(), 1);
 
         const auto settings = qdbus_cast<NMVariantMapMap>(nm->last(QStringLiteral("AddConnection")).arguments().value(0));
         const QVariantMap connection = settings.value(QStringLiteral("connection"));
+        QCOMPARE(connection.value(QStringLiteral("id")).toString(), QStringLiteral("Branch"));
         QCOMPARE(connection.value(QStringLiteral("type")).toString(), QStringLiteral("vpn"));
         QCOMPARE(connection.value(QStringLiteral("autoconnect")).toBool(), false);
         QCOMPARE(connection.value(QStringLiteral("permissions")).toStringList(), QStringList {NetworkClient::userPermission()});
@@ -463,9 +554,21 @@ private slots:
         QCOMPARE(dataMap.value(QStringLiteral("password-flags")), QStringLiteral("1"));
         QCOMPARE(dataMap.value(QStringLiteral("ipsec-enabled")), QStringLiteral("yes"));
         QCOMPARE(secretMap.value(QStringLiteral("ipsec-psk")), QStringLiteral("shared"));
+        QCOMPARE(settings.value(QStringLiteral("ipv4")).value(QStringLiteral("method")).toString(), QStringLiteral("auto"));
+
+        // Unnamed, it goes by its server; shared, it belongs to everyone.
+        handler.saveVpn(QString(), {{QStringLiteral("kind"), QStringLiteral("pptp")},
+                                    {QStringLiteral("shared"), true},
+                                    {QStringLiteral("values"), QVariantMap {{QStringLiteral("gateway"), QStringLiteral("pptp.example.com")}}}});
+        QTRY_COMPARE(added.size(), 2);
+        const auto second = qdbus_cast<NMVariantMapMap>(nm->last(QStringLiteral("AddConnection")).arguments().value(0));
+        QCOMPARE(second.value(QStringLiteral("connection")).value(QStringLiteral("id")).toString(), QStringLiteral("pptp.example.com"));
+        QVERIFY(second.value(QStringLiteral("connection")).value(QStringLiteral("permissions")).toStringList().isEmpty());
+        const auto secondData = qdbus_cast<QMap<QString, QString>>(second.value(QStringLiteral("vpn")).value(QStringLiteral("data")).value<QDBusArgument>());
+        QCOMPARE(secondData.value(QStringLiteral("password-flags")), QStringLiteral("0"));
 
         QSignalSpy failed(&handler, &Handler::vpnAddFailed);
-        handler.addVpn({{QStringLiteral("kind"), QStringLiteral("openvpn")}, {QStringLiteral("server"), QStringLiteral("x")}});
+        handler.saveVpn(QString(), {{QStringLiteral("kind"), QStringLiteral("openvpn")}});
         QCOMPARE(failed.size(), 1);
     }
 

@@ -12,6 +12,10 @@ add_executable(tst_vpnutils tst_vpnutils.cpp)
 target_link_libraries(tst_vpnutils PRIVATE cutefish-framework-network Qt6::Test)
 add_test(NAME network-vpnutils COMMAND tst_vpnutils)
 
+add_executable(tst_vpnschema tst_vpnschema.cpp)
+target_link_libraries(tst_vpnschema PRIVATE cutefish-framework-network Qt6::Test)
+add_test(NAME network-vpnschema COMMAND tst_vpnschema)
+
 add_executable(tst_networkclient tst_networkclient.cpp fakenetworkmanager.h fixture.h)
 target_link_libraries(tst_networkclient PRIVATE cutefish-framework-network Qt6::Test)
 add_test(NAME network-client COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_networkclient>)

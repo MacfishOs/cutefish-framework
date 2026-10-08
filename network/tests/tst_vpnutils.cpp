@@ -92,53 +92,94 @@ private slots:
                  QStringLiteral("Xauth username"));
     }
 
-    void profilesByHand()
+    void kindsByHand()
+    {
+        const QVariantList kinds = VpnUtils::manualKinds();
+        QCOMPARE(kinds.first().toMap().value(QStringLiteral("kind")), QStringLiteral("wireguard"));
+        QVERIFY(kinds.first().toMap().value(QStringLiteral("installed")).toBool());
+        QCOMPARE(kinds.at(1).toMap().value(QStringLiteral("kind")), QStringLiteral("openvpn"));
+        QVERIFY(kinds.at(1).toMap().value(QStringLiteral("installed")).toBool());
+        QCOMPARE(kinds.size(), 12);
+        for (const QVariant &kind : kinds) {
+            if (kind.toMap().value(QStringLiteral("kind")) == QLatin1String("l2tp"))
+                QVERIFY(!kind.toMap().value(QStringLiteral("installed")).toBool());
+        }
+    }
+
+    void wireGuardByHand()
     {
         QString error;
-        NMVariantMapMap openvpnProfile = VpnUtils::manualProfile({{QStringLiteral("kind"), QStringLiteral("openvpn")},
-                                                                  {QStringLiteral("server"), QStringLiteral("vpn.example.com")},
-                                                                  {QStringLiteral("authentication"), QStringLiteral("certificates")},
-                                                                  {QStringLiteral("caFile"), QStringLiteral("/ca.pem")},
-                                                                  {QStringLiteral("certFile"), QStringLiteral("/me.pem")},
-                                                                  {QStringLiteral("keyFile"), QStringLiteral("/me.key")}},
-                                                                 &error);
-        QVERIFY2(!openvpnProfile.isEmpty(), qPrintable(error));
-        QCOMPARE(openvpnProfile.value(QStringLiteral("connection")).value(QStringLiteral("id")).toString(),
-                 QStringLiteral("vpn.example.com"));
-        const auto data = openvpnProfile.value(QStringLiteral("vpn")).value(QStringLiteral("data")).value<QMap<QString, QString>>();
-        QCOMPARE(data.value(QStringLiteral("connection-type")), QStringLiteral("tls"));
-        QCOMPARE(data.value(QStringLiteral("key")), QStringLiteral("/me.key"));
-        QCOMPARE(data.value(QStringLiteral("cert-pass-flags")), QStringLiteral("1"));
-
-        const NMVariantMapMap wireguard = VpnUtils::manualProfile({{QStringLiteral("kind"), QStringLiteral("wireguard")},
-                                                                   {QStringLiteral("name"), QStringLiteral("Home")},
-                                                                   {QStringLiteral("server"), QStringLiteral("vpn.example.com")},
-                                                                   {QStringLiteral("privateKey"), QStringLiteral("yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=")},
-                                                                   {QStringLiteral("publicKey"), QStringLiteral("xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=")},
-                                                                   {QStringLiteral("address"), QStringLiteral("10.0.0.2/24")}},
-                                                                  &error);
-        QVERIFY2(!wireguard.isEmpty(), qPrintable(error));
-        const auto peers = wireguard.value(QStringLiteral("wireguard")).value(QStringLiteral("peers")).value<QList<QVariantMap>>();
-        QCOMPARE(peers.first().value(QStringLiteral("endpoint")).toString(), QStringLiteral("vpn.example.com:51820"));
+        const QVariantMap form {
+            {QStringLiteral("name"), QStringLiteral("Home")},
+            {QStringLiteral("privateKey"), QStringLiteral("yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=")},
+            {QStringLiteral("addresses"), QStringLiteral("10.0.0.2/24, fd00::2")},
+            {QStringLiteral("dns"), QStringLiteral("10.0.0.1, corp.example")},
+            {QStringLiteral("listenPort"), QStringLiteral("")},
+            {QStringLiteral("mtu"), QStringLiteral("1420")},
+            {QStringLiteral("peerRoutes"), false},
+            {QStringLiteral("peers"), QVariantList {QVariantMap {
+                {QStringLiteral("publicKey"), QStringLiteral("xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=")},
+                {QStringLiteral("endpoint"), QStringLiteral("2001:db8::1")},
+                {QStringLiteral("allowedIps"), QString()},
+                {QStringLiteral("keepalive"), QStringLiteral("25")},
+            }}},
+        };
+        const NMVariantMapMap profile = VpnUtils::wireGuardSettings(form, {}, &error);
+        QVERIFY2(!profile.isEmpty(), qPrintable(error));
+        QCOMPARE(profile.value(QStringLiteral("connection")).value(QStringLiteral("id")).toString(), QStringLiteral("Home"));
+        QCOMPARE(profile.value(QStringLiteral("connection")).value(QStringLiteral("interface-name")).toString(), QStringLiteral("Home"));
+        QCOMPARE(profile.value(QStringLiteral("wireguard")).value(QStringLiteral("mtu")).toUInt(), 1420u);
+        QCOMPARE(profile.value(QStringLiteral("wireguard")).value(QStringLiteral("peer-routes")).toBool(), false);
+        const auto peers = profile.value(QStringLiteral("wireguard")).value(QStringLiteral("peers")).value<QList<QVariantMap>>();
+        QCOMPARE(peers.first().value(QStringLiteral("endpoint")).toString(), QStringLiteral("[2001:db8::1]:51820"));
         QCOMPARE(peers.first().value(QStringLiteral("allowed-ips")).toStringList(),
                  (QStringList {QStringLiteral("0.0.0.0/0"), QStringLiteral("::/0")}));
+        QCOMPARE(peers.first().value(QStringLiteral("persistent-keepalive")).toUInt(), 25u);
+        QCOMPARE(profile.value(QStringLiteral("ipv6")).value(QStringLiteral("method")).toString(), QStringLiteral("manual"));
+        QCOMPARE(profile.value(QStringLiteral("ipv4")).value(QStringLiteral("dns-search")).toStringList(),
+                 QStringList {QStringLiteral("corp.example")});
 
-        const NMVariantMapMap ipv6Server = VpnUtils::manualProfile({{QStringLiteral("kind"), QStringLiteral("wireguard")},
-                                                                    {QStringLiteral("server"), QStringLiteral("2001:db8::1")},
-                                                                    {QStringLiteral("privateKey"), QStringLiteral("yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=")},
-                                                                    {QStringLiteral("publicKey"), QStringLiteral("xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=")},
-                                                                    {QStringLiteral("address"), QStringLiteral("10.0.0.2/24")}},
-                                                                   &error);
-        QVERIFY2(!ipv6Server.isEmpty(), qPrintable(error));
-        QCOMPARE(ipv6Server.value(QStringLiteral("wireguard")).value(QStringLiteral("peers")).value<QList<QVariantMap>>()
-                         .first().value(QStringLiteral("endpoint")).toString(),
-                 QStringLiteral("[2001:db8::1]:51820"));
+        // The form reads back as it was filled, minus the secrets.
+        const QVariantMap back = VpnUtils::wireGuardForm(profile);
+        QCOMPARE(back.value(QStringLiteral("addresses")).toString(), QStringLiteral("10.0.0.2/24, fd00::2/128"));
+        QCOMPARE(back.value(QStringLiteral("dns")).toString(), QStringLiteral("10.0.0.1, corp.example"));
+        QCOMPARE(back.value(QStringLiteral("privateKey")).toString(), QString());
+        QCOMPARE(back.value(QStringLiteral("mtu")).toUInt(), 1420u);
+        const QVariantMap peer = back.value(QStringLiteral("peers")).toList().first().toMap();
+        QCOMPARE(peer.value(QStringLiteral("endpoint")).toString(), QStringLiteral("[2001:db8::1]:51820"));
+        QCOMPARE(peer.value(QStringLiteral("hasPresharedKey")).toBool(), false);
 
-        QVERIFY(VpnUtils::manualProfile({{QStringLiteral("kind"), QStringLiteral("pptp")},
-                                         {QStringLiteral("server"), QStringLiteral("x")}},
-                                        &error)
-                        .isEmpty());
+        // Edited with the keys left empty, the stored ones stay; the written file is one
+        // the reader takes back.
+        NMVariantMapMap stored = profile;
+        QVariantMap editForm = back;
+        editForm.insert(QStringLiteral("name"), QStringLiteral("Home 2"));
+        editForm.insert(QStringLiteral("addresses"), QStringLiteral("10.0.0.3/24"));
+        const NMVariantMapMap edited = VpnUtils::wireGuardSettings(editForm, stored, &error);
+        QVERIFY2(!edited.isEmpty(), qPrintable(error));
+        QCOMPARE(edited.value(QStringLiteral("connection")).value(QStringLiteral("uuid")),
+                 profile.value(QStringLiteral("connection")).value(QStringLiteral("uuid")));
+        QCOMPARE(edited.value(QStringLiteral("connection")).value(QStringLiteral("id")).toString(), QStringLiteral("Home 2"));
+        QCOMPARE(edited.value(QStringLiteral("wireguard")).value(QStringLiteral("private-key")).toString(),
+                 QStringLiteral("yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk="));
+        QCOMPARE(edited.value(QStringLiteral("ipv6")).value(QStringLiteral("method")).toString(), QStringLiteral("disabled"));
+
+        const QByteArray config = VpnUtils::wireGuardConfig(profile);
+        QVERIFY(config.contains("Table = off\n"));
+        QVERIFY(config.contains("PersistentKeepalive = 25\n"));
+        const NMVariantMapMap reread = VpnUtils::wireGuardProfile(config, QStringLiteral("Home"), &error);
+        QVERIFY2(!reread.isEmpty(), qPrintable(error));
+        QCOMPARE(reread.value(QStringLiteral("wireguard")).value(QStringLiteral("peers")), profile.value(QStringLiteral("wireguard")).value(QStringLiteral("peers")));
+        QCOMPARE(reread.value(QStringLiteral("ipv4")), profile.value(QStringLiteral("ipv4")));
+
+        QVERIFY(VpnUtils::wireGuardSettings({{QStringLiteral("privateKey"), QStringLiteral("short")}}, {}, &error).isEmpty());
         QVERIFY(!error.isEmpty());
+        QVariantMap noPeer = form;
+        noPeer.insert(QStringLiteral("peers"), QVariantList());
+        QVERIFY(VpnUtils::wireGuardSettings(noPeer, {}, &error).isEmpty());
+        QVariantMap badAddress = form;
+        badAddress.insert(QStringLiteral("addresses"), QStringLiteral("10.0.0.2/40"));
+        QVERIFY(VpnUtils::wireGuardSettings(badAddress, {}, &error).isEmpty());
     }
 
     void failures()

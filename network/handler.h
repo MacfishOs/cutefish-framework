@@ -30,9 +30,13 @@
 #include <QHash>
 #include <QObject>
 #include <QUrl>
+#include <QVariantMap>
+
+#include <functional>
 #include <QtQml/qqmlregistration.h>
 
 class NetworkClient;
+class SecretStore;
 
 // Actions on NetworkManager. Each returns at once; the result shows up in the models as
 // NetworkManager reports it.
@@ -94,17 +98,32 @@ public Q_SLOTS:
     // Adds the VPN a provider's configuration file describes: WireGuard's .conf, or anything
     // an installed NetworkManager plugin can read, such as OpenVPN's .ovpn.
     void importVpn(const QUrl &file);
-    // Adds a VPN filled in by hand; see VpnUtils::manualProfile() for the fields.
-    void addVpn(const QVariantMap &form);
-    // What addVpn() can set up: {kind, label, installed, package}.
+    // What saveVpn() can set up: {kind, label, installed, package}.
     QVariantList vpnKinds() const;
-    // The user name a VPN signs in with, which lives in its profile rather than with the
-    // passwords.
-    void setVpnUserName(const QString &connection, const QString &userName);
+    // The form for a kind of VPN, filled from `connection` when one is edited: {kind, label,
+    // installed, package, name, shared, ownNetworkOnly, exportable, exportPatterns, and
+    // fields (VpnSchema::formFields) or wireguard (VpnUtils::wireGuardForm)}.
+    QVariantMap vpnForm(const QString &kind, const QString &connection) const;
+    // The secrets a profile keeps, for its form; vpnSecretsLoaded() answers with the
+    // plugin's keys, or for WireGuard {privateKey, presharedKeys: {publicKey: key}}.
+    void loadVpnSecrets(const QString &connection);
+    // Adds the VPN the form describes, or saves it over `connection`. The form carries
+    // name, shared, ownNetworkOnly, and values, storage and secrets per field, or for
+    // WireGuard what VpnUtils::wireGuardSettings() reads. vpnAdded() or vpnSaved() follows.
+    void saveVpn(const QString &connection, const QVariantMap &form);
+    // Writes the profile as the file its plugin reads, or a wg-quick file.
+    void exportVpn(const QString &connection, const QUrl &file);
 
 Q_SIGNALS:
     void vpnAdded(const QString &uuid);
     void vpnAddFailed(const QString &message);
+    void vpnSaved(const QString &connection);
+    void vpnSaveFailed(const QString &message);
+    void vpnSecretsLoaded(const QString &connection, const QVariantMap &secrets);
+    void vpnExported(const QString &file);
+    void vpnExportFailed(const QString &message);
+    // A plugin VPN went down on its own with `message` saying why; a name is the profile's.
+    void vpnFailed(const QString &name, const QString &message);
     void hotspotSupportedChanged();
     void hotspotActiveChanged();
     // A hotspot this Handler started failed to come up.
@@ -119,13 +138,17 @@ private:
     void forgetUnlessActivated(const QString &connection, const QString &active);
     void importVpnAs(const QString &file, QStringList types, const QString &error);
     void addPrivateVpn(NMVariantMapMap profile);
+    void getSecrets(const QString &connection, const QString &setting,
+                    std::function<void(const NMVariantMapMap &)> done);
     void activeStateChanged(const QString &active, uint state);
+    void reportVpnFailure(const QString &active, uint reason);
     void update();
     QString hotspotActiveConnection() const;
     QString hotspotDevice(uint *capabilities = nullptr) const;
     void hotspotRequestFinished(const QDBusMessage &reply, int activePathArgument);
 
     NetworkClient *m_client;
+    SecretStore *m_secrets = nullptr;
     bool m_scanRequested = false;
     QString m_scanInterface;
     bool m_hotspotCapable = false;

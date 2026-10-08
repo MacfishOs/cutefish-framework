@@ -1,5 +1,6 @@
 #include "vpnutils.h"
 #include "networkclient.h"
+#include "vpnschema.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -10,6 +11,8 @@
 #include <QRegularExpression>
 #include <QUuid>
 #include <QtEndian>
+
+#include <cstring>
 
 using namespace NetworkDBus;
 
@@ -99,6 +102,67 @@ static QString shortName(const QString &serviceType)
     }
     return serviceType.startsWith(servicePrefix) ? serviceType.mid(servicePrefix.size())
                                                  : serviceType.section(QLatin1Char('.'), -1);
+}
+
+static bool isWireGuardKey(const QString &value)
+{
+    return QByteArray::fromBase64(value.toLatin1(), QByteArray::AbortOnBase64DecodingErrors).size() == 32;
+}
+
+// "address" or "address/prefix" into NetworkManager's address-data entry.
+static bool parseWireGuardAddress(const QString &word, QVariantMap &out, bool &v4)
+{
+    const QHostAddress address(word.section(QLatin1Char('/'), 0, 0));
+    if (address.isNull())
+        return false;
+    v4 = address.protocol() == QAbstractSocket::IPv4Protocol;
+    int prefix = v4 ? 32 : 128;
+    if (word.contains(QLatin1Char('/'))) {
+        bool valid = false;
+        prefix = word.section(QLatin1Char('/'), 1).toInt(&valid);
+        if (!valid || prefix < 0 || prefix > (v4 ? 32 : 128))
+            return false;
+    }
+    out = {{QStringLiteral("address"), address.toString()}, {QStringLiteral("prefix"), uint(prefix)}};
+    return true;
+}
+
+// Servers go by family, anything else is a search domain.
+static void parseWireGuardDns(const QStringList &words, QList<uint> &dns4, QList<QByteArray> &dns6, QStringList &search)
+{
+    for (const QString &word : words) {
+        const QHostAddress address(word);
+        if (address.isNull())
+            search << word;
+        else if (address.protocol() == QAbstractSocket::IPv4Protocol)
+            dns4 << qToBigEndian(address.toIPv4Address());
+        else
+            dns6 << QByteArray(reinterpret_cast<const char *>(address.toIPv6Address().c), 16);
+    }
+}
+
+// host[:port] as the setting wants it: a bare IPv6 address gets brackets, as
+// NetworkManager would take its last group for the port, and the port defaults to 51820.
+static QString wireGuardEndpoint(const QString &server)
+{
+    if (server.isEmpty())
+        return {};
+    QString endpoint = server;
+    if (QHostAddress(server).protocol() == QAbstractSocket::IPv6Protocol
+        && QHostAddress(server.section(QLatin1Char(':'), 0, -2)).isNull())
+        endpoint = QStringLiteral("[%1]").arg(server);
+    if (!endpoint.contains(QLatin1Char(':')) || endpoint.endsWith(QLatin1Char(']')))
+        endpoint += QStringLiteral(":51820");
+    return endpoint;
+}
+
+// Interface names are at most 15 characters of a few kinds.
+static QString wireGuardInterfaceName(const QString &name)
+{
+    QString interface = name;
+    interface.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9_-]")));
+    interface = interface.left(15);
+    return interface.isEmpty() ? QStringLiteral("wg0") : interface;
 }
 
 namespace VpnUtils {
@@ -228,7 +292,7 @@ QString failureMessage(uint reason)
     case 10:
         return QObject::tr("Sign-in failed. Check the user name and password.");
     default:
-        return QObject::tr("Couldn't connect.");
+        return QObject::tr("The VPN service reported an error.");
     }
 }
 
@@ -366,9 +430,7 @@ NMVariantMapMap wireGuardProfile(const QByteArray &content, const QString &name,
             *error = message;
         return NMVariantMapMap();
     };
-    const auto key = [](const QString &value) {
-        return QByteArray::fromBase64(value.toLatin1(), QByteArray::AbortOnBase64DecodingErrors).size() == 32;
-    };
+    const auto key = isWireGuardKey;
 
     enum { None, Interface, Peer } section = None;
     QString privateKey;
@@ -413,30 +475,14 @@ NMVariantMapMap wireGuardProfile(const QByteArray &content, const QString &name,
             privateKey = value;
         } else if (section == Interface && field.compare(QLatin1String("Address"), Qt::CaseInsensitive) == 0) {
             for (const QString &word : words) {
-                const QHostAddress address(word.section(QLatin1Char('/'), 0, 0));
-                if (address.isNull())
+                bool v4 = false;
+                QVariantMap address;
+                if (!parseWireGuardAddress(word, address, v4))
                     return fail(invalid);
-                const bool v4 = address.protocol() == QAbstractSocket::IPv4Protocol;
-                int prefix = v4 ? 32 : 128;
-                if (word.contains(QLatin1Char('/'))) {
-                    bool valid = false;
-                    prefix = word.section(QLatin1Char('/'), 1).toInt(&valid);
-                    if (!valid || prefix < 0 || prefix > (v4 ? 32 : 128))
-                        return fail(invalid);
-                }
-                addresses[v4 ? 0 : 1] << QVariantMap {{QStringLiteral("address"), address.toString()},
-                                                       {QStringLiteral("prefix"), uint(prefix)}};
+                addresses[v4 ? 0 : 1] << address;
             }
         } else if (section == Interface && field.compare(QLatin1String("DNS"), Qt::CaseInsensitive) == 0) {
-            for (const QString &word : words) {
-                const QHostAddress address(word);
-                if (address.isNull())
-                    search << word;
-                else if (address.protocol() == QAbstractSocket::IPv4Protocol)
-                    dns4 << qToBigEndian(address.toIPv4Address());
-                else
-                    dns6 << QByteArray(reinterpret_cast<const char *>(address.toIPv6Address().c), 16);
-            }
+            parseWireGuardDns(words, dns4, dns6, search);
         } else if (section == Interface && field.compare(QLatin1String("MTU"), Qt::CaseInsensitive) == 0) {
             mtu = value.toUInt(&ok);
         } else if (section == Interface && field.compare(QLatin1String("ListenPort"), Qt::CaseInsensitive) == 0) {
@@ -484,19 +530,12 @@ NMVariantMapMap wireGuardProfile(const QByteArray &content, const QString &name,
             return fail(QObject::tr("A peer has no public key."));
     }
 
-    // Interface names are at most 15 characters of a few kinds.
-    QString interface = name;
-    interface.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9_-]")));
-    interface = interface.left(15);
-    if (interface.isEmpty())
-        interface = QStringLiteral("wg0");
-
     NMVariantMapMap profile;
     profile[QStringLiteral("connection")] = {
         {QStringLiteral("id"), name},
         {QStringLiteral("uuid"), QUuid::createUuid().toString(QUuid::WithoutBraces)},
         {QStringLiteral("type"), QStringLiteral("wireguard")},
-        {QStringLiteral("interface-name"), interface},
+        {QStringLiteral("interface-name"), wireGuardInterfaceName(name)},
     };
 
     QVariantMap wireguard {
@@ -538,109 +577,256 @@ QVariantList manualKinds()
                               {QStringLiteral("package"), package(kind)}};
     };
     add(QStringLiteral("wireguard"), QStringLiteral("WireGuard"), true);
-    add(QStringLiteral("openvpn"), QStringLiteral("OpenVPN"), pluginInstalled(servicePrefix + QStringLiteral("openvpn")));
-    add(QStringLiteral("l2tp"), QStringLiteral("L2TP/IPsec"), pluginInstalled(servicePrefix + QStringLiteral("l2tp")));
-    add(QStringLiteral("pptp"), QStringLiteral("PPTP"), pluginInstalled(servicePrefix + QStringLiteral("pptp")));
+    for (const QString &kind : VpnSchema::kinds()) {
+        // The two IPsec plugins share a label on the list of VPNs, but not here.
+        QString label = kindLabel(kind);
+        if (kind == QLatin1String("strongswan"))
+            label = QStringLiteral("IPsec (strongSwan)");
+        else if (kind == QLatin1String("libreswan"))
+            label = QStringLiteral("IPsec (Libreswan)");
+        else if (kind == QLatin1String("ssh"))
+            label = QStringLiteral("SSH");
+        else if (kind == QLatin1String("iodine"))
+            label = QObject::tr("DNS tunnel (iodine)");
+        add(kind, label, pluginInstalled(servicePrefix + kind));
+    }
     return kinds;
 }
 
-NMVariantMapMap manualProfile(const QVariantMap &form, QString *error)
+QVariantMap wireGuardForm(const NMVariantMapMap &settings)
+{
+    const QVariantMap wireguard = settings.value(QStringLiteral("wireguard"));
+    QStringList addresses;
+    QStringList dns;
+    for (const QString &family : {QStringLiteral("ipv4"), QStringLiteral("ipv6")}) {
+        const QVariantMap ip = settings.value(family);
+        const auto addressData = ip.value(QStringLiteral("address-data")).value<QList<QVariantMap>>();
+        for (const QVariantMap &address : addressData) {
+            addresses << QStringLiteral("%1/%2").arg(address.value(QStringLiteral("address")).toString())
+                                                .arg(address.value(QStringLiteral("prefix")).toUInt());
+        }
+        if (family == QLatin1String("ipv4")) {
+            const auto servers = ip.value(QStringLiteral("dns")).value<QList<uint>>();
+            for (uint server : servers)
+                dns << QHostAddress(qFromBigEndian(server)).toString();
+        } else {
+            const auto servers = ip.value(QStringLiteral("dns")).value<QList<QByteArray>>();
+            for (const QByteArray &server : servers) {
+                Q_IPV6ADDR raw;
+                memcpy(raw.c, server.constData(), qMin(16, int(server.size())));
+                dns << QHostAddress(raw).toString();
+            }
+        }
+        const QStringList search = ip.value(QStringLiteral("dns-search")).toStringList();
+        for (const QString &domain : search) {
+            if (domain != QLatin1String("~"))
+                dns << domain;
+        }
+    }
+
+    QVariantList peers;
+    const auto storedPeers = wireguard.value(QStringLiteral("peers")).value<QList<QVariantMap>>();
+    for (const QVariantMap &peer : storedPeers) {
+        peers << QVariantMap {
+            {QStringLiteral("publicKey"), peer.value(QStringLiteral("public-key")).toString()},
+            {QStringLiteral("presharedKey"), QString()},
+            {QStringLiteral("hasPresharedKey"),
+             peer.contains(QStringLiteral("preshared-key"))
+                     || (peer.contains(QStringLiteral("preshared-key-flags"))
+                         && !(peer.value(QStringLiteral("preshared-key-flags")).toUInt() & NetworkDBus::SecretNotRequired))},
+            {QStringLiteral("endpoint"), peer.value(QStringLiteral("endpoint")).toString()},
+            {QStringLiteral("allowedIps"), peer.value(QStringLiteral("allowed-ips")).toStringList().join(QStringLiteral(", "))},
+            {QStringLiteral("keepalive"), peer.value(QStringLiteral("persistent-keepalive")).toUInt()},
+        };
+    }
+
+    return {
+        {QStringLiteral("interfaceName"), settings.value(QStringLiteral("connection")).value(QStringLiteral("interface-name")).toString()},
+        {QStringLiteral("privateKey"), QString()},
+        {QStringLiteral("addresses"), addresses.join(QStringLiteral(", "))},
+        {QStringLiteral("dns"), dns.join(QStringLiteral(", "))},
+        {QStringLiteral("listenPort"), wireguard.value(QStringLiteral("listen-port")).toUInt()},
+        {QStringLiteral("fwmark"), wireguard.value(QStringLiteral("fwmark")).toUInt()},
+        {QStringLiteral("mtu"), wireguard.value(QStringLiteral("mtu")).toUInt()},
+        {QStringLiteral("peerRoutes"), !wireguard.contains(QStringLiteral("peer-routes")) || wireguard.value(QStringLiteral("peer-routes")).toBool()},
+        {QStringLiteral("peers"), peers},
+    };
+}
+
+NMVariantMapMap wireGuardSettings(const QVariantMap &form, const NMVariantMapMap &existing, QString *error)
 {
     const auto fail = [error](const QString &message) {
         if (error)
             *error = message;
         return NMVariantMapMap();
     };
-    const auto field = [&form](const char *key) {
+    const auto text = [&form](const char *key) {
         return form.value(QLatin1String(key)).toString().trimmed();
     };
+    const auto words = [](const QString &value) {
+        QStringList words = value.split(QLatin1Char(','), Qt::SkipEmptyParts);
+        for (QString &word : words)
+            word = word.trimmed();
+        words.removeAll(QString());
+        return words;
+    };
 
-    const QString kind = field("kind");
-    const QString server = field("server");
-    const QString name = field("name").isEmpty() ? server : field("name");
-    if (server.isEmpty())
-        return fail(QObject::tr("Enter the server."));
+    const QVariantMap stored = existing.value(QStringLiteral("wireguard"));
+    const QString privateKey = text("privateKey");
+    if (privateKey.isEmpty() && !stored.contains(QStringLiteral("private-key-flags")))
+        return fail(QObject::tr("Enter the private key."));
+    if (!privateKey.isEmpty() && !isWireGuardKey(privateKey))
+        return fail(QObject::tr("The private key isn't a WireGuard key."));
 
-    if (kind == QLatin1String("wireguard")) {
-        // Written out as a wg-quick file, so the form is checked the way imports are.
-        QString endpoint = server;
-        // NetworkManager takes a bare IPv6 address's last group for the port, so it needs brackets.
-        if (QHostAddress(server).protocol() == QAbstractSocket::IPv6Protocol
-            && QHostAddress(server.section(QLatin1Char(':'), 0, -2)).isNull())
-            endpoint = QStringLiteral("[%1]").arg(server);
-        if (!endpoint.contains(QLatin1Char(':')) || endpoint.endsWith(QLatin1Char(']')))
-            endpoint += QStringLiteral(":51820");
-        QString config = QStringLiteral("[Interface]\nPrivateKey = %1\nAddress = %2\n")
-                                 .arg(field("privateKey"), field("address"));
-        if (!field("dns").isEmpty())
-            config += QStringLiteral("DNS = %1\n").arg(field("dns"));
-        config += QStringLiteral("[Peer]\nPublicKey = %1\nEndpoint = %2\nAllowedIPs = %3\n")
-                          .arg(field("publicKey"), endpoint,
-                               field("allowedIps").isEmpty() ? QStringLiteral("0.0.0.0/0, ::/0") : field("allowedIps"));
-        if (field("privateKey").isEmpty() || field("publicKey").isEmpty() || field("address").isEmpty())
-            return fail(QObject::tr("Enter the private key, the address and the server's public key."));
-        return wireGuardProfile(config.toUtf8(), name, error);
+    QList<QVariantMap> addresses[2];
+    for (const QString &word : words(text("addresses"))) {
+        bool v4 = false;
+        QVariantMap address;
+        if (!parseWireGuardAddress(word, address, v4))
+            return fail(QObject::tr("%1 isn't an address with a prefix, like 10.0.0.2/24.").arg(word));
+        addresses[v4 ? 0 : 1] << address;
+    }
+    if (addresses[0].isEmpty() && addresses[1].isEmpty())
+        return fail(QObject::tr("Enter the address."));
+
+    QList<uint> dns4;
+    QList<QByteArray> dns6;
+    QStringList search;
+    parseWireGuardDns(words(text("dns")), dns4, dns6, search);
+
+    bool ok = true;
+    const uint listenPort = form.value(QStringLiteral("listenPort")).toString().isEmpty()
+            ? 0 : form.value(QStringLiteral("listenPort")).toString().toUInt(&ok);
+    if (!ok || listenPort > 0xffff)
+        return fail(QObject::tr("The listen port must be a number up to 65535."));
+    const uint fwmark = form.value(QStringLiteral("fwmark")).toString().isEmpty()
+            ? 0 : form.value(QStringLiteral("fwmark")).toString().toUInt(&ok, 0);
+    if (!ok)
+        return fail(QObject::tr("The firewall mark must be a number."));
+    const uint mtu = form.value(QStringLiteral("mtu")).toString().isEmpty()
+            ? 0 : form.value(QStringLiteral("mtu")).toString().toUInt(&ok);
+    if (!ok)
+        return fail(QObject::tr("The MTU must be a number."));
+
+    const auto storedPeers = stored.value(QStringLiteral("peers")).value<QList<QVariantMap>>();
+    QList<QVariantMap> peers;
+    const QVariantList formPeers = form.value(QStringLiteral("peers")).toList();
+    if (formPeers.isEmpty())
+        return fail(QObject::tr("Add the server as a peer."));
+    for (const QVariant &item : formPeers) {
+        const QVariantMap formPeer = item.toMap();
+        const QString publicKey = formPeer.value(QStringLiteral("publicKey")).toString().trimmed();
+        if (!isWireGuardKey(publicKey))
+            return fail(QObject::tr("A peer's public key isn't a WireGuard key."));
+        QVariantMap peer {{QStringLiteral("public-key"), publicKey}};
+
+        const QString presharedKey = formPeer.value(QStringLiteral("presharedKey")).toString().trimmed();
+        bool keepPresharedKey = false;
+        for (const QVariantMap &storedPeer : storedPeers)
+            keepPresharedKey |= storedPeer.value(QStringLiteral("public-key")) == publicKey
+                    && storedPeer.contains(QStringLiteral("preshared-key-flags"));
+        if (!presharedKey.isEmpty()) {
+            if (!isWireGuardKey(presharedKey))
+                return fail(QObject::tr("A peer's preshared key isn't a WireGuard key."));
+            peer.insert(QStringLiteral("preshared-key"), presharedKey);
+            peer.insert(QStringLiteral("preshared-key-flags"), uint(NetworkDBus::SecretSystemOwned));
+        } else if (keepPresharedKey && formPeer.value(QStringLiteral("hasPresharedKey")).toBool()) {
+            peer.insert(QStringLiteral("preshared-key-flags"), uint(NetworkDBus::SecretSystemOwned));
+        }
+
+        const QString endpoint = wireGuardEndpoint(formPeer.value(QStringLiteral("endpoint")).toString().trimmed());
+        if (!endpoint.isEmpty())
+            peer.insert(QStringLiteral("endpoint"), endpoint);
+        const QStringList allowed = words(formPeer.value(QStringLiteral("allowedIps")).toString());
+        for (const QString &word : allowed) {
+            bool v4 = false;
+            QVariantMap address;
+            if (!parseWireGuardAddress(word, address, v4))
+                return fail(QObject::tr("%1 isn't a network, like 10.0.0.0/24.").arg(word));
+        }
+        peer.insert(QStringLiteral("allowed-ips"), allowed.isEmpty() ? QStringList {QStringLiteral("0.0.0.0/0"), QStringLiteral("::/0")} : allowed);
+        const QString keepalive = formPeer.value(QStringLiteral("keepalive")).toString();
+        const uint seconds = keepalive.isEmpty() ? 0 : keepalive.toUInt(&ok);
+        if (!ok || seconds > 0xffff)
+            return fail(QObject::tr("The keepalive must be a number of seconds up to 65535."));
+        peer.insert(QStringLiteral("persistent-keepalive"), seconds);
+        peers << peer;
     }
 
-    QMap<QString, QString> data;
-    QMap<QString, QString> secrets;
-    const QString agentOwned = QString::number(NetworkDBus::SecretAgentOwned);
-    const auto secret = [&](const QString &key, const QString &value) {
-        data.insert(key + QLatin1String("-flags"), agentOwned);
-        if (!value.isEmpty())
-            secrets.insert(key, value);
-    };
-
-    if (kind == QLatin1String("openvpn")) {
-        data.insert(QStringLiteral("remote"), server);
-        if (!field("caFile").isEmpty())
-            data.insert(QStringLiteral("ca"), field("caFile"));
-        if (field("authentication") == QLatin1String("certificates")) {
-            if (field("certFile").isEmpty() || field("keyFile").isEmpty())
-                return fail(QObject::tr("Choose your certificate and private key."));
-            data.insert(QStringLiteral("connection-type"), QStringLiteral("tls"));
-            data.insert(QStringLiteral("cert"), field("certFile"));
-            data.insert(QStringLiteral("key"), field("keyFile"));
-            secret(QStringLiteral("cert-pass"), form.value(QStringLiteral("keyPassword")).toString());
-        } else {
-            if (field("userName").isEmpty())
-                return fail(QObject::tr("Enter your user name."));
-            data.insert(QStringLiteral("connection-type"), QStringLiteral("password"));
-            data.insert(QStringLiteral("username"), field("userName"));
-            secret(QStringLiteral("password"), form.value(QStringLiteral("password")).toString());
-        }
-    } else if (kind == QLatin1String("l2tp") || kind == QLatin1String("pptp")) {
-        if (field("userName").isEmpty())
-            return fail(QObject::tr("Enter your user name."));
-        data.insert(QStringLiteral("gateway"), server);
-        data.insert(QStringLiteral("user"), field("userName"));
-        secret(QStringLiteral("password"), form.value(QStringLiteral("password")).toString());
-        // With a pre-shared key, L2TP runs inside IPsec.
-        if (kind == QLatin1String("l2tp") && !field("presharedKey").isEmpty()) {
-            data.insert(QStringLiteral("ipsec-enabled"), QStringLiteral("yes"));
-            data.insert(QStringLiteral("machine-auth-type"), QStringLiteral("psk"));
-            secret(QStringLiteral("ipsec-psk"), form.value(QStringLiteral("presharedKey")).toString());
-        }
-    } else {
-        return fail(QObject::tr("This kind of VPN can't be set up by hand."));
+    NMVariantMapMap profile = existing;
+    QVariantMap connection = profile.value(QStringLiteral("connection"));
+    if (!connection.contains(QStringLiteral("uuid"))) {
+        connection.insert(QStringLiteral("uuid"), QUuid::createUuid().toString(QUuid::WithoutBraces));
+        connection.insert(QStringLiteral("type"), QStringLiteral("wireguard"));
     }
+    const QString name = text("name");
+    if (!name.isEmpty())
+        connection.insert(QStringLiteral("id"), name);
+    connection.insert(QStringLiteral("interface-name"), wireGuardInterfaceName(text("interfaceName").isEmpty() ? connection.value(QStringLiteral("id")).toString() : text("interfaceName")));
+    profile[QStringLiteral("connection")] = connection;
 
-    NMVariantMapMap profile;
-    profile[QStringLiteral("connection")] = {
-        {QStringLiteral("id"), name},
-        {QStringLiteral("uuid"), QUuid::createUuid().toString(QUuid::WithoutBraces)},
-        {QStringLiteral("type"), QStringLiteral("vpn")},
-    };
-    QVariantMap vpn {
-        {QStringLiteral("service-type"), servicePrefix + kind},
-        {QStringLiteral("data"), QVariant::fromValue(data)},
-    };
-    if (!secrets.isEmpty())
-        vpn.insert(QStringLiteral("secrets"), QVariant::fromValue(secrets));
-    profile[QStringLiteral("vpn")] = vpn;
-    profile[QStringLiteral("ipv4")] = {{QStringLiteral("method"), QStringLiteral("auto")}};
-    profile[QStringLiteral("ipv6")] = {{QStringLiteral("method"), QStringLiteral("auto")}};
+    QVariantMap wireguard = stored;
+    if (!privateKey.isEmpty())
+        wireguard.insert(QStringLiteral("private-key"), privateKey);
+    wireguard.insert(QStringLiteral("private-key-flags"), uint(NetworkDBus::SecretSystemOwned));
+    wireguard.insert(QStringLiteral("listen-port"), listenPort);
+    wireguard.insert(QStringLiteral("fwmark"), fwmark);
+    wireguard.insert(QStringLiteral("mtu"), mtu);
+    wireguard.insert(QStringLiteral("peer-routes"), form.value(QStringLiteral("peerRoutes"), true).toBool());
+    wireguard.insert(QStringLiteral("peers"), QVariant::fromValue(peers));
+    profile[QStringLiteral("wireguard")] = wireguard;
+
+    for (int family = 0; family < 2; ++family) {
+        QVariantMap ip = profile.value(family == 0 ? QStringLiteral("ipv4") : QStringLiteral("ipv6"));
+        for (const QString &key : {QStringLiteral("address-data"), QStringLiteral("addresses"), QStringLiteral("dns"),
+                                   QStringLiteral("dns-search"), QStringLiteral("gateway")})
+            ip.remove(key);
+        ip.insert(QStringLiteral("method"), addresses[family].isEmpty() ? QStringLiteral("disabled") : QStringLiteral("manual"));
+        if (!addresses[family].isEmpty()) {
+            ip.insert(QStringLiteral("address-data"), QVariant::fromValue(addresses[family]));
+            const bool hasDns = family == 0 ? !dns4.isEmpty() : !dns6.isEmpty();
+            if (hasDns) {
+                ip.insert(QStringLiteral("dns"), family == 0 ? QVariant::fromValue(dns4) : QVariant::fromValue(dns6));
+                ip.insert(QStringLiteral("dns-search"), search.isEmpty() ? QStringList {QStringLiteral("~")} : search);
+            }
+        }
+        profile[family == 0 ? QStringLiteral("ipv4") : QStringLiteral("ipv6")] = ip;
+    }
     return profile;
+}
+
+QByteArray wireGuardConfig(const NMVariantMapMap &settings)
+{
+    const QVariantMap form = wireGuardForm(settings);
+    const QVariantMap wireguard = settings.value(QStringLiteral("wireguard"));
+    QString out = QStringLiteral("[Interface]\n");
+    out += QStringLiteral("PrivateKey = %1\n").arg(wireguard.value(QStringLiteral("private-key")).toString());
+    out += QStringLiteral("Address = %1\n").arg(form.value(QStringLiteral("addresses")).toString());
+    if (!form.value(QStringLiteral("dns")).toString().isEmpty())
+        out += QStringLiteral("DNS = %1\n").arg(form.value(QStringLiteral("dns")).toString());
+    if (form.value(QStringLiteral("listenPort")).toUInt())
+        out += QStringLiteral("ListenPort = %1\n").arg(form.value(QStringLiteral("listenPort")).toUInt());
+    if (form.value(QStringLiteral("fwmark")).toUInt())
+        out += QStringLiteral("FwMark = %1\n").arg(form.value(QStringLiteral("fwmark")).toUInt());
+    if (form.value(QStringLiteral("mtu")).toUInt())
+        out += QStringLiteral("MTU = %1\n").arg(form.value(QStringLiteral("mtu")).toUInt());
+    if (!form.value(QStringLiteral("peerRoutes")).toBool())
+        out += QStringLiteral("Table = off\n");
+
+    const auto peers = wireguard.value(QStringLiteral("peers")).value<QList<QVariantMap>>();
+    for (const QVariantMap &peer : peers) {
+        out += QStringLiteral("\n[Peer]\nPublicKey = %1\n").arg(peer.value(QStringLiteral("public-key")).toString());
+        if (peer.contains(QStringLiteral("preshared-key")))
+            out += QStringLiteral("PresharedKey = %1\n").arg(peer.value(QStringLiteral("preshared-key")).toString());
+        if (peer.contains(QStringLiteral("endpoint")))
+            out += QStringLiteral("Endpoint = %1\n").arg(peer.value(QStringLiteral("endpoint")).toString());
+        const QStringList allowed = peer.value(QStringLiteral("allowed-ips")).toStringList();
+        if (!allowed.isEmpty())
+            out += QStringLiteral("AllowedIPs = %1\n").arg(allowed.join(QStringLiteral(", ")));
+        if (peer.value(QStringLiteral("persistent-keepalive")).toUInt())
+            out += QStringLiteral("PersistentKeepalive = %1\n").arg(peer.value(QStringLiteral("persistent-keepalive")).toUInt());
+    }
+    return out.toUtf8();
 }
 
 } // namespace VpnUtils
