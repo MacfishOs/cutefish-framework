@@ -9,11 +9,14 @@
 #include "fakesecrets.h"
 #include "fixture.h"
 
+#include <QDBusArgument>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 
 #include <memory>
+
+#include <QtEndian>
 
 using namespace Fixture;
 
@@ -520,6 +523,72 @@ private slots:
         keyring.unregisterService(QStringLiteral("org.freedesktop.secrets"));
         keyring.unregisterObject(QStringLiteral("/org/freedesktop/secrets"), QDBusConnection::UnregisterTree);
         QDBusConnection::disconnectFromBus(QStringLiteral("fake-secrets"));
+    }
+
+    // Settings fetched over D-Bus keep nested lists as QDBusArgument; the
+    // WireGuard editor and exporter read them anyway.
+    void wireGuardReadsBackFromDBus()
+    {
+        const QString path = FakeNM::managerPath + QStringLiteral("/Settings/33");
+        nm->settings[path] = {
+            {QStringLiteral("connection"),
+             {{QStringLiteral("id"), QStringLiteral("Work WG")},
+              {QStringLiteral("uuid"), QStringLiteral("work wg")},
+              {QStringLiteral("type"), QStringLiteral("wireguard")},
+              {QStringLiteral("interface-name"), QStringLiteral("wg0")}}},
+            {QStringLiteral("wireguard"),
+             {{QStringLiteral("private-key-flags"), uint(NetworkDBus::SecretSystemOwned)},
+              {QStringLiteral("mtu"), 1280u},
+              {QStringLiteral("peers"), QVariant::fromValue(QList<QVariantMap> {{
+                   {QStringLiteral("public-key"), QStringLiteral("xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=")},
+                   {QStringLiteral("preshared-key-flags"), uint(NetworkDBus::SecretSystemOwned)},
+                   {QStringLiteral("endpoint"), QStringLiteral("vpn.example:51820")},
+                   {QStringLiteral("allowed-ips"), QStringList {QStringLiteral("0.0.0.0/0")}},
+                   {QStringLiteral("persistent-keepalive"), 25u},
+               }})}}},
+            {QStringLiteral("ipv4"),
+             {{QStringLiteral("method"), QStringLiteral("manual")},
+              {QStringLiteral("address-data"), QVariant::fromValue(QList<QVariantMap> {
+                   {{QStringLiteral("address"), QStringLiteral("10.0.0.2")}, {QStringLiteral("prefix"), 24u}}})},
+              {QStringLiteral("dns"), QVariant::fromValue(QList<uint> {qToBigEndian(0x0a000001u)})},
+              {QStringLiteral("dns-search"), QStringList {QStringLiteral("corp.example")}}}},
+            {QStringLiteral("ipv6"),
+             {{QStringLiteral("method"), QStringLiteral("manual")},
+              {QStringLiteral("address-data"), QVariant::fromValue(QList<QVariantMap> {
+                   {{QStringLiteral("address"), QStringLiteral("fd00::2")}, {QStringLiteral("prefix"), 64u}}})},
+              {QStringLiteral("dns"), QVariant::fromValue(QList<QByteArray> {
+                   QByteArray::fromHex("fd000000000000000000000000000001")})}}},
+        };
+        nm->add(path, {{FakeNM::connection, {{QStringLiteral("Flags"), 0u}}}});
+        QTRY_VERIFY(!NetworkClient::instance()->settings(path).isEmpty());
+        const NMVariantMapMap settings = NetworkClient::instance()->settings(path);
+        QVERIFY(settings.value(QStringLiteral("wireguard")).value(QStringLiteral("peers")).canConvert<QDBusArgument>());
+
+        const QVariantMap form = VpnUtils::wireGuardForm(settings);
+        QCOMPARE(form.value(QStringLiteral("addresses")).toString(), QStringLiteral("10.0.0.2/24, fd00::2/64"));
+        QCOMPARE(form.value(QStringLiteral("dns")).toString(), QStringLiteral("10.0.0.1, corp.example, fd00::1"));
+        QCOMPARE(form.value(QStringLiteral("mtu")).toUInt(), 1280u);
+        const QVariantList peers = form.value(QStringLiteral("peers")).toList();
+        QCOMPARE(peers.size(), 1);
+        const QVariantMap peer = peers.first().toMap();
+        QCOMPARE(peer.value(QStringLiteral("publicKey")).toString(), QStringLiteral("xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg="));
+        QCOMPARE(peer.value(QStringLiteral("endpoint")).toString(), QStringLiteral("vpn.example:51820"));
+        QCOMPARE(peer.value(QStringLiteral("allowedIps")).toString(), QStringLiteral("0.0.0.0/0"));
+        QCOMPARE(peer.value(QStringLiteral("keepalive")).toUInt(), 25u);
+        QVERIFY(peer.value(QStringLiteral("hasPresharedKey")).toBool());
+
+        // Saved again with the keys left empty, the retained preshared key stays.
+        QString error;
+        const NMVariantMapMap edited = VpnUtils::wireGuardSettings(form, settings, &error);
+        QVERIFY2(!edited.isEmpty(), qPrintable(error));
+        const auto editedPeers = edited.value(QStringLiteral("wireguard")).value(QStringLiteral("peers")).value<QList<QVariantMap>>();
+        QCOMPARE(editedPeers.size(), 1);
+        QCOMPARE(editedPeers.first().value(QStringLiteral("preshared-key-flags")).toUInt(), uint(NetworkDBus::SecretSystemOwned));
+
+        const QByteArray config = VpnUtils::wireGuardConfig(settings);
+        QVERIFY(config.contains("Address = 10.0.0.2/24, fd00::2/64"));
+        QVERIFY(config.contains("[Peer]\nPublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg="));
+        QVERIFY(config.contains("AllowedIPs = 0.0.0.0/0"));
     }
 
     void vpnAddedByHandIsPrivate()

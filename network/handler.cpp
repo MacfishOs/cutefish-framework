@@ -651,8 +651,10 @@ void Handler::loadVpnSecrets(const QString &connection)
         getSecrets(connection, QStringLiteral("wireguard"), [this, connection](const NMVariantMapMap &secrets) {
             const QVariantMap wireguard = secrets.value(QStringLiteral("wireguard"));
             QVariantMap presharedKeys;
-            const auto peers = wireguard.value(QStringLiteral("peers")).value<QList<QVariantMap>>();
-            for (const QVariantMap &peer : peers) {
+            // Straight from D-Bus the aa{sv} is still a QDBusArgument.
+            const QVariantList peers = NetworkDBus::plain(wireguard.value(QStringLiteral("peers"))).toList();
+            for (const QVariant &entry : peers) {
+                const QVariantMap peer = entry.toMap();
                 if (peer.contains(QStringLiteral("preshared-key")))
                     presharedKeys.insert(peer.value(QStringLiteral("public-key")).toString(), peer.value(QStringLiteral("preshared-key")));
             }

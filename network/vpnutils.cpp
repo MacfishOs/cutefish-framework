@@ -593,6 +593,20 @@ QVariantList manualKinds()
     return kinds;
 }
 
+// Settings read back from NetworkManager hold nested lists as QDBusArgument;
+// ones built in-process hold typed lists. Both read the same way here.
+template<typename T>
+static QList<T> listOf(const QVariant &value)
+{
+    if (value.metaType() == QMetaType::fromType<QList<T>>())
+        return value.value<QList<T>>();
+    QList<T> result;
+    const QVariantList entries = NetworkDBus::plain(value).toList();
+    for (const QVariant &entry : entries)
+        result << entry.value<T>();
+    return result;
+}
+
 QVariantMap wireGuardForm(const NMVariantMapMap &settings)
 {
     const QVariantMap wireguard = settings.value(QStringLiteral("wireguard"));
@@ -600,17 +614,17 @@ QVariantMap wireGuardForm(const NMVariantMapMap &settings)
     QStringList dns;
     for (const QString &family : {QStringLiteral("ipv4"), QStringLiteral("ipv6")}) {
         const QVariantMap ip = settings.value(family);
-        const auto addressData = ip.value(QStringLiteral("address-data")).value<QList<QVariantMap>>();
+        const auto addressData = listOf<QVariantMap>(ip.value(QStringLiteral("address-data")));
         for (const QVariantMap &address : addressData) {
             addresses << QStringLiteral("%1/%2").arg(address.value(QStringLiteral("address")).toString())
                                                 .arg(address.value(QStringLiteral("prefix")).toUInt());
         }
         if (family == QLatin1String("ipv4")) {
-            const auto servers = ip.value(QStringLiteral("dns")).value<QList<uint>>();
+            const auto servers = listOf<uint>(ip.value(QStringLiteral("dns")));
             for (uint server : servers)
                 dns << QHostAddress(qFromBigEndian(server)).toString();
         } else {
-            const auto servers = ip.value(QStringLiteral("dns")).value<QList<QByteArray>>();
+            const auto servers = listOf<QByteArray>(ip.value(QStringLiteral("dns")));
             for (const QByteArray &server : servers) {
                 Q_IPV6ADDR raw;
                 memcpy(raw.c, server.constData(), qMin(16, int(server.size())));
@@ -625,7 +639,7 @@ QVariantMap wireGuardForm(const NMVariantMapMap &settings)
     }
 
     QVariantList peers;
-    const auto storedPeers = wireguard.value(QStringLiteral("peers")).value<QList<QVariantMap>>();
+    const auto storedPeers = listOf<QVariantMap>(wireguard.value(QStringLiteral("peers")));
     for (const QVariantMap &peer : storedPeers) {
         peers << QVariantMap {
             {QStringLiteral("publicKey"), peer.value(QStringLiteral("public-key")).toString()},
@@ -708,7 +722,7 @@ NMVariantMapMap wireGuardSettings(const QVariantMap &form, const NMVariantMapMap
     if (!ok)
         return fail(QObject::tr("The MTU must be a number."));
 
-    const auto storedPeers = stored.value(QStringLiteral("peers")).value<QList<QVariantMap>>();
+    const auto storedPeers = listOf<QVariantMap>(stored.value(QStringLiteral("peers")));
     QList<QVariantMap> peers;
     const QVariantList formPeers = form.value(QStringLiteral("peers")).toList();
     if (formPeers.isEmpty())
@@ -813,7 +827,7 @@ QByteArray wireGuardConfig(const NMVariantMapMap &settings)
     if (!form.value(QStringLiteral("peerRoutes")).toBool())
         out += QStringLiteral("Table = off\n");
 
-    const auto peers = wireguard.value(QStringLiteral("peers")).value<QList<QVariantMap>>();
+    const auto peers = listOf<QVariantMap>(wireguard.value(QStringLiteral("peers")));
     for (const QVariantMap &peer : peers) {
         out += QStringLiteral("\n[Peer]\nPublicKey = %1\n").arg(peer.value(QStringLiteral("public-key")).toString());
         if (peer.contains(QStringLiteral("preshared-key")))
