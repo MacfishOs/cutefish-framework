@@ -263,6 +263,10 @@ private slots:
         QVERIFY(!item.availableToOtherUsers());
 
         item.setAutoConnect(false);
+        // An unrelated change arriving before the profile is re-read must not
+        // put the switch back to what the stale cache says.
+        Q_EMIT NetworkClient::instance()->changed();
+        QVERIFY(!item.autoConnect());
         QTRY_COMPARE(nm->count(QStringLiteral("Update")), 1);
 
         const auto settings = qdbus_cast<NMVariantMapMap>(nm->last(QStringLiteral("Update")).arguments().value(0));

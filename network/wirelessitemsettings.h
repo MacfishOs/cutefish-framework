@@ -4,6 +4,7 @@
 #include <network_export.h>
 
 #include <QObject>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 class NetworkClient;
@@ -39,10 +40,13 @@ Q_SIGNALS:
 
 private:
     void update(const QString &key, const QVariant &value);
+    QVariant cached(const QString &key, const QVariant &defaultValue = {});
     void refresh();
 
     NetworkClient *m_client;
     QString m_path;
+    // Values written but not yet read back; the stale cache must not undo them.
+    QVariantMap m_pending;
     QString m_name;
     bool m_autoConnect = true;
     bool m_availableToOtherUsers = false;

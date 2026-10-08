@@ -2,10 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "mimeapps.h"
+#include "applicationregistry.h"
+#include "desktopentry.h"
 
 #include <QFile>
+#include <QMimeDatabase>
 #include <QTemporaryDir>
 #include <QtTest>
+
+static void writeList(const QString &path, const QByteArray &contents)
+{
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(contents);
+}
 
 class MimeAppsTest : public QObject
 {
@@ -19,6 +29,59 @@ private slots:
         qputenv("XDG_CONFIG_HOME", dir.path().toUtf8());
         QCOMPARE(MimeApps::userListPath(), dir.filePath("mimeapps.list"));
         QCOMPARE(MimeApps::userTerminalsListPath(), dir.filePath("xdg-terminals.list"));
+
+        // The desktop's own list in the config home comes first, the plain one after it,
+        // and the system's lists follow.
+        const QStringList paths = MimeApps::listPaths();
+        QVERIFY(paths.first().startsWith(dir.path()));
+        QVERIFY(paths.first().endsWith("-mimeapps.list"));
+        const int user = paths.indexOf(dir.filePath("mimeapps.list"));
+        QVERIFY(user > 0);
+        QVERIFY(paths.size() > user + 1);
+        QVERIFY(!paths.at(user + 1).startsWith(dir.path()));
+    }
+
+    void earlierListsOverrideLaterOnes()
+    {
+        QTemporaryDir dir;
+        const QString user = dir.filePath("user.list");
+        const QString system = dir.filePath("system.list");
+        writeList(user, "[Default Applications]\ntext/plain=gone.desktop;\n"
+                        "[Removed Associations]\ntext/plain=system-editor.desktop;\n");
+        writeList(system, "[Default Applications]\ntext/plain=system-editor.desktop;\n"
+                          "[Added Associations]\ntext/plain=viewer.desktop;system-editor.desktop;\n");
+
+        auto *registry = ApplicationRegistry::instance();
+        QTRY_VERIFY(!registry->loading());
+        DesktopEntryData systemEditor;
+        DesktopEntryData viewer;
+        DesktopEntryData otherEditor;
+        QVERIFY(DesktopEntry::parse(
+                "system-editor", "/applications/system-editor.desktop",
+                "[Desktop Entry]\nType=Application\nName=System Editor\nExec=system-editor %F\n"
+                "MimeType=text/plain;\n", &systemEditor));
+        QVERIFY(DesktopEntry::parse(
+                "viewer", "/applications/viewer.desktop",
+                "[Desktop Entry]\nType=Application\nName=Viewer\nExec=viewer %F\n", &viewer));
+        QVERIFY(DesktopEntry::parse(
+                "other-editor", "/applications/other-editor.desktop",
+                "[Desktop Entry]\nType=Application\nName=Other Editor\nExec=other-editor %F\n"
+                "MimeType=text/plain;\n", &otherEditor));
+        registry->applyScan({systemEditor, viewer, otherEditor});
+
+        const QMimeType text = QMimeDatabase().mimeTypeForName("text/plain");
+        const QStringList chain {user, system};
+        // The user's default is not installed, and the user removed the system's default.
+        QVERIFY(MimeApps::chosenApplication(chain, text).isEmpty());
+        // The system's addition comes before the entries that list the type; the removed
+        // application is out even though the system list adds it and it lists the type.
+        QCOMPARE(MimeApps::applications(text, chain),
+                 QStringList({"/applications/viewer.desktop", "/applications/other-editor.desktop"}));
+        QCOMPARE(MimeApps::defaultApplication(chain, text), "/applications/viewer.desktop");
+        QCOMPARE(MimeApps::chosenApplication({system}, text), "/applications/system-editor.desktop");
+        QCOMPARE(MimeApps::applications(text, {}),
+                 QStringList({"/applications/system-editor.desktop",
+                              "/applications/other-editor.desktop"}));
     }
 
     void preservesAssociations()

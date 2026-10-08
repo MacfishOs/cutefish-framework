@@ -109,6 +109,53 @@ QString MimeApps::userTerminalsListPath()
             + QLatin1String("/xdg-terminals.list");
 }
 
+QStringList MimeApps::listPaths()
+{
+    QStringList paths;
+    const QStringList desktops = DesktopEntry::currentDesktops();
+    for (const auto location :
+         {QStandardPaths::GenericConfigLocation, QStandardPaths::ApplicationsLocation}) {
+        for (const QString &directory : QStandardPaths::standardLocations(location)) {
+            for (const QString &desktop : desktops)
+                paths.append(directory + '/' + desktop.toLower() + QLatin1String("-mimeapps.list"));
+            paths.append(directory + QLatin1String("/mimeapps.list"));
+        }
+    }
+    paths.removeDuplicates();
+    return paths;
+}
+
+static QStringList fileLines(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    return QString::fromUtf8(file.readAll()).split('\n');
+}
+
+// The lists' additions for the type that no earlier list removed, and every removal, which
+// also applies to the applications listing the type themselves.
+struct ListedAssociations {
+    QStringList added;
+    QStringList removed;
+};
+
+static ListedAssociations listedAssociations(const QStringList &paths, const QString &mimeType)
+{
+    ListedAssociations listed;
+    for (const QString &path : paths) {
+        const QStringList lines = fileLines(path);
+        if (lines.isEmpty())
+            continue;
+        for (const QString &app : readEntries(lines, "Added Associations", mimeType)) {
+            if (!listed.removed.contains(app) && !listed.added.contains(app))
+                listed.added.append(app);
+        }
+        listed.removed += readEntries(lines, "Removed Associations", mimeType);
+    }
+    return listed;
+}
+
 QStringList MimeApps::associations(const QString &path, const QString &group,
                                    const QString &mimeType)
 {
@@ -148,7 +195,7 @@ bool MimeApps::setDefault(const QString &path, const QString &mimeType, const QS
     return writeLines(path, lines);
 }
 
-QStringList MimeApps::applications(const QMimeType &mimeType)
+QStringList MimeApps::applications(const QMimeType &mimeType, const QStringList &paths)
 {
     const QList<DesktopEntry *> entries = ApplicationRegistry::instance()->entries();
     QMimeDatabase mimeDatabase;
@@ -164,9 +211,23 @@ QStringList MimeApps::applications(const QMimeType &mimeType)
         for (const QMimeType &type : std::as_const(mimeTypes))
             names << type.name() << type.aliases();
 
+        QStringList removed;
+        QList<DesktopEntry *> added;
+        for (const QString &name : std::as_const(names)) {
+            const ListedAssociations listed = listedAssociations(paths, name);
+            removed += listed.removed;
+            for (const QString &app : listed.added) {
+                DesktopEntry *entry = entryForDesktopId(app);
+                if (entry && !added.contains(entry)) {
+                    added.append(entry);
+                    apps.append(entry->path());
+                }
+            }
+        }
+
         QList<DesktopEntry *> matches;
         for (DesktopEntry *entry : entries) {
-            if (!opensFiles(entry))
+            if (!opensFiles(entry) || removed.contains(QFileInfo(entry->path()).fileName()))
                 continue;
 
             const QStringList entryTypes = entry->mimeTypes();
@@ -180,7 +241,6 @@ QStringList MimeApps::applications(const QMimeType &mimeType)
             return QFileInfo(a->path()).birthTime() < QFileInfo(b->path()).birthTime();
         });
 
-        QList<DesktopEntry *> added;
         for (DesktopEntry *entry : std::as_const(matches)) {
             // One program installed under two desktop files is offered once.
             const bool duplicate = std::any_of(added.cbegin(), added.cend(),
@@ -208,23 +268,28 @@ QStringList MimeApps::applications(const QMimeType &mimeType)
     return apps;
 }
 
-QString MimeApps::chosenApplication(const QString &path, const QMimeType &mimeType)
+QString MimeApps::chosenApplication(const QStringList &paths, const QMimeType &mimeType)
 {
-    for (const QString &group :
-         {QStringLiteral("Default Applications"), QStringLiteral("Added Associations")}) {
-        const auto apps = associations(path, group, mimeType.name());
-        for (const QString &app : apps) {
+    QStringList removed;
+    for (const QString &path : paths) {
+        const QStringList lines = fileLines(path);
+        if (lines.isEmpty())
+            continue;
+        for (const QString &app : readEntries(lines, "Default Applications", mimeType.name())) {
+            if (removed.contains(app))
+                continue;
             if (const DesktopEntry *entry = entryForDesktopId(app))
                 return entry->path();
         }
+        removed += readEntries(lines, "Removed Associations", mimeType.name());
     }
     return {};
 }
 
-QString MimeApps::defaultApplication(const QString &path, const QMimeType &mimeType)
+QString MimeApps::defaultApplication(const QStringList &paths, const QMimeType &mimeType)
 {
-    const QString chosen = chosenApplication(path, mimeType);
-    return chosen.isEmpty() ? applications(mimeType).value(0) : chosen;
+    const QString chosen = chosenApplication(paths, mimeType);
+    return chosen.isEmpty() ? applications(mimeType, paths).value(0) : chosen;
 }
 
 QString MimeApps::defaultTerminal(const QString &path)
