@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QPointF>
 #include <QPointer>
+#include <QTimer>
 
 class QWheelEvent;
 class QWindow;
@@ -39,7 +40,8 @@ public:
     // Shows the frame for frameTime, in clock() milliseconds.
     void advance(qreal frameTime);
     bool isActive() const;
-    // From the first movement until the view comes to rest.
+    // From the first movement until the view comes to rest; a wheel step counts
+    // for a moment, as it moves the view at once.
     bool isScrolling() const;
 
     static qreal clock();
@@ -107,6 +109,7 @@ private:
     void updateScrolling();
 
     QPointer<QWindow> m_window;
+    QTimer m_wheelStep;
     QList<Sample> m_samples;
     QPointF m_dragPosition;
     QPointF m_shownDragPosition;

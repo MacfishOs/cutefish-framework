@@ -36,6 +36,7 @@ static constexpr qreal pageFlickSpeed = 400.0;
 static constexpr qreal snapDuration = 180;
 static constexpr qreal snapPageDuration = 220;
 static constexpr qreal minimumSnapDuration = 120;
+static constexpr int wheelStepDuration = 120;
 static constexpr qreal never = -std::numeric_limits<qreal>::infinity();
 
 static qreal monotonicClock()
@@ -138,6 +139,9 @@ Scroller::Scroller(QObject *parent)
     , m_shownTime(never)
 {
     allScrollers().append(this);
+    m_wheelStep.setSingleShot(true);
+    m_wheelStep.setInterval(wheelStepDuration);
+    connect(&m_wheelStep, &QTimer::timeout, this, &Scroller::updateScrolling);
 }
 
 Scroller::~Scroller()
@@ -289,7 +293,7 @@ bool Scroller::isScrolling() const
 
 void Scroller::updateScrolling()
 {
-    const bool scrolling = (m_gesture && m_consumed) || m_coasting;
+    const bool scrolling = (m_gesture && m_consumed) || m_coasting || m_wheelStep.isActive();
     if (scrolling == m_scrolling)
         return;
 
@@ -676,6 +680,8 @@ bool Scroller::handleWheel(QWheelEvent *event, bool elasticOvershoot, bool paged
                 bounded(previous.y() - delta.y(), y.minimum, y.maximum)};
     }
     setPosition(next);
+    if (phase == Qt::NoScrollPhase && next != previous)
+        m_wheelStep.start();
     if (m_coasting)
         m_coastPosition = next;
     else if (phase == Qt::ScrollMomentum)
