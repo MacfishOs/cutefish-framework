@@ -40,8 +40,6 @@ void Appearance::init()
     connect(m_interface, SIGNAL(wallpaperFolderImagesChanged(QString)), this,
             SIGNAL(wallpaperFolderImagesChanged(QString)));
     connect(m_interface, SIGNAL(accentColorChanged(int)), this, SIGNAL(accentColorIndexChanged()));
-    connect(m_interface, SIGNAL(darkModeDimsWallpaerChanged()), this,
-            SIGNAL(dimsWallpaperChanged()));
     connect(m_interface, SIGNAL(continuousCornersChanged(bool)), this,
             SLOT(onContinuousCornersChanged(bool)));
     connect(m_interface, SIGNAL(systemFontPointSizeChanged()), this,
@@ -58,7 +56,6 @@ void Appearance::init()
     emit userWallpapersChanged();
     emit wallpaperFoldersChanged();
     emit accentColorIndexChanged();
-    emit dimsWallpaperChanged();
     emit continuousCornersChanged();
     emit fontPointSizeChanged();
     emit fontFamilyChanged();
@@ -88,16 +85,6 @@ bool Appearance::darkMode() const
 void Appearance::switchDarkMode(bool darkMode)
 {
     callService("setDarkMode", darkMode);
-}
-
-bool Appearance::dimsWallpaper() const
-{
-    return serviceProperty("darkModeDimsWallpaer").toBool();
-}
-
-void Appearance::setDimsWallpaper(bool value)
-{
-    callService("setDarkModeDimsWallpaer", value);
 }
 
 // Without the service there is nothing to read, so the default applies.
