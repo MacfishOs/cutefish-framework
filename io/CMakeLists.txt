@@ -21,7 +21,8 @@ add_library(cutefish-framework-io STATIC ${IO_PUBLIC_HEADERS}
     volumemanager.cpp error.cpp filepath.cpp filesystemurl.cpp fileitem.cpp fileenumerator.cpp
     operationcontext.cpp localfilesystem.cpp trash.cpp filewatcher.cpp
     directorylister.cpp directorymodel.cpp task.cpp thumbnailcache.cpp thumbnailprovider.cpp
-    thumbnailers.cpp thumbnailers_p.h mimesniffer.cpp mimesniffer_p.h async.h posix_p.h)
+    thumbnailers.cpp thumbnailers_p.h mimesniffer.cpp mimesniffer_p.h async.h posix_p.h
+    trashdirectory.cpp trashdirectory_p.h)
 add_library(Cutefish::IO ALIAS cutefish-framework-io)
 
 set_target_properties(cutefish-framework-io PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)

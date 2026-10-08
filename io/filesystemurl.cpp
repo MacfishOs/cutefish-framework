@@ -1,6 +1,7 @@
 #include "filesystemurl.h"
 
 #include "error.h"
+#include "trashdirectory_p.h"
 
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -21,6 +22,9 @@ FileSystemUrl::FileSystemUrl(QUrl url)
         for (const auto &part : m_url.path().split('/'))
             if (part == ".." || part == ".")
                 throw Failure(EINVAL, m_url.toString());
+
+        if (m_url.path() != QLatin1String("/"))
+            Internal::trashDirectory(m_url);
     }
 }
 
@@ -31,7 +35,15 @@ QString FileSystemUrl::trashRoot()
 
 QString FileSystemUrl::localPath() const
 {
-    return m_url.isLocalFile() ? m_url.toLocalFile() : trashRoot() + "/files" + m_url.path();
+    if (m_url.isLocalFile())
+        return m_url.toLocalFile();
+
+    if (m_url.path() == QLatin1String("/"))
+        return trashRoot() + "/files";
+
+    QString inside;
+    const auto trash = Internal::trashDirectory(m_url, &inside);
+    return trash.path + "/files" + (inside.isEmpty() ? QString() : '/' + inside);
 }
 
 QUrl upUrl(const QUrl &url)

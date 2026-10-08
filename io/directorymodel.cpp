@@ -76,6 +76,10 @@ QVariant DirectoryModel::data(const QModelIndex &idx, int role) const
             return item.time(FileItem::ModificationTime);
         case Type:
             return item.mimetype();
+        case OriginalPath:
+            return item.originalPath();
+        case DeletionTime:
+            return item.deletionTime();
         default:
             return {};
         }

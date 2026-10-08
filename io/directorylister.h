@@ -101,6 +101,9 @@ private:
         Error error;
         QString typeDatabase;
         bool typesSettled = false;
+        // What changes the trash, which spans folders on every volume.
+        QStringList trashPaths;
+        QHash<QString, QList<QByteArray>> trashEntries;
     };
 
     // What a running search found since the last look.
@@ -122,6 +125,8 @@ private:
     bool m_typesSettled = false;
     quint64 m_generation = 0;
     FileWatcher m_watch;
+    QStringList m_trashPaths;
+    QHash<QString, QList<QByteArray>> m_trashEntries;
     QTimer m_debounce;
     QTimer m_retry;
     QFutureWatcher<Listing> *m_future = nullptr;

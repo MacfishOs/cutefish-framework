@@ -3,6 +3,7 @@
 #include "error.h"
 #include "filesystemurl.h"
 #include "mimesniffer_p.h"
+#include "trashdirectory_p.h"
 
 #include <QDir>
 #include <QFile>
@@ -21,6 +22,17 @@ FileItem::FileItem(const QUrl &url)
         m_info.refresh();
         m_url = url;
         m_name = url.fileName();
+
+        QString name;
+        Internal::TrashInfo info;
+        if (url.scheme() == QLatin1String("trash") && url.path() != QLatin1String("/")) {
+            const auto trash = Internal::trashDirectory(url, &name);
+            if (!name.isEmpty() && !name.contains('/')
+                && Internal::readTrashInfo(trash, name, &info)) {
+                m_originalPath = info.path;
+                m_deletionTime = info.deletionTime;
+            }
+        }
     } catch (const Failure &) {
     }
 }

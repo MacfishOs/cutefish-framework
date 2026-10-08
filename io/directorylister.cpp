@@ -3,6 +3,7 @@
 #include "async.h"
 #include "fileenumerator.h"
 #include "filesystemurl.h"
+#include "trashdirectory_p.h"
 
 #include <QDir>
 #include <QStandardPaths>
@@ -44,6 +45,11 @@ static TypeDatabase currentTypeDatabase()
     database.settled = QDateTime::currentMSecsSinceEpoch() - newest > 6000;
 
     return database;
+}
+
+static bool isTrashRoot(const QUrl &url)
+{
+    return url.scheme() == QLatin1String("trash") && url.path() == QLatin1String("/");
 }
 
 static QString existingAncestor(QString path)
@@ -221,6 +227,22 @@ void DirectoryLister::watchDirectory()
         return;
     }
 
+    // Mounts and unmounts add and remove volumes' trash, so a folder listed can be
+    // gone by now.
+    if (isTrashRoot(m_url)) {
+        QStringList paths;
+        for (const auto &path : std::as_const(m_trashPaths)) {
+            if (QFileInfo(path).isDir())
+                paths.append(path);
+        }
+
+        if (m_watch.watch(paths, m_trashEntries, true))
+            m_retry.stop();
+        else
+            m_retry.start();
+        return;
+    }
+
     try {
         const QString path = FileSystemUrl(m_url).localPath();
 
@@ -260,7 +282,9 @@ void DirectoryLister::refresh()
         return;
     }
 
-    watchDirectory();
+    // The trash's folders come with its listing; those of the last one can be gone.
+    if (!isTrashRoot(m_url))
+        watchDirectory();
 
     const quint64 generation = m_generation;
     auto context = std::make_shared<OperationContext>();
@@ -291,6 +315,12 @@ void DirectoryLister::refresh()
 
         m_typeDatabase = listing.typeDatabase;
         m_typesSettled = listing.typesSettled;
+
+        if (isTrashRoot(listing.url)) {
+            m_trashPaths = listing.trashPaths;
+            m_trashEntries = listing.trashEntries;
+            watchDirectory();
+        }
 
         if (listing.url.isValid() && listing.url != m_url) {
             m_url = listing.url;
@@ -368,6 +398,10 @@ void DirectoryLister::refresh()
                 else if (listed && !target.exists())
                     result.url = QUrl::fromLocalFile(existingAncestor(target.absoluteFilePath()));
             }
+
+            // Looking for the trash folders reads the mount table and stats each mount.
+            if (isTrashRoot(result.url))
+                Internal::trashWatches(&result.trashPaths, &result.trashEntries);
 
             result.items = FileEnumerator::list(result.url, hidden, context.get());
             result.rootItem = FileItem(result.url);

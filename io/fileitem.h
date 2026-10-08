@@ -112,6 +112,18 @@ public:
         return m_info.size();
     }
 
+    // For an item at the top of a trash, where it was trashed from and when, as its
+    // info file says; empty otherwise.
+    QString originalPath() const
+    {
+        return m_originalPath;
+    }
+
+    QDateTime deletionTime() const
+    {
+        return m_deletionTime;
+    }
+
     QDateTime time(FileTime type) const;
     // The same instant in zone. UTC skips the local time conversion, which stats
     // the time zone file on every call.
@@ -192,6 +204,8 @@ private:
     QString m_iconName;
     QString m_typeDescription;
     QUrl m_targetUrl;
+    QString m_originalPath;
+    QDateTime m_deletionTime;
 };
 
 using FileItemList = QList<FileItem>;

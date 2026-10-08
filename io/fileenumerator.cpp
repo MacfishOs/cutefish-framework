@@ -3,11 +3,13 @@
 #include "async.h"
 #include "filesystemurl.h"
 #include "posix_p.h"
+#include "trashdirectory_p.h"
 
 #include <QStringList>
 
 #include <algorithm>
 #include <deque>
+#include <optional>
 #include <linux/magic.h>
 #include <sys/stat.h>
 #include <sys/vfs.h>
@@ -72,33 +74,87 @@ FileItemList FileEnumerator::list(const QUrl &url, bool hidden, OperationContext
     if (context)
         context->checkpoint();
 
-    const auto path = FileSystemUrl(url).localPath();
-    Fd fd(::open(native(path), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
-    if (fd.value < 0 && errno == ENOENT && url.scheme() == "trash" && url.path() == "/")
-        return {};
-    check(fd.value, path);
+    // The folders listed together: trash:/ is the files/ of every trash.
+    struct Folder
+    {
+        QString path;
+        QUrl url;
+        // Set for the files/ of a trash, whose items have info files.
+        std::optional<TrashDirectory> trash;
+        QList<QByteArray> names;
+        QString urlBase;
+        QString pathBase;
+    };
 
-    QList<QByteArray> names;
-    children(fd.value, path, [&](const QByteArray &name) {
-        if (context)
-            context->checkpoint(path);
+    std::vector<Folder> folders;
+    const bool trashRoot =
+            url.scheme() == QLatin1String("trash") && url.path() == QLatin1String("/");
 
-        if (!hidden && name.startsWith('.'))
-            return;
+    if (trashRoot) {
+        FileSystemUrl validated(url);
 
-        names.append(name);
-    });
+        for (const auto &trash : trashDirectories()) {
+            auto folderUrl = url;
+            folderUrl.setPath('/' + trash.id);
+            folders.push_back({trash.path + "/files", folderUrl, trash});
+        }
+    } else {
+        folders.push_back({FileSystemUrl(url).localPath(), url});
+
+        if (url.scheme() == QLatin1String("trash")) {
+            QString inside;
+            const auto trash = trashDirectory(url, &inside);
+            if (inside.isEmpty())
+                folders.front().trash = trash;
+        }
+    }
+
+    for (auto &folder : folders) {
+        const auto &path = folder.path;
+        // Nothing trashed yet is no error, and a volume's trash that cannot be read
+        // leaves the rest of the trash.
+        const bool skippable = trashRoot && !folder.trash->topdir.isEmpty();
+
+        Fd fd(::open(native(path), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+        if (fd.value < 0 && trashRoot && (errno == ENOENT || skippable))
+            continue;
+        check(fd.value, path);
+
+        try {
+            children(fd.value, path, [&](const QByteArray &name) {
+                if (context)
+                    context->checkpoint(path);
+
+                if (!hidden && name.startsWith('.'))
+                    return;
+
+                folder.names.append(name);
+            });
+        } catch (const Failure &failure) {
+            if (!skippable || failure.error.code == ECANCELED)
+                throw;
+
+            folder.names.clear();
+        }
+    }
+
+    // Where each folder's items start in the listing.
+    std::vector<qsizetype> starts;
+    qsizetype count = 0;
+    for (auto &folder : folders) {
+        starts.push_back(count);
+        count += folder.names.size();
+        folder.urlBase = folder.url.path() + (folder.url.path().endsWith('/') ? "" : "/");
+        folder.pathBase = folder.path + (folder.path.endsWith('/') ? "" : "/");
+    }
 
     // Building the items costs more than reading the names: a large folder spreads it.
     constexpr qsizetype BlockSize = 256;
-    const qsizetype count = names.size();
     const qsizetype blocks = (count + BlockSize - 1) / BlockSize;
     std::atomic<qsizetype> nextBlock = 0;
 
     FileItemList result(count);
     FileItem *const items = result.data();
-    const QString urlBase = url.path() + (url.path().endsWith('/') ? "" : "/");
-    const QString pathBase = path + (path.endsWith('/') ? "" : "/");
 
     runOnFreeThreads(count >= LargeFolder ? blockHelpers(blocks) : 0,
                      [&](const std::atomic_bool &stop) {
@@ -108,10 +164,22 @@ FileItemList FileEnumerator::list(const QUrl &url, bool hidden, OperationContext
 
             const qsizetype end = qMin(count, (block + 1) * BlockSize);
             for (qsizetype index = block * BlockSize; index < end; ++index) {
-                const QString decoded = QFile::decodeName(names.at(index));
-                auto child = url;
-                child.setPath(urlBase + decoded);
-                items[index] = FileItem(child, pathBase + decoded, decoded);
+                const auto at = std::upper_bound(starts.cbegin(), starts.cend(), index) - 1;
+                const Folder &folder = folders[at - starts.cbegin()];
+
+                const QString decoded = QFile::decodeName(folder.names.at(index - *at));
+                auto child = folder.url;
+                child.setPath(folder.urlBase + decoded);
+
+                FileItem &item = items[index];
+                item = FileItem(child, folder.pathBase + decoded, decoded);
+
+                // A small file each; the trash is listed seldom.
+                TrashInfo info;
+                if (folder.trash && readTrashInfo(*folder.trash, decoded, &info)) {
+                    item.m_originalPath = info.path;
+                    item.m_deletionTime = info.deletionTime;
+                }
             }
         }
     });

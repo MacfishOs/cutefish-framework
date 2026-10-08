@@ -1,6 +1,7 @@
 #include "directory.h"
 #include "mimesniffer_p.h"
 #include "task.h"
+#include "trashdirectory_p.h"
 
 #include <QAbstractItemModelTester>
 #include <QCryptographicHash>
@@ -15,10 +16,12 @@
 #include <QtTest>
 
 #include <fcntl.h>
+#include <linux/capability.h>
 #include <sched.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -56,11 +59,38 @@ static QUrl local(const QString &path)
     return QUrl::fromLocalFile(path);
 }
 
+static QString userTrash(const QString &topdir)
+{
+    return topdir + "/.Trash-" + QString::number(::getuid());
+}
+
+static QString trashId(const QString &topdir, bool shared = false)
+{
+    return (shared ? 's' : 'u') + QString::fromLatin1(QFile::encodeName(topdir).toHex());
+}
+
+// Mount lines as the kernel writes them, spaces in mount points escaped, after one
+// for /proc.
+static void writeMountTable(const QString &table, const QList<QPair<QString, QByteArray>> &mounts)
+{
+    QByteArray content = "22 1 0:21 / /proc rw,nosuid shared:5 - proc proc rw\n";
+    int id = 30;
+
+    for (const auto &[point, type] : mounts) {
+        content += QByteArray::number(id++) + " 1 8:1 / "
+                + QFile::encodeName(point).replace('\\', "\\134").replace(' ', "\\040")
+                + " rw,relatime shared:1 - " + type + " /dev/sda1 rw\n";
+    }
+
+    writeFile(table, content);
+}
+
 class IOTest : public QObject
 {
     Q_OBJECT
 
     QTemporaryDir m_data;
+    QString m_mountTable;
 
 private slots:
     void initTestCase()
@@ -71,6 +101,11 @@ private slots:
         QVERIFY(m_data.isValid());
         qputenv("XDG_DATA_HOME", m_data.path().toUtf8());
         QCOMPARE(FileSystemUrl::trashRoot(), m_data.path() + "/Trash");
+
+        // No volume of this machine is listed, so no test touches its trash.
+        m_mountTable = m_data.filePath("mountinfo");
+        writeFile(m_mountTable, {});
+        Internal::setMountTable(m_mountTable);
     }
 
     void cleanup()
@@ -91,6 +126,17 @@ private slots:
         QCOMPARE(errorCode([] { FileSystemUrl(QUrl("file://remote/tmp/a")); }), ENOTSUP);
         QCOMPARE(errorCode([] { FileSystemUrl(QUrl("trash:/../a")); }), EINVAL);
         QCOMPARE(errorCode([] { FileSystemUrl(QUrl("trash:/%2E%2E/a")); }), EINVAL);
+        QCOMPARE(errorCode([] { FileSystemUrl(QUrl("trash:/a")); }), EINVAL);
+        QCOMPARE(errorCode([] { FileSystemUrl(QUrl("trash:/u2F/a")); }), EINVAL);
+        QCOMPARE(errorCode([] { FileSystemUrl(QUrl("trash:/u2e2e/a")); }), EINVAL);
+        QCOMPARE(errorCode([] { FileSystemUrl(QUrl("trash:/u2f2e2e/a")); }), EINVAL);
+        QCOMPARE(errorCode([] { FileSystemUrl(QUrl("trash:/x2f/a")); }), EINVAL);
+        QCOMPARE(FileSystemUrl(QUrl("trash:/home/a/b")).localPath(),
+                 FileSystemUrl::trashRoot() + "/files/a/b");
+        QCOMPARE(FileSystemUrl(QUrl("trash:/" + trashId("/media/a b") + "/c")).localPath(),
+                 userTrash("/media/a b") + "/files/c");
+        QCOMPARE(FileSystemUrl(QUrl("trash:/" + trashId("/", true) + "/c")).localPath(),
+                 "/.Trash/" + QString::number(::getuid()) + "/files/c");
 
         QCOMPARE(FileSystemUrl(local("/tmp/a % # é")).localPath(), QString("/tmp/a % # é"));
         QCOMPARE(upUrl(local("/tmp/a")), local("/tmp"));
@@ -532,6 +578,270 @@ private slots:
                  }),
                  EINVAL);
         QVERIFY(QFileInfo::exists(FileSystemUrl(url).localPath()));
+    }
+
+    void volumeTrashListsRestoresAndEmpties()
+    {
+        QTemporaryDir dir;
+        const auto volume = dir.filePath("disk one");
+        const auto automount = dir.filePath("auto");
+        QVERIFY(QDir().mkpath(userTrash(volume) + "/files"));
+        QVERIFY(QDir().mkpath(userTrash(volume) + "/info"));
+        QVERIFY(QDir().mkpath(userTrash(automount) + "/files"));
+        writeFile(userTrash(automount) + "/files/unseen");
+        const auto share = dir.filePath("share");
+        QVERIFY(QDir().mkpath(userTrash(share) + "/files"));
+        writeFile(userTrash(share) + "/files/remote");
+        const auto bound = dir.filePath("bound");
+        QVERIFY(::symlink(QFile::encodeName(volume), QFile::encodeName(bound)) == 0);
+
+        // Looking into an automount would mount it, and into a share could hang; a volume
+        // reached twice has one trash.
+        writeMountTable(m_mountTable,
+                        {{volume, "ext4"},
+                         {bound, "ext4"},
+                         {automount, "autofs"},
+                         {share, "nfs"}});
+        auto emptyTable = qScopeGuard([this] { writeFile(m_mountTable, {}); });
+
+        writeFile(userTrash(volume) + "/files/old.txt", "old");
+        writeFile(userTrash(volume) + "/info/old.txt.trashinfo",
+                  "[Trash Info]\nPath=docs/old%20one.txt\nDeletionDate=2026-01-02T03:04:05\n");
+        // Left by a tool that wrote no info file.
+        writeFile(userTrash(volume) + "/files/orphan");
+
+        writeFile(dir.filePath("local"));
+        OperationContext ctx;
+        const auto trashed = LocalFileSystem::trash(local(dir.filePath("local")), ctx);
+        QCOMPARE(trashed.path(), QString("/home/local"));
+
+        QHash<QString, FileItem> items;
+        for (const auto &item : LocalFileSystem::enumerate(QUrl("trash:/")))
+            items.insert(item.name(), item);
+        QCOMPARE(items.keys().size(), 3);
+
+        const auto old = items.value("old.txt");
+        QCOMPARE(old.url().path(), '/' + trashId(volume) + "/old.txt");
+        QCOMPARE(old.originalPath(), volume + "/docs/old one.txt");
+        QCOMPARE(old.deletionTime(), QDateTime(QDate(2026, 1, 2), QTime(3, 4, 5)));
+        QCOMPARE(readFile(old.localPath()), QByteArray("old"));
+        QCOMPARE(FileItem(old.url()).originalPath(), old.originalPath());
+        QCOMPARE(FileItem(old.url()).deletionTime(), old.deletionTime());
+
+        const auto orphan = items.value("orphan");
+        QVERIFY(orphan.originalPath().isEmpty());
+        QVERIFY(!orphan.deletionTime().isValid());
+
+        // One trash lists alone, with the same details.
+        const auto alone = LocalFileSystem::enumerate(upUrl(orphan.url()));
+        QCOMPARE(alone.size(), 2);
+        for (const auto &item : alone)
+            QCOMPARE(item.originalPath(), items.value(item.name()).originalPath());
+
+        const auto home = items.value("local");
+        QCOMPARE(home.url(), trashed);
+        QCOMPARE(home.originalPath(), dir.filePath("local"));
+        QVERIFY(qAbs(home.deletionTime().secsTo(QDateTime::currentDateTime())) < 60);
+
+        QCOMPARE(errorCode([&] {
+                     LocalFileSystem::restore(orphan.url(), ConflictPolicy::Fail, ctx);
+                 }),
+                 EACCES);
+
+        QVERIFY(QDir().mkpath(volume + "/docs"));
+        QCOMPARE(LocalFileSystem::restore(old.url(), ConflictPolicy::Fail, ctx),
+                 local(volume + "/docs/old one.txt"));
+        QCOMPARE(readFile(volume + "/docs/old one.txt"), QByteArray("old"));
+        QVERIFY(!QFileInfo::exists(userTrash(volume) + "/info/old.txt.trashinfo"));
+
+        LocalFileSystem::emptyTrash(ctx);
+        QVERIFY(LocalFileSystem::enumerate(QUrl("trash:/")).isEmpty());
+        QVERIFY(QDir(userTrash(volume) + "/files").isEmpty());
+        QVERIFY(QDir(FileSystemUrl::trashRoot() + "/info").isEmpty());
+        QVERIFY(QFileInfo::exists(userTrash(automount) + "/files/unseen"));
+        QVERIFY(QFileInfo::exists(userTrash(share) + "/files/remote"));
+    }
+
+    // A tmpfs in a private user and mount namespace stands in for a second drive.
+    void trashOnAnotherFilesystem()
+    {
+        QTemporaryDir dir;
+        const auto volume = dir.filePath("volume");
+        QVERIFY(QDir().mkpath(volume));
+        const auto table = dir.filePath("mountinfo");
+
+        const uid_t uid = ::getuid();
+        const gid_t gid = ::getgid();
+        const pid_t pid = ::fork();
+        QVERIFY(pid >= 0);
+        if (pid == 0) {
+            if (::unshare(CLONE_NEWUSER | CLONE_NEWNS) != 0)
+                ::_exit(77);
+
+            const auto write = [](const char *path, const QByteArray &data) {
+                QFile file(QString::fromLatin1(path));
+                return file.open(QIODevice::WriteOnly) && file.write(data) == data.size();
+            };
+            if (!write("/proc/self/uid_map",
+                       QByteArray::number(uid) + ' ' + QByteArray::number(uid) + " 1")
+                || !write("/proc/self/setgroups", "deny")
+                || !write("/proc/self/gid_map",
+                          QByteArray::number(gid) + ' ' + QByteArray::number(gid) + " 1"))
+                ::_exit(77);
+
+            if (::mount("none", QFile::encodeName(volume), "tmpfs", 0, "mode=0755") != 0)
+                ::_exit(77);
+
+            // Without capabilities, permissions hold as they do outside the namespace.
+            __user_cap_header_struct header {_LINUX_CAPABILITY_VERSION_3, 0};
+            __user_cap_data_struct capabilities[2] = {};
+            if (::syscall(SYS_capset, &header, capabilities) != 0)
+                ::_exit(76);
+
+            Internal::setMountTable(table);
+
+            // Exits with the number of the first check that fails.
+            int step = 0;
+            const auto expect = [&](bool passed) {
+                ++step;
+                if (!passed)
+                    ::_exit(step);
+            };
+
+            try {
+                OperationContext ctx;
+                const auto trash = userTrash(volume);
+                const auto shared = volume + "/.Trash/" + QString::number(uid);
+                const auto mode = [](const QString &path) {
+                    struct stat st;
+                    return ::stat(QFile::encodeName(path), &st) == 0 ? st.st_mode & 07777 : 0;
+                };
+
+                // A remote filesystem takes no trash, so its files go home.
+                writeMountTable(table, {{volume, "nfs"}});
+                writeFile(volume + "/remote");
+                const auto remote = LocalFileSystem::trash(local(volume + "/remote"), ctx);
+                expect(remote.path() == "/home/remote");
+                expect(!QFileInfo::exists(volume + "/remote") && !QFileInfo::exists(trash));
+                expect(LocalFileSystem::restore(remote, ConflictPolicy::Fail, ctx)
+                       == local(volume + "/remote"));
+                writeMountTable(table, {{volume, "tmpfs"}});
+
+                // A volume that takes no trash sends its files home.
+                expect(QDir().mkpath(volume + "/sub"));
+                expect(::chmod(QFile::encodeName(volume), 0555) == 0);
+                writeFile(volume + "/sub/sent");
+                const auto sent = LocalFileSystem::trash(local(volume + "/sub/sent"), ctx);
+                expect(sent.path() == "/home/sent");
+                expect(!QFileInfo::exists(volume + "/sub/sent") && !QFileInfo::exists(trash));
+                expect(::chmod(QFile::encodeName(volume), 0755) == 0);
+
+                writeFile(volume + "/sub/file", "data");
+                const auto url = LocalFileSystem::trash(local(volume + "/sub/file"), ctx);
+                expect(url.path() == '/' + trashId(volume) + "/file");
+                expect(readFile(trash + "/files/file") == "data");
+                expect(readFile(trash + "/info/file.trashinfo")
+                               .startsWith("[Trash Info]\nPath=sub/file\nDeletionDate="));
+                expect(mode(trash) == 0700);
+
+                const auto items = LocalFileSystem::enumerate(QUrl("trash:/"));
+                expect(items.size() == 2);
+                const auto item = std::find_if(items.cbegin(), items.cend(),
+                                               [&](const FileItem &entry) {
+                                                   return entry.url() == url;
+                                               });
+                expect(item != items.cend() && item->originalPath() == volume + "/sub/file"
+                       && item->deletionTime().isValid());
+
+                expect(LocalFileSystem::restore(url, ConflictPolicy::Fail, ctx)
+                       == local(volume + "/sub/file"));
+                expect(readFile(volume + "/sub/file") == "data");
+                expect(!QFileInfo::exists(trash + "/info/file.trashinfo"));
+
+                // $topdir/.Trash serves only as a sticky folder that is no link and takes
+                // the user's folder.
+                expect(QDir().mkdir(volume + "/.Trash"));
+                const auto plain = LocalFileSystem::trash(local(volume + "/sub/file"), ctx);
+                expect(plain.path() == '/' + trashId(volume) + "/file");
+
+                expect(::chmod(QFile::encodeName(volume + "/.Trash"), 01555) == 0);
+                writeFile(volume + "/sub/second");
+                const auto unwritable = LocalFileSystem::trash(local(volume + "/sub/second"), ctx);
+                expect(unwritable.path() == '/' + trashId(volume) + "/second");
+
+                expect(::chmod(QFile::encodeName(volume + "/.Trash"), 01777) == 0);
+                writeFile(volume + "/sub/third");
+                const auto sticky = LocalFileSystem::trash(local(volume + "/sub/third"), ctx);
+                expect(sticky.path() == '/' + trashId(volume, true) + "/third");
+                expect(QFileInfo::exists(shared + "/files/third") && mode(shared) == 0700);
+
+                expect(QFile::rename(volume + "/.Trash", volume + "/.Trash-real"));
+                expect(::symlink(".Trash-real", QFile::encodeName(volume + "/.Trash")) == 0);
+                writeFile(volume + "/sub/fourth");
+                const auto linked = LocalFileSystem::trash(local(volume + "/sub/fourth"), ctx);
+                expect(linked.path() == '/' + trashId(volume) + "/fourth");
+                expect(::unlink(QFile::encodeName(volume + "/.Trash")) == 0);
+                expect(QFile::rename(volume + "/.Trash-real", volume + "/.Trash"));
+
+                // Trashing a trash into itself is refused.
+                expect(errorCode([&] {
+                           LocalFileSystem::trash(local(trash + "/files/fourth"), ctx);
+                       }) == EINVAL);
+
+                expect(LocalFileSystem::enumerate(QUrl("trash:/")).size() == 5);
+                LocalFileSystem::emptyTrash(ctx);
+                expect(LocalFileSystem::enumerate(QUrl("trash:/")).isEmpty());
+                expect(QDir(trash + "/info").isEmpty() && QDir(shared + "/info").isEmpty());
+                expect(QDir(FileSystemUrl::trashRoot() + "/files").isEmpty());
+            } catch (...) {
+                ::_exit(100);
+            }
+
+            ::_exit(0);
+        }
+
+        int status = 0;
+        QCOMPARE(::waitpid(pid, &status, 0), pid);
+        QVERIFY(WIFEXITED(status));
+        if (WEXITSTATUS(status) == 77)
+            QSKIP("Unprivileged user namespaces are unavailable");
+        QCOMPARE(WEXITSTATUS(status), 0);
+    }
+
+    // A volume's trash made after the listing opened appears in it.
+    void trashListingFollowsVolumes()
+    {
+        QTemporaryDir dir;
+        const auto volume = dir.filePath("volume");
+        QVERIFY(QDir().mkpath(volume));
+        writeMountTable(m_mountTable, {{volume, "ext4"}});
+        auto emptyTable = qScopeGuard([this] { writeFile(m_mountTable, {}); });
+
+        DirectoryLister lister;
+        DirectoryModel model;
+        model.setDirLister(&lister);
+        QSignalSpy listed(&lister, &DirectoryLister::completed);
+        lister.openUrl(QUrl("trash:/"));
+        QTRY_COMPARE(listed.size(), 1);
+        QCOMPARE(model.rowCount(), 0);
+
+        QVERIFY(QDir().mkpath(userTrash(volume) + "/files"));
+        writeFile(userTrash(volume) + "/files/first");
+        QTRY_COMPARE(model.rowCount(), 1);
+        QCOMPARE(model.data(model.index(0, DirectoryModel::OriginalPath)).toString(), QString());
+
+        writeFile(userTrash(volume) + "/files/second");
+        QTRY_COMPARE(model.rowCount(), 2);
+
+        writeFile(dir.filePath("local"));
+        OperationContext ctx;
+        LocalFileSystem::trash(local(dir.filePath("local")), ctx);
+        QTRY_COMPARE(model.rowCount(), 3);
+
+        const auto row = model.indexForUrl(QUrl("trash:/home/local")).row();
+        QCOMPARE(model.data(model.index(row, DirectoryModel::OriginalPath)).toString(),
+                 dir.filePath("local"));
+        QVERIFY(model.data(model.index(row, DirectoryModel::DeletionTime)).toDateTime().isValid());
     }
 
     void watcherAndStableModel()

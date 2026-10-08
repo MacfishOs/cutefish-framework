@@ -4,6 +4,8 @@
 
 namespace Cutefish::IO {
 
+// trash:/ lists every trash. trash:/<id>/<name> is an item at the top of one: id is
+// "home" for the home trash, else it names a mounted volume's trash.
 class FileSystemUrl
 {
 public:

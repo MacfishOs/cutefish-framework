@@ -20,6 +20,9 @@ public:
         Permissions,
         Owner,
         Group,
+        // Of items at the top of a trash.
+        OriginalPath,
+        DeletionTime,
         ColumnCount
     };
 
