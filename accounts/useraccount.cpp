@@ -2,7 +2,7 @@
 #include "useraccount_p.h"
 
 #include <QtCore/QFile>
-#include <QtDBus/QDBusInterface>
+#include <QtDBus/QDBusMessage>
 #include <QtDBus/QDBusPendingCallWatcher>
 #include <QtDBus/QDBusPendingReply>
 
@@ -53,7 +53,13 @@ void UserAccount::setObjectPath(const QString &path)
     d_ptr->service->setTimeout(120000);
     connect(d_ptr->service, &OrgFreedesktopAccountsUserInterface::Changed,
             this, &UserAccount::refresh);
+    refresh();
     notifyAll();
+}
+
+QVariant UserAccount::value(const char *property) const
+{
+    return d_ptr->values.value(QString::fromLatin1(property));
 }
 
 void UserAccount::notifyAll()
@@ -76,39 +82,33 @@ void UserAccount::notifyAll()
     Q_EMIT xsessionChanged();
 }
 
+// Reads are never answered from the bus on the caller's thread: a getter
+// returns the cached value and this fills the cache when the reply lands.
 void UserAccount::refresh()
 {
-    QDBusInterface properties(serviceName, d_ptr->objectPath,
-                              QStringLiteral("org.freedesktop.DBus.Properties"), d_ptr->bus);
-    QDBusPendingReply<QVariantMap> reply = properties.call(QStringLiteral("GetAll"), userInterface);
-    reply.waitForFinished();
-    QVariantMap updated;
-    if (reply.isError()) {
-        // Keep property notifications working with services that only support Get.
-        updated = {
-            {QStringLiteral("Uid"), d_ptr->service->uid()},
-            {QStringLiteral("AccountType"), d_ptr->service->accountType()},
-            {QStringLiteral("Locked"), d_ptr->service->locked()},
-            {QStringLiteral("AutomaticLogin"), d_ptr->service->automaticLogin()},
-            {QStringLiteral("LoginFrequency"), d_ptr->service->loginFrequency()},
-            {QStringLiteral("LoginTime"), d_ptr->service->loginTime()},
-            {QStringLiteral("PasswordMode"), d_ptr->service->passwordMode()},
-            {QStringLiteral("PasswordHint"), d_ptr->service->passwordHint()},
-            {QStringLiteral("LocalAccount"), d_ptr->service->localAccount()},
-            {QStringLiteral("SystemAccount"), d_ptr->service->systemAccount()},
-            {QStringLiteral("UserName"), d_ptr->service->userName()},
-            {QStringLiteral("RealName"), d_ptr->service->realName()},
-            {QStringLiteral("HomeDirectory"), d_ptr->service->homeDirectory()},
-            {QStringLiteral("Shell"), d_ptr->service->shell()},
-            {QStringLiteral("IconFile"), d_ptr->service->iconFile()},
-            {QStringLiteral("Email"), d_ptr->service->email()},
-            {QStringLiteral("Language"), d_ptr->service->language()},
-            {QStringLiteral("Location"), d_ptr->service->location()},
-            {QStringLiteral("XSession"), d_ptr->service->xSession()}
-        };
-    } else {
-        updated = reply.value();
-    }
+    const quint64 serial = ++d_ptr->refreshSerial;
+    QDBusMessage message = QDBusMessage::createMethodCall(
+            serviceName, d_ptr->objectPath, QStringLiteral("org.freedesktop.DBus.Properties"),
+            QStringLiteral("GetAll"));
+    message << userInterface;
+    auto *watcher = new QDBusPendingCallWatcher(d_ptr->bus.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, serial](QDBusPendingCallWatcher *finished) {
+                QDBusPendingReply<QVariantMap> reply = *finished;
+                finished->deleteLater();
+                if (serial != d_ptr->refreshSerial)
+                    return;
+                if (reply.isError()) {
+                    qWarning("AccountsService read failed: %s",
+                             reply.error().message().toUtf8().constData());
+                    return;
+                }
+                applyValues(reply.value());
+            });
+}
+
+void UserAccount::applyValues(const QVariantMap &updated)
+{
     const QVariantMap previous = d_ptr->values;
     d_ptr->values = updated;
 
@@ -133,13 +133,12 @@ void UserAccount::refresh()
         {"XSession", &UserAccount::xsessionChanged}
     };
 
-    bool changed = false;
+    bool changed = previous != updated;
     bool nameChanged = false;
     for (const Change &entry : changes) {
         const QString key = QString::fromLatin1(entry.property);
         if (previous.value(key) == updated.value(key))
             continue;
-        changed = true;
         Q_EMIT (this->*entry.signal)();
         if (key == QStringLiteral("Uid"))
             Q_EMIT groupIdChanged();
@@ -166,9 +165,9 @@ void UserAccount::watch(const QDBusPendingCall &call, void (UserAccount::*notify
                     refresh();
                     return;
                 }
+                // notePendingChange() already recorded the value, so refresh() stays quiet
+                // unless the service settled on something else.
                 refresh();
-                // The getters read the service, which holds the requested value only once Set has
-                // replied; refresh() stays quiet because notePendingChange() already recorded it.
                 if (notify)
                     Q_EMIT (this->*notify)();
                 if (displayName)
@@ -188,7 +187,7 @@ void UserAccount::notePendingChange(const char *property, const QVariant &value,
 
 qlonglong UserAccount::userId() const
 {
-    return d_ptr->service->uid();
+    return value("Uid").toLongLong();
 }
 
 void UserAccount::setUserId(qlonglong uid)
@@ -216,7 +215,7 @@ qlonglong UserAccount::groupId() const
 
 UserAccount::AccountType UserAccount::accountType() const
 {
-    return static_cast<AccountType>(d_ptr->service->accountType());
+    return static_cast<AccountType>(value("AccountType").toInt());
 }
 
 void UserAccount::setAccountType(AccountType type)
@@ -229,7 +228,7 @@ void UserAccount::setAccountType(AccountType type)
 
 bool UserAccount::isLocked() const
 {
-    return d_ptr->service->locked();
+    return value("Locked").toBool();
 }
 
 void UserAccount::setLocked(bool locked)
@@ -242,7 +241,7 @@ void UserAccount::setLocked(bool locked)
 
 bool UserAccount::automaticLogin() const
 {
-    return d_ptr->service->automaticLogin();
+    return value("AutomaticLogin").toBool();
 }
 
 void UserAccount::setAutomaticLogin(bool enabled)
@@ -255,17 +254,17 @@ void UserAccount::setAutomaticLogin(bool enabled)
 
 qlonglong UserAccount::loginFrequency() const
 {
-    return d_ptr->service->loginFrequency();
+    return value("LoginFrequency").toLongLong();
 }
 
 qlonglong UserAccount::loginTime() const
 {
-    return d_ptr->service->loginTime();
+    return value("LoginTime").toLongLong();
 }
 
 UserAccount::PasswordMode UserAccount::passwordMode() const
 {
-    return static_cast<PasswordMode>(d_ptr->service->passwordMode());
+    return static_cast<PasswordMode>(value("PasswordMode").toInt());
 }
 
 void UserAccount::setPasswordMode(PasswordMode mode)
@@ -279,22 +278,22 @@ void UserAccount::setPasswordMode(PasswordMode mode)
 
 QString UserAccount::passwordHint() const
 {
-    return d_ptr->service->passwordHint();
+    return value("PasswordHint").toString();
 }
 
 bool UserAccount::isLocalAccount() const
 {
-    return d_ptr->service->localAccount();
+    return value("LocalAccount").toBool();
 }
 
 bool UserAccount::isSystemAccount() const
 {
-    return d_ptr->service->systemAccount();
+    return value("SystemAccount").toBool();
 }
 
 QString UserAccount::userName() const
 {
-    return d_ptr->service->userName();
+    return value("UserName").toString();
 }
 
 void UserAccount::setUserName(const QString &name)
@@ -307,7 +306,7 @@ void UserAccount::setUserName(const QString &name)
 
 QString UserAccount::realName() const
 {
-    return d_ptr->service->realName();
+    return value("RealName").toString();
 }
 
 void UserAccount::setRealName(const QString &name)
@@ -326,7 +325,7 @@ QString UserAccount::displayName() const
 
 QString UserAccount::homeDirectory() const
 {
-    return d_ptr->service->homeDirectory();
+    return value("HomeDirectory").toString();
 }
 
 void UserAccount::setHomeDirectory(const QString &path)
@@ -339,7 +338,7 @@ void UserAccount::setHomeDirectory(const QString &path)
 
 QString UserAccount::shell() const
 {
-    return d_ptr->service->shell();
+    return value("Shell").toString();
 }
 
 void UserAccount::setShell(const QString &path)
@@ -352,7 +351,7 @@ void UserAccount::setShell(const QString &path)
 
 QString UserAccount::iconFileName() const
 {
-    const QString path = d_ptr->service->iconFile();
+    const QString path = value("IconFile").toString();
     return QFile::exists(path) ? path : QString();
 }
 
@@ -366,7 +365,7 @@ void UserAccount::setIconFileName(const QString &path)
 
 QString UserAccount::email() const
 {
-    return d_ptr->service->email();
+    return value("Email").toString();
 }
 
 void UserAccount::setEmail(const QString &address)
@@ -379,7 +378,7 @@ void UserAccount::setEmail(const QString &address)
 
 QString UserAccount::language() const
 {
-    return d_ptr->service->language();
+    return value("Language").toString();
 }
 
 void UserAccount::setLanguage(const QString &locale)
@@ -392,7 +391,7 @@ void UserAccount::setLanguage(const QString &locale)
 
 QString UserAccount::location() const
 {
-    return d_ptr->service->location();
+    return value("Location").toString();
 }
 
 void UserAccount::setLocation(const QString &place)
@@ -405,7 +404,7 @@ void UserAccount::setLocation(const QString &place)
 
 QString UserAccount::xsession() const
 {
-    return d_ptr->service->xSession();
+    return value("XSession").toString();
 }
 
 void UserAccount::setXSession(const QString &session)

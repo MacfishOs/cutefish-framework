@@ -15,7 +15,9 @@ public:
     QDBusConnection bus;
     OrgFreedesktopAccountsUserInterface *service = nullptr;
     QString objectPath;
+    // Every getter reads from here; GetAll replies fill it asynchronously.
     QVariantMap values;
+    quint64 refreshSerial = 0;
 };
 
 }

@@ -294,15 +294,19 @@ void AccountsManager::createUser(const QString &userName, const QString &fullNam
             });
 }
 
-bool AccountsManager::deleteUser(qlonglong uid, bool removeFiles)
+// Deleting asks polkit, which may take a dialog's worth of time: never wait here.
+void AccountsManager::deleteUser(qlonglong uid, bool removeFiles)
 {
-    QDBusPendingReply<> reply = d_ptr->service->DeleteUser(uid, removeFiles);
-    reply.waitForFinished();
-    if (reply.isError()) {
-        qWarning() << "DeleteUser failed:" << reply.error().message();
-        return false;
-    }
-    return true;
+    auto *watcher = new QDBusPendingCallWatcher(d_ptr->service->DeleteUser(uid, removeFiles), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this](QDBusPendingCallWatcher *finished) {
+                QDBusPendingReply<> reply = *finished;
+                finished->deleteLater();
+                if (reply.isError()) {
+                    qWarning() << "DeleteUser failed:" << reply.error().message();
+                    Q_EMIT userDeletionFailed(reply.error().message());
+                }
+            });
 }
 
 }

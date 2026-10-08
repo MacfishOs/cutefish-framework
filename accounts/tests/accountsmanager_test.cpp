@@ -279,7 +279,8 @@ private Q_SLOTS:
         QVERIFY(service.call(QStringLiteral("AddForTest"), QStringLiteral("carol")).type()
                 != QDBusMessage::ErrorMessage);
         QTRY_COMPARE(added.size(), 1);
-        QVERIFY(manager.cachedUser(QStringLiteral("carol")));
+        // The name is known once the asynchronous property fetch lands.
+        QTRY_VERIFY(manager.cachedUser(QStringLiteral("carol")));
     }
 
     void externallyDestroyedAccountIsNotRetained()
@@ -348,11 +349,13 @@ private Q_SLOTS:
 
         account->setUserId(1003);
         QCOMPARE(account->userId(), 1003);
-        QCOMPARE(manager.cachedUser(QStringLiteral("carol")), account);
+        QTRY_COMPARE(manager.cachedUser(QStringLiteral("carol")), account);
         QVERIFY(!manager.cachedUser(QStringLiteral("bob")));
     }
 
-    void gettersReadCurrentServiceValues()
+    // Getters answer from the cache without touching the bus; the service's
+    // Changed signal is what refreshes it.
+    void gettersReadCachedServiceValues()
     {
         AccountsManager manager(QDBusConnection::sessionBus());
         QSignalSpy cached(&manager, &AccountsManager::userCached);
@@ -360,12 +363,19 @@ private Q_SLOTS:
         QTRY_COMPARE(cached.size(), 1);
         UserAccount *account = manager.cachedUser(QStringLiteral("bob"));
         QVERIFY(account);
+        QCOMPARE(account->userId(), 1002);
+        QTRY_COMPARE(account->userName(), QStringLiteral("bob"));
 
         QDBusInterface user(serviceName, managerPath + QStringLiteral("/User1002"),
                             QStringLiteral("org.freedesktop.Accounts.User"),
                             QDBusConnection::sessionBus());
-        QVERIFY(user.call(QStringLiteral("SetRealNameSilently"),
+        QVERIFY(user.call(QStringLiteral("SetRealName"),
                           QStringLiteral("Bob Current")).type() != QDBusMessage::ErrorMessage);
+        QTRY_COMPARE(account->realName(), QStringLiteral("Bob Current"));
+
+        QVERIFY(user.call(QStringLiteral("SetRealNameSilently"),
+                          QStringLiteral("Bob Silent")).type() != QDBusMessage::ErrorMessage);
+        QTest::qWait(50);
         QCOMPARE(account->realName(), QStringLiteral("Bob Current"));
     }
 
@@ -387,7 +397,7 @@ private Q_SLOTS:
         QVERIFY(account);
         QCOMPARE(account->userId(), 1007);
 
-        QVERIFY(manager.deleteUser(1007, false));
+        manager.deleteUser(1007, false);
         QTRY_COMPARE(deleted.size(), 1);
         QVERIFY(!manager.cachedUser(QStringLiteral("created")));
         QTRY_VERIFY(account.isNull());

@@ -546,15 +546,12 @@ Mpris::PlaybackStatus MprisController::playbackStatus() const
     return Mpris::Stopped;
 }
 
+// The last reported position; a fresh one is requested and arrives as positionChanged.
 qlonglong MprisController::position() const
 {
     if (isValid()) {
-        m_mprisPlayerInterface->setSync(true);
-        m_mprisPlayerInterface->setUseCache(false);
-        qlonglong result = m_mprisPlayerInterface->position();
-        m_mprisPlayerInterface->setUseCache(true);
-        m_mprisPlayerInterface->setSync(false);
-        return result;
+        requestPosition();
+        return m_mprisPlayerInterface->position();
     }
 
     return -1;

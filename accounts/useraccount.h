@@ -21,12 +21,12 @@ class UserAccount : public QObject
     Q_PROPERTY(AccountType accountType READ accountType WRITE setAccountType NOTIFY accountTypeChanged)
     Q_PROPERTY(bool locked READ isLocked WRITE setLocked NOTIFY lockedChanged)
     Q_PROPERTY(bool automaticLogin READ automaticLogin WRITE setAutomaticLogin NOTIFY automaticLoginChanged)
-    Q_PROPERTY(qlonglong loginFrequency READ loginFrequency CONSTANT)
-    Q_PROPERTY(qlonglong loginTime READ loginTime CONSTANT)
+    Q_PROPERTY(qlonglong loginFrequency READ loginFrequency NOTIFY accountChanged)
+    Q_PROPERTY(qlonglong loginTime READ loginTime NOTIFY accountChanged)
     Q_PROPERTY(PasswordMode passwordMode READ passwordMode WRITE setPasswordMode NOTIFY passwordModeChanged)
-    Q_PROPERTY(QString passwordHint READ passwordHint CONSTANT)
-    Q_PROPERTY(bool localAccount READ isLocalAccount CONSTANT)
-    Q_PROPERTY(bool systemAccount READ isSystemAccount CONSTANT)
+    Q_PROPERTY(QString passwordHint READ passwordHint NOTIFY accountChanged)
+    Q_PROPERTY(bool localAccount READ isLocalAccount NOTIFY accountChanged)
+    Q_PROPERTY(bool systemAccount READ isSystemAccount NOTIFY accountChanged)
     Q_PROPERTY(QString userName READ userName WRITE setUserName NOTIFY userNameChanged)
     Q_PROPERTY(QString realName READ realName WRITE setRealName NOTIFY realNameChanged)
     Q_PROPERTY(QString displayName READ displayName NOTIFY displayNameChanged)
@@ -117,6 +117,8 @@ private:
                bool displayName = false);
     void notePendingChange(const char *property, const QVariant &value,
                            void (UserAccount::*notify)(), bool displayName = false);
+    void applyValues(const QVariantMap &updated);
+    QVariant value(const char *property) const;
 
     UserAccountPrivate *const d_ptr;
 };

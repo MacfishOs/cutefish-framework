@@ -29,11 +29,12 @@ public:
     Q_INVOKABLE UserAccount *findUserByName(const QString &userName);
     Q_INVOKABLE void createUser(const QString &userName, const QString &fullName,
                                 UserAccount::AccountType accountType);
-    Q_INVOKABLE bool deleteUser(qlonglong uid, bool removeFiles);
+    Q_INVOKABLE void deleteUser(qlonglong uid, bool removeFiles);
 
 Q_SIGNALS:
     void userCreated(QtAccountsService::UserAccount *account);
     void userCreationFailed(const QString &message);
+    void userDeletionFailed(const QString &message);
     void userAdded(QtAccountsService::UserAccount *account);
     void userDeleted(qlonglong uid);
     void userCached(const QString &userName);
