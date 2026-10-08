@@ -57,6 +57,10 @@ public:
 
     bool dirty() const { return m_dirty; }
 
+    // A display switched to another mode may show nothing at all, so that
+    // draft is previewed and kept only on confirmation.
+    bool needsConfirmation() const;
+
     QList<cutefish::display::ipc::DisplayRequest> requests() const;
     QList<cutefish::display::ipc::Placement> placements() const;
     cutefish::display::ipc::MirrorGroups mirrorGroups() const;

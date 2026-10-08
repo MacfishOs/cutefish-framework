@@ -76,7 +76,8 @@ void DisplayScreen::apply()
     m_error.clear();
     emit stateChanged();
     if (m_client.apply(m_outputModel->requests(), m_outputModel->primary(),
-                       m_outputModel->placements(), m_outputModel->mirrorGroups())
+                       m_outputModel->placements(), m_outputModel->mirrorGroups(),
+                       m_outputModel->needsConfirmation())
                 .isEmpty()) {
         m_busy = false;
         m_error = tr("The display service is unavailable.");

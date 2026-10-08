@@ -116,7 +116,7 @@ private slots:
         }
     }
 
-    void clickAppliesAndPersistsWithoutConfirmation()
+    void clickAppliesAndAModeChangeIsConfirmed()
     {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
@@ -161,13 +161,34 @@ private slots:
         QVERIFY2(screen.error().isEmpty(), qPrintable(screen.error()));
         QTRY_COMPARE(observer.state().logical.first().width, 1280);
         QTRY_COMPARE(observer.state().logical.first().height, 720);
+        // A mode change is previewed and kept only on confirmation.
         QVERIFY(model->setData(model->index(0), 2, DisplayOutputModel::ResolutionIndexRole));
         QTRY_VERIFY_WITH_TIMEOUT(!screen.busy(), 5000);
         QVERIFY2(screen.error().isEmpty(), qPrintable(screen.error()));
         QTRY_COMPARE(observer.state().logical.first().width, 854);
         QTRY_COMPARE(observer.state().logical.first().height, 480);
+        QTRY_VERIFY(screen.pendingConfirmation());
+        QVERIFY(screen.confirmationSeconds() > 0);
+        QVERIFY(!screen.dirty());
+        screen.keep();
+        QTRY_VERIFY_WITH_TIMEOUT(!screen.pendingConfirmation(), 5000);
+        QCOMPARE(observer.state().logical.first().width, 854);
         QCOMPARE(model->data(model->index(0), DisplayOutputModel::SizeRole).toSize(),
                  QSize(1280, 720));
+
+        // Reverting restores the kept mode without a round trip through the draft.
+        QVERIFY(model->setData(model->index(0), 1, DisplayOutputModel::ResolutionIndexRole));
+        QTRY_VERIFY_WITH_TIMEOUT(!screen.busy(), 5000);
+        QVERIFY2(screen.error().isEmpty(), qPrintable(screen.error()));
+        QTRY_VERIFY(screen.pendingConfirmation());
+        QVERIFY(model->data(model->index(0), DisplayOutputModel::SizeRole).toSize()
+                != QSize(1280, 720));
+        screen.revert();
+        QTRY_VERIFY_WITH_TIMEOUT(!screen.pendingConfirmation(), 5000);
+        QTRY_COMPARE(model->data(model->index(0), DisplayOutputModel::SizeRole).toSize(),
+                     QSize(1280, 720));
+        QTRY_COMPARE(observer.state().logical.first().width, 854);
+        QVERIFY(!screen.dirty());
         int currentModes = 0;
         for (const auto &mode : observer.state().physical.first().modes) {
             if (!mode.current)

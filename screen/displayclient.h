@@ -51,10 +51,13 @@ public:
     const State &state() const { return m_state; }
 
     void refresh();
+    // A preview is applied but persisted only by confirm(); the compositor
+    // reverts it on its own deadline otherwise.
     QString apply(const QList<cutefish::display::ipc::DisplayRequest> &displays,
                   const QString &primary,
                   const QList<cutefish::display::ipc::Placement> &placements,
-                  const cutefish::display::ipc::MirrorGroups &mirrorGroups);
+                  const cutefish::display::ipc::MirrorGroups &mirrorGroups,
+                  bool preview = false);
     void confirm(const QString &token);
     void revert(const QString &token);
 

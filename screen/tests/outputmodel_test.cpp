@@ -72,6 +72,50 @@ private slots:
         QCOMPARE(model.data(selected, DisplayOutputModel::IdRole).toString(), QString("1"));
     }
 
+    void onlyModeChangesNeedConfirmation()
+    {
+        DisplayClient::State state = extendedDisplays(2);
+        state.physical[0].connectionType = 1;
+        for (auto &physical : state.physical) {
+            cutefish::display::ipc::Mode mode;
+            mode.width = 1280;
+            mode.height = 720;
+            mode.refreshMilliHz = 60000;
+            physical.modes.append(mode);
+        }
+        DisplayOutputModel model;
+        model.setState(state);
+        QVERIFY(!model.needsConfirmation());
+
+        QVERIFY(model.setData(model.index(1), 1.25, DisplayOutputModel::ScaleRole));
+        QVERIFY(model.dirty());
+        QVERIFY(!model.needsConfirmation());
+
+        // The internal panel is no exception.
+        QVERIFY(model.setData(model.index(0), 1, DisplayOutputModel::ResolutionIndexRole));
+        QVERIFY(model.needsConfirmation());
+        QVERIFY(model.setData(model.index(0), 0, DisplayOutputModel::ResolutionIndexRole));
+        QVERIFY(!model.needsConfirmation());
+
+        QVERIFY(model.setData(model.index(1), 1, DisplayOutputModel::ResolutionIndexRole));
+        QVERIFY(model.needsConfirmation());
+
+        QVERIFY(model.setData(model.index(1), false, DisplayOutputModel::EnabledRole));
+        QVERIFY(!model.needsConfirmation());
+
+        model.discard();
+        QVERIFY(!model.needsConfirmation());
+
+        // Switching a display on picks a mode without one to fall back to.
+        for (auto &mode : state.physical[1].modes)
+            mode.current = false;
+        state.logical.removeLast();
+        model.setState(state);
+        QVERIFY(model.setData(model.index(1), true, DisplayOutputModel::EnabledRole));
+        QVERIFY(model.dirty());
+        QVERIFY(!model.needsConfirmation());
+    }
+
     void mirroringThePrimaryHandsItToTheSource()
     {
         DisplayOutputModel model;

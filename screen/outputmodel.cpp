@@ -439,6 +439,20 @@ void DisplayOutputModel::discard()
     setState(m_applied);
 }
 
+bool DisplayOutputModel::needsConfirmation() const
+{
+    for (const auto &e : m_entries) {
+        const auto *mode = selectedMode(e);
+        if (!e.enabled || !mode || mode->current)
+            continue;
+        // A display being switched on has no current mode to leave behind.
+        for (const auto &applied : e.physical.modes)
+            if (applied.current)
+                return true;
+    }
+    return false;
+}
+
 QList<ipc::DisplayRequest> DisplayOutputModel::requests() const
 {
     QList<ipc::DisplayRequest> r;

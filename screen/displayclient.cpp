@@ -139,7 +139,7 @@ void DisplayClient::refresh()
 
 QString DisplayClient::apply(const QList<ipc::DisplayRequest> &displays, const QString &primary,
                              const QList<ipc::Placement> &placements,
-                             const ipc::MirrorGroups &mirrorGroups)
+                             const ipc::MirrorGroups &mirrorGroups, bool preview)
 {
     if (!available() || operationPending())
         return {};
@@ -149,9 +149,13 @@ QString DisplayClient::apply(const QList<ipc::DisplayRequest> &displays, const Q
     m_operationTimeout.start();
     const auto epoch = m_serviceEpoch;
     const auto operation = ++m_operationSerial;
-    auto pending = m_interface->SetConfiguration(m_state.instanceId, m_state.topologyGeneration,
-                                                 m_state.appliedRevision, displays, primary,
-                                                 placements, mirrorGroups);
+    auto pending = preview
+            ? m_interface->ApplyConfiguration(m_state.instanceId, m_state.topologyGeneration,
+                                              m_state.appliedRevision, displays, primary,
+                                              placements, mirrorGroups)
+            : m_interface->SetConfiguration(m_state.instanceId, m_state.topologyGeneration,
+                                            m_state.appliedRevision, displays, primary,
+                                            placements, mirrorGroups);
     auto *watcher = new QDBusPendingCallWatcher(pending, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, epoch, operation] {
         QDBusPendingReply<QString> reply = *watcher;

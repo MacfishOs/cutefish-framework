@@ -28,6 +28,12 @@ Adapted for Cutefish: a versioned session D-Bus interface without Ash or Mojo.
       <annotation name="org.qtproject.QtDBus.QtTypeName.In3" value="QList&lt;cutefish::display::ipc::DisplayRequest&gt;"/><annotation name="org.qtproject.QtDBus.QtTypeName.In5" value="QList&lt;cutefish::display::ipc::Placement&gt;"/><annotation name="org.qtproject.QtDBus.QtTypeName.In6" value="cutefish::display::ipc::MirrorGroups"/>
       <arg name="operationToken" type="s" direction="out"/>
     </method>
+    <method name="ApplyConfiguration">
+      <arg name="instanceId" type="s" direction="in"/><arg name="topologyGeneration" type="t" direction="in"/><arg name="appliedRevision" type="t" direction="in"/>
+      <arg name="displays" type="a(sb(iiiiiiubs)uu)" direction="in"/><arg name="primary" type="s" direction="in"/><arg name="placements" type="a(ssui)" direction="in"/><arg name="mirrorGroups" type="aas" direction="in"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In3" value="QList&lt;cutefish::display::ipc::DisplayRequest&gt;"/><annotation name="org.qtproject.QtDBus.QtTypeName.In5" value="QList&lt;cutefish::display::ipc::Placement&gt;"/><annotation name="org.qtproject.QtDBus.QtTypeName.In6" value="cutefish::display::ipc::MirrorGroups"/>
+      <arg name="operationToken" type="s" direction="out"/>
+    </method>
     <method name="SetConfiguration">
       <arg name="instanceId" type="s" direction="in"/><arg name="topologyGeneration" type="t" direction="in"/><arg name="appliedRevision" type="t" direction="in"/>
       <arg name="displays" type="a(sb(iiiiiiubs)uu)" direction="in"/><arg name="primary" type="s" direction="in"/><arg name="placements" type="a(ssui)" direction="in"/><arg name="mirrorGroups" type="aas" direction="in"/>
