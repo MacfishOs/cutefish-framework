@@ -21,6 +21,20 @@ namespace NetworkDBus {
 // object paths into strings.
 CUTEFISH_NETWORK_EXPORT QVariant plain(const QVariant &value);
 
+// Settings read back from NetworkManager hold nested lists as QDBusArgument;
+// ones built in-process hold typed lists. Both read the same way here.
+template<typename T>
+QList<T> listOf(const QVariant &value)
+{
+    if (value.metaType() == QMetaType::fromType<QList<T>>())
+        return value.value<QList<T>>();
+    QList<T> result;
+    const QVariantList entries = plain(value).toList();
+    for (const QVariant &entry : entries)
+        result << entry.value<T>();
+    return result;
+}
+
 inline const QString service = QStringLiteral("org.freedesktop.NetworkManager");
 inline const QString rootPath = QStringLiteral("/org/freedesktop");
 inline const QString managerPath = QStringLiteral("/org/freedesktop/NetworkManager");

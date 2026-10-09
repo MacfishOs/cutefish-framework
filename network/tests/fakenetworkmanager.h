@@ -313,7 +313,7 @@ public:
                                            args.value(2).value<QDBusObjectPath>().path()));
         } else if (member == QStringLiteral("DeactivateConnection") || member == QStringLiteral("Disconnect")
                    || member == QStringLiteral("RequestScan") || member == QStringLiteral("Enable")
-                   || member == QStringLiteral("RegisterWithCapabilities")
+                   || member == QStringLiteral("RegisterWithCapabilities") || member == QStringLiteral("Reapply")
                    || member == QStringLiteral("Unregister")) {
             // Recorded above; the tests drive the outcome.
         } else {

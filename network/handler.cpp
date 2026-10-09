@@ -20,6 +20,7 @@
 
 #include "handler.h"
 #include "configuration.h"
+#include "iputils.h"
 #include "networkclient.h"
 #include "secretstore.h"
 #include "vpnschema.h"
@@ -817,6 +818,68 @@ void Handler::exportVpn(const QString &connection, const QUrl &file)
         Q_EMIT vpnExportFailed(tr("nmcli, which writes VPN files, is not installed."));
     });
     process->start();
+}
+
+QVariantMap Handler::ipForm(const QString &connection) const
+{
+    QVariantMap form = IpUtils::form(m_client->settings(connection));
+    form.insert(QStringLiteral("current"), IpUtils::currentAddresses(m_client, connection));
+    return form;
+}
+
+QVariantMap Handler::checkIpForm(const QVariantMap &form) const
+{
+    return IpUtils::check(form);
+}
+
+void Handler::saveIp(const QString &connection, const QVariantMap &form)
+{
+    bool changed = false;
+    QString error;
+    const NMVariantMapMap profile = IpUtils::settings(form, m_client->settings(connection), &changed, &error);
+    if (profile.isEmpty()) {
+        Q_EMIT ipSaveFailed(connection, error);
+        return;
+    }
+    if (!changed) {
+        Q_EMIT ipSaved(connection);
+        return;
+    }
+
+    // Without secrets in it, an update keeps the ones NetworkManager and the keyring hold.
+    m_client->call(connection, connectionInterface, QStringLiteral("Update"), {QVariant::fromValue(profile)}, this,
+                   [this, connection](const QDBusMessage &reply) {
+                       if (reply.type() != QDBusMessage::ReplyMessage) {
+                           Q_EMIT ipSaveFailed(connection, reply.errorMessage());
+                           return;
+                       }
+                       Q_EMIT ipSaved(connection);
+                       reapply(connection);
+                   },
+                   kAuthorizedCallTimeoutMs);
+}
+
+// As GNOME's editor does after saving: the device takes the new addressing at once.
+void Handler::reapply(const QString &connection)
+{
+    const QString active = VpnUtils::activeConnection(m_client, connection);
+    const QStringList devices = m_client->property(active, activeInterface, QStringLiteral("Devices")).toStringList();
+    if (devices.isEmpty())
+        return;
+
+    const QString device = devices.first();
+    // An empty profile reapplies the saved one; version 0 skips the version check.
+    m_client->call(device, deviceInterface, QStringLiteral("Reapply"),
+                   {QVariant::fromValue(NMVariantMapMap()), qulonglong(0), 0u}, this,
+                   [this, connection, device](const QDBusMessage &reply) {
+                       if (reply.type() != QDBusMessage::ErrorMessage
+                           || reply.errorName() == QLatin1String("org.freedesktop.NetworkManager.Device.NotActive"))
+                           return;
+                       // What the device can't take while up, it takes on connecting again.
+                       qWarning() << "Cannot reapply the network settings:" << reply.errorMessage();
+                       activateConnection(connection, device, QString());
+                   },
+                   kAuthorizedCallTimeoutMs);
 }
 
 void Handler::addPrivateVpn(NMVariantMapMap profile)

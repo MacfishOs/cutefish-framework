@@ -16,6 +16,9 @@ set(CUTEFISH_NETWORK_SOURCES
     vpnschema.cpp
     vpnschema.h
 
+    iputils.cpp
+    iputils.h
+
     networkmodel.cpp
     networkmodel.h
 

@@ -593,20 +593,6 @@ QVariantList manualKinds()
     return kinds;
 }
 
-// Settings read back from NetworkManager hold nested lists as QDBusArgument;
-// ones built in-process hold typed lists. Both read the same way here.
-template<typename T>
-static QList<T> listOf(const QVariant &value)
-{
-    if (value.metaType() == QMetaType::fromType<QList<T>>())
-        return value.value<QList<T>>();
-    QList<T> result;
-    const QVariantList entries = NetworkDBus::plain(value).toList();
-    for (const QVariant &entry : entries)
-        result << entry.value<T>();
-    return result;
-}
-
 QVariantMap wireGuardForm(const NMVariantMapMap &settings)
 {
     const QVariantMap wireguard = settings.value(QStringLiteral("wireguard"));

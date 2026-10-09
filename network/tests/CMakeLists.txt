@@ -12,6 +12,10 @@ add_executable(tst_vpnutils tst_vpnutils.cpp)
 target_link_libraries(tst_vpnutils PRIVATE cutefish-framework-network Qt6::Test)
 add_test(NAME network-vpnutils COMMAND tst_vpnutils)
 
+add_executable(tst_iputils tst_iputils.cpp)
+target_link_libraries(tst_iputils PRIVATE cutefish-framework-network Qt6::Test)
+add_test(NAME network-iputils COMMAND tst_iputils)
+
 add_executable(tst_vpnschema tst_vpnschema.cpp)
 target_link_libraries(tst_vpnschema PRIVATE cutefish-framework-network Qt6::Test)
 add_test(NAME network-vpnschema COMMAND tst_vpnschema)

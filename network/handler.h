@@ -114,6 +114,15 @@ public Q_SLOTS:
     // Writes the profile as the file its plugin reads, or a wg-quick file.
     void exportVpn(const QString &connection, const QUrl &file);
 
+    // A profile's addressing as IpUtils::form() shows it, with `current` holding the
+    // addresses it has while up, for filling in a manual setup.
+    QVariantMap ipForm(const QString &connection) const;
+    // IpUtils::check(): {complete, message}.
+    QVariantMap checkIpForm(const QVariantMap &form) const;
+    // Saves the form's addressing over the profile and applies it to the device the profile
+    // is up on, without disconnecting. ipSaved() or ipSaveFailed() follows.
+    void saveIp(const QString &connection, const QVariantMap &form);
+
 Q_SIGNALS:
     void vpnAdded(const QString &uuid);
     void vpnAddFailed(const QString &message);
@@ -122,6 +131,8 @@ Q_SIGNALS:
     void vpnSecretsLoaded(const QString &connection, const QVariantMap &secrets);
     void vpnExported(const QString &file);
     void vpnExportFailed(const QString &message);
+    void ipSaved(const QString &connection);
+    void ipSaveFailed(const QString &connection, const QString &message);
     // A plugin VPN went down on its own with `message` saying why; a name is the profile's.
     void vpnFailed(const QString &name, const QString &message);
     void hotspotSupportedChanged();
@@ -142,6 +153,7 @@ private:
                     std::function<void(const NMVariantMapMap &)> done);
     void activeStateChanged(const QString &active, uint state);
     void reportVpnFailure(const QString &active, uint reason);
+    void reapply(const QString &connection);
     void update();
     QString hotspotActiveConnection() const;
     QString hotspotDevice(uint *capabilities = nullptr) const;

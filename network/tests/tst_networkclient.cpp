@@ -283,6 +283,67 @@ private slots:
         QTRY_VERIFY(!item.autoConnect());
     }
 
+    void ipSettingsAreSavedAndReapplied()
+    {
+        Handler handler;
+        QSignalSpy saved(&handler, &Handler::ipSaved);
+
+        // Read back over D-Bus, the address list is a QDBusArgument.
+        const QVariantMap home = handler.ipForm(homeProfile);
+        QCOMPARE(home.value(QStringLiteral("ipv4Method")).toString(), QStringLiteral("manual"));
+        QCOMPARE(home.value(QStringLiteral("ipv4Address")).toString(), QStringLiteral("10.0.0.2"));
+        QCOMPARE(home.value(QStringLiteral("ipv4Netmask")).toString(), QStringLiteral("255.255.255.0"));
+        QVERIFY(home.value(QStringLiteral("current")).toMap().isEmpty());
+
+        // The wired profile is up; its form offers the addresses it has now.
+        QVariantMap form = handler.ipForm(wiredProfile);
+        const QVariantMap current = form.value(QStringLiteral("current")).toMap();
+        QCOMPARE(current.value(QStringLiteral("ipv4Address")).toString(), QStringLiteral("192.168.1.5"));
+        QCOMPARE(current.value(QStringLiteral("ipv4Netmask")).toString(), QStringLiteral("255.255.255.0"));
+        QCOMPARE(current.value(QStringLiteral("ipv4Gateway")).toString(), QStringLiteral("192.168.1.1"));
+
+        form.insert(QStringLiteral("ipv4Method"), QStringLiteral("manual"));
+        form.insert(QStringLiteral("ipv4Address"), current.value(QStringLiteral("ipv4Address")));
+        form.insert(QStringLiteral("ipv4Netmask"), current.value(QStringLiteral("ipv4Netmask")));
+        form.insert(QStringLiteral("ipv4Gateway"), current.value(QStringLiteral("ipv4Gateway")));
+        form.insert(QStringLiteral("automaticDns"), false);
+        form.insert(QStringLiteral("dns"), QStringLiteral("1.1.1.1"));
+        handler.saveIp(wiredProfile, form);
+
+        QTRY_COMPARE(saved.count(), 1);
+        QCOMPARE(saved.first().first().toString(), wiredProfile);
+        QCOMPARE(nm->last(QStringLiteral("Update")).path(), wiredProfile);
+        const auto settings = qdbus_cast<NMVariantMapMap>(nm->last(QStringLiteral("Update")).arguments().value(0));
+        const QVariantMap ipv4 = settings.value(QStringLiteral("ipv4"));
+        QCOMPARE(ipv4.value(QStringLiteral("method")).toString(), QStringLiteral("manual"));
+        QCOMPARE(ipv4.value(QStringLiteral("gateway")).toString(), QStringLiteral("192.168.1.1"));
+        QCOMPARE(ipv4.value(QStringLiteral("address-data")).value<QDBusArgument>().currentSignature(), QStringLiteral("aa{sv}"));
+        QCOMPARE(ipv4.value(QStringLiteral("dns")).value<QDBusArgument>().currentSignature(), QStringLiteral("au"));
+        QCOMPARE(ipv4.value(QStringLiteral("ignore-auto-dns")).toBool(), true);
+
+        // The device it is up on takes the change without disconnecting.
+        QTRY_COMPARE(nm->count(QStringLiteral("Reapply")), 1);
+        const QDBusMessage reapply = nm->last(QStringLiteral("Reapply"));
+        QCOMPARE(reapply.path(), wiredDevice);
+        QCOMPARE(reapply.signature(), QStringLiteral("a{sa{sv}}tu"));
+        QCOMPARE(nm->count(QStringLiteral("ActivateConnection")), 0);
+
+        // A profile that isn't up is only saved.
+        form = handler.ipForm(homeProfile);
+        form.insert(QStringLiteral("ipv4Address"), QStringLiteral("10.0.0.3"));
+        handler.saveIp(homeProfile, form);
+        QTRY_COMPARE(saved.count(), 2);
+        QCOMPARE(nm->count(QStringLiteral("Update")), 2);
+        QTest::qWait(50);
+        QCOMPARE(nm->count(QStringLiteral("Reapply")), 1);
+
+        // Saving what is there changes nothing.
+        QTRY_COMPARE(handler.ipForm(homeProfile).value(QStringLiteral("ipv4Address")).toString(), QStringLiteral("10.0.0.3"));
+        handler.saveIp(homeProfile, handler.ipForm(homeProfile));
+        QCOMPARE(saved.count(), 3);
+        QCOMPARE(nm->count(QStringLiteral("Update")), 2);
+    }
+
     void scansOnlyDevicesThatCan()
     {
         Handler handler;
