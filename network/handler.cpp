@@ -496,8 +496,9 @@ void Handler::hotspotRequestFinished(const QDBusMessage &reply, int activePathAr
     if (state == ActiveActivated)
         return;
     m_hotspotActivation = active;
-    // Its state may have changed before this reply arrived.
-    if (state == ActiveDeactivated || state == ActiveDeactivating)
+    // Its state may have changed, or NetworkManager removed it, before this reply arrived.
+    const bool gone = m_client->ready() && !m_client->has(active, activeInterface);
+    if (gone || state == ActiveDeactivated || state == ActiveDeactivating)
         activeStateChanged(active, ActiveDeactivated);
 }
 

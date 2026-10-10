@@ -415,6 +415,17 @@ private slots:
         QTRY_COMPARE(failed.size(), 1);
     }
 
+    void hotspotGoneBeforeReplyIsReported()
+    {
+        Handler handler;
+        QTRY_VERIFY(handler.hotspotCapable());
+        QSignalSpy failed(&handler, &Handler::hotspotFailed);
+        nm->dropActivations = true;
+        handler.createHotspot();
+        QTRY_COMPARE(failed.size(), 1);
+        QVERIFY(!handler.hotspotActive());
+    }
+
     void hotspotNamesTheNetworkItWouldEnd()
     {
         Handler handler;

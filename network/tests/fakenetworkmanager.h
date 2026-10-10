@@ -306,6 +306,8 @@ public:
             const QString activeConnection =
                     activate(profile, args.value(1).value<QDBusObjectPath>().path(),
                              args.value(2).value<QDBusObjectPath>().path());
+            if (dropActivations)
+                remove(activeConnection);
             reply << FakeNM::path(profile) << FakeNM::path(activeConnection);
         } else if (member == QStringLiteral("ActivateConnection")) {
             reply << FakeNM::path(activate(args.value(0).value<QDBusObjectPath>().path(),
@@ -349,6 +351,8 @@ public:
     QHash<QString, NMVariantMapMap> settings;
     QHash<QString, NMVariantMapMap> secrets;
     QSet<QString> privateConnections;
+    // Activations fail and vanish before their reply is sent.
+    bool dropActivations = false;
     QMap<QString, QString> permissions;
     QList<QDBusMessage> calls;
 
