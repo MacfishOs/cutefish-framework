@@ -218,6 +218,13 @@ private slots:
                  dir.filePath("target (1).txt"));
         QCOMPARE(readFile(dir.filePath("target (1).txt")), QByteArray("new"));
 
+        auto moved = dir.filePath("moved.txt");
+        writeFile(moved, "moved");
+        QCOMPARE(LocalFileSystem::move(moved, target, ConflictPolicy::KeepBoth, ctx),
+                 dir.filePath("target (2).txt"));
+        QCOMPARE(readFile(dir.filePath("target (2).txt")), QByteArray("moved"));
+        QVERIFY(!QFileInfo::exists(moved));
+
         QCOMPARE(LocalFileSystem::copy(source, target, ConflictPolicy::Replace, ctx), target);
         QCOMPARE(readFile(target), QByteArray("new"));
 
@@ -562,6 +569,20 @@ private slots:
 
         LocalFileSystem::emptyTrash(ctx);
         QVERIFY(QDir(FileSystemUrl::trashRoot() + "/info").entryList(QDir::Files).isEmpty());
+    }
+
+    void restoreRecreatesFolder()
+    {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("gone/inner/file");
+        QVERIFY(QDir().mkpath(dir.filePath("gone/inner")));
+        writeFile(path);
+
+        OperationContext ctx;
+        const auto trashed = LocalFileSystem::trash(local(path), ctx);
+        QVERIFY(QDir(dir.filePath("gone")).removeRecursively());
+        QCOMPARE(LocalFileSystem::restore(trashed, ConflictPolicy::Fail, ctx), local(path));
+        QVERIFY(QFileInfo::exists(path));
     }
 
     void malformedTrashInfo()

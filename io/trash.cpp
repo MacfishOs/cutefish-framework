@@ -3,6 +3,8 @@
 #include "trashdirectory_p.h"
 
 #include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
 #include <QUuid>
 
 #include <optional>
@@ -262,6 +264,11 @@ QUrl LocalFileSystem::restore(const QUrl &url, ConflictPolicy policy, OperationC
 
     if (details.path.isEmpty())
         throw Failure(EINVAL, info);
+
+    // A folder deleted since the item was trashed is made again.
+    const QString parent = QFileInfo(details.path).absolutePath();
+    if (!QDir().mkpath(parent))
+        throw Failure(errno ? errno : EIO, parent);
 
     auto result = move(FileSystemUrl(url).localPath(), details.path, policy, ctx);
     if (result.isEmpty())

@@ -337,6 +337,16 @@ static void mergeStaged(int source, int target, const QString &path, OperationCo
     });
 }
 
+// "name (n).ext", the name an item kept beside an existing one takes.
+static QByteArray keptName(const QString &destination, int suffix)
+{
+    const QFileInfo info(destination);
+    const QString extension =
+            info.isDir() || info.suffix().isEmpty() ? QString() : '.' + info.suffix();
+    const QString base = extension.isEmpty() ? info.fileName() : info.completeBaseName();
+    return native(base + QString(" (%1)").arg(suffix) + extension);
+}
+
 static QString publish(int parent, const QByteArray &temporary, const QString &source,
                        const QString &destination, ConflictPolicy policy, OperationContext &ctx)
 {
@@ -388,11 +398,7 @@ static QString publish(int parent, const QByteArray &temporary, const QString &s
             return destination;
         }
 
-        const QFileInfo info(destination);
-        const QString extension =
-                info.isDir() || info.suffix().isEmpty() ? QString() : '.' + info.suffix();
-        const QString base = extension.isEmpty() ? info.fileName() : info.completeBaseName();
-        name = native(base + QString(" (%1)").arg(suffix++) + extension);
+        name = keptName(destination, suffix++);
     }
 }
 
@@ -476,6 +482,18 @@ QString LocalFileSystem::move(const QString &source, const QString &destination,
 
     if (code == EEXIST && policy == ConflictPolicy::Fail)
         throw Failure(code, destination);
+
+    if (code == EEXIST && policy == ConflictPolicy::KeepBoth) {
+        for (int suffix = 1;; ++suffix) {
+            const QByteArray name = keptName(destination, suffix);
+            if (::syscall(SYS_renameat2, input.fd.value, input.name.constData(), output.fd.value,
+                          name.constData(), RENAME_NOREPLACE)
+                == 0)
+                return QFileInfo(destination).absolutePath() + '/' + QFile::decodeName(name);
+            if (errno != EEXIST)
+                break;
+        }
+    }
 
     if (code == EEXIST && policy == ConflictPolicy::Replace) {
         if (::renameat(input.fd.value, input.name, output.fd.value, output.name) == 0)
