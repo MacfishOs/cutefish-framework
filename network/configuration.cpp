@@ -89,6 +89,11 @@ private:
         , m_generatedPassword(WifiUtils::generatedPassword())
     {
         connect(m_client, &NetworkClient::readyChanged, this, &HotspotSettings::load);
+        // A profile made or edited later, here or elsewhere, is read again.
+        connect(m_client, &NetworkClient::changed, this, [this] {
+            if (connection() != m_loadedProfile || profileSettings() != m_loadedSettings)
+                load();
+        });
         load();
     }
 
@@ -97,10 +102,25 @@ private:
         return m_client->hotspotConnection();
     }
 
+    // Decoded, since QDBusArgument values never compare equal.
+    QVariantMap profileSettings() const
+    {
+        QVariantMap settings;
+        const QString profile = connection();
+        if (profile.isEmpty())
+            return settings;
+        const NMVariantMapMap groups = m_client->settings(profile);
+        for (auto it = groups.cbegin(); it != groups.cend(); ++it)
+            settings.insert(it.key(), NetworkDBus::plain(it.value()));
+        return settings;
+    }
+
     // The profile keeps its password with NetworkManager, which reads it out only on request.
     void load()
     {
         const QString profile = connection();
+        m_loadedProfile = profile;
+        m_loadedSettings = profileSettings();
         if (profile.isEmpty())
             return;
 
@@ -125,6 +145,8 @@ private:
     }
 
     NetworkClient *m_client;
+    QString m_loadedProfile;
+    QVariantMap m_loadedSettings;
     QString m_name;
     QString m_password;
     QString m_profilePassword;
