@@ -46,6 +46,7 @@ void UserAccount::setObjectPath(const QString &path)
     delete d_ptr->service;
     d_ptr->objectPath = path;
     d_ptr->values.clear();
+    d_ptr->pendingValues.clear();
     d_ptr->values.insert(QStringLiteral("Uid"), path.mid(userPathPrefix.size()).toLongLong());
     d_ptr->service = new OrgFreedesktopAccountsUserInterface(serviceName, path,
                                                               d_ptr->bus, this);
@@ -107,8 +108,12 @@ void UserAccount::refresh()
             });
 }
 
-void UserAccount::applyValues(const QVariantMap &updated)
+void UserAccount::applyValues(const QVariantMap &reply)
 {
+    QVariantMap updated = reply;
+    for (auto it = d_ptr->pendingValues.cbegin(); it != d_ptr->pendingValues.cend(); ++it)
+        updated.insert(it.key(), it.value());
+
     const QVariantMap previous = d_ptr->values;
     d_ptr->values = updated;
 
@@ -154,11 +159,14 @@ void UserAccount::applyValues(const QVariantMap &updated)
 void UserAccount::watch(const QDBusPendingCall &call, void (UserAccount::*notify)(),
                         bool displayName)
 {
+    ++d_ptr->pendingSets;
     auto *watcher = new QDBusPendingCallWatcher(call, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             [this, notify, displayName](QDBusPendingCallWatcher *finished) {
                 QDBusPendingReply<> reply = *finished;
                 finished->deleteLater();
+                if (--d_ptr->pendingSets == 0)
+                    d_ptr->pendingValues.clear();
                 if (reply.isError()) {
                     qWarning("AccountsService update failed: %s",
                              reply.error().message().toUtf8().constData());
@@ -179,6 +187,7 @@ void UserAccount::watch(const QDBusPendingCall &call, void (UserAccount::*notify
 void UserAccount::notePendingChange(const char *property, const QVariant &value,
                                     void (UserAccount::*notify)(), bool displayName)
 {
+    d_ptr->pendingValues.insert(QString::fromLatin1(property), value);
     d_ptr->values.insert(QString::fromLatin1(property), value);
     Q_EMIT (this->*notify)();
     if (displayName)

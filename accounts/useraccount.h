@@ -117,7 +117,7 @@ private:
                bool displayName = false);
     void notePendingChange(const char *property, const QVariant &value,
                            void (UserAccount::*notify)(), bool displayName = false);
-    void applyValues(const QVariantMap &updated);
+    void applyValues(const QVariantMap &reply);
     QVariant value(const char *property) const;
 
     UserAccountPrivate *const d_ptr;

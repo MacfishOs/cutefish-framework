@@ -2,6 +2,7 @@
 #include "usersmodel.h"
 
 #include <QtCore/QProcess>
+#include <QtCore/QTimer>
 #include <QtDBus/QDBusAbstractAdaptor>
 #include <QtDBus/QDBusConnectionInterface>
 #include <QtDBus/QDBusInterface>
@@ -26,6 +27,7 @@ class TestUserAdaptor : public QDBusAbstractAdaptor
     Q_PROPERTY(QString UserName READ userName)
     Q_PROPERTY(QString RealName READ realName)
     Q_PROPERTY(qulonglong Uid READ uid)
+    Q_PROPERTY(QString Email READ email)
 
 public:
     TestUserAdaptor(QObject *parent, const QString &name, qulonglong uid)
@@ -38,6 +40,7 @@ public:
     QString userName() const { return m_name; }
     QString realName() const { return m_realName; }
     qulonglong uid() const { return m_uid; }
+    QString email() const { return m_email; }
 
 public Q_SLOTS:
     void SetUserName(const QString &name)
@@ -57,12 +60,26 @@ public Q_SLOTS:
         m_realName = name;
     }
 
+    // Answers late, as behind a polkit prompt, and reports an unrelated
+    // change while the caller waits.
+    void SetEmail(const QString &address, const QDBusMessage &message)
+    {
+        message.setDelayedReply(true);
+        Q_EMIT Changed();
+        QTimer::singleShot(300, this, [this, address, message] {
+            m_email = address;
+            QDBusConnection::sessionBus().send(message.createReply());
+            Q_EMIT Changed();
+        });
+    }
+
 Q_SIGNALS:
     void Changed();
 
 private:
     QString m_name;
     QString m_realName;
+    QString m_email;
     qulonglong m_uid;
 };
 
@@ -377,6 +394,26 @@ private Q_SLOTS:
                           QStringLiteral("Bob Silent")).type() != QDBusMessage::ErrorMessage);
         QTest::qWait(50);
         QCOMPARE(account->realName(), QStringLiteral("Bob Current"));
+    }
+
+    void aPendingChangeOutlastsReadsAnsweredMeanwhile()
+    {
+        AccountsManager manager(QDBusConnection::sessionBus());
+        QSignalSpy cached(&manager, &AccountsManager::userCached);
+        manager.cacheUser(QStringLiteral("carol"));
+        QTRY_COMPARE(cached.size(), 1);
+        UserAccount *account = manager.cachedUser(QStringLiteral("carol"));
+        QVERIFY(account);
+        QTRY_COMPARE(account->userName(), QStringLiteral("carol"));
+
+        account->setEmail(QStringLiteral("carol@example.org"));
+        QCOMPARE(account->email(), QStringLiteral("carol@example.org"));
+        for (int i = 0; i < 6; ++i) {
+            QTest::qWait(40);
+            QCOMPARE(account->email(), QStringLiteral("carol@example.org"));
+        }
+        QTest::qWait(400);
+        QCOMPARE(account->email(), QStringLiteral("carol@example.org"));
     }
 
     void synchronousQueriesAndCreateDelete()

@@ -17,6 +17,9 @@ public:
     QString objectPath;
     // Every getter reads from here; GetAll replies fill it asynchronously.
     QVariantMap values;
+    // Values set but not yet confirmed; a GetAll answered meanwhile still has the old ones.
+    QVariantMap pendingValues;
+    int pendingSets = 0;
     quint64 refreshSerial = 0;
 };
 
