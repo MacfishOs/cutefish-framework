@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Core Qml)
+find_package(Qt6 REQUIRED COMPONENTS Core DBus Qml)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3>=0.3.65)
 pkg_check_modules(SPA REQUIRED IMPORTED_TARGET libspa-0.2)
@@ -7,6 +7,8 @@ set(CUTEFISH_PRIVACY_SOURCES
     deviceuse.h
     deviceusage.cpp
     deviceusage.h
+    deviceswitches.cpp
+    deviceswitches.h
     pipewirecapture.cpp
     pipewirecapture.h
     videodevicewatch.cpp
@@ -30,6 +32,7 @@ qt_add_qml_module(cutefish-framework-privacy
 target_include_directories(cutefish-framework-privacy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(cutefish-framework-privacy PUBLIC
     Qt6::Core
+    Qt6::DBus
     Qt6::Qml
     PkgConfig::PIPEWIRE
     PkgConfig::SPA
