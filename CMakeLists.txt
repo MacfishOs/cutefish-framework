@@ -71,5 +71,6 @@ write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/CutefishFrameworkCo
 install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/CutefishFrameworkConfig.cmake
     ${CMAKE_CURRENT_BINARY_DIR}/CutefishFrameworkConfigVersion.cmake
+    cmake/CutefishApplication.cmake
     DESTINATION ${CUTEFISH_FRAMEWORK_CMAKEDIR}
 )
