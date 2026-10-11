@@ -54,6 +54,7 @@ add_subdirectory(screen)
 add_subdirectory(power)
 add_subdirectory(appearance)
 add_subdirectory(audio)
+add_subdirectory(privacy)
 add_subdirectory(scrolling)
 
 # One package for the libraries other Cutefish projects link against; each
