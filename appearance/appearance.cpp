@@ -33,6 +33,8 @@ void Appearance::init()
         return;
 
     connect(m_interface, SIGNAL(darkModeChanged(bool)), this, SIGNAL(darkModeChanged()));
+    connect(m_interface, SIGNAL(darkModeScheduleChanged(int)), this,
+            SIGNAL(darkModeScheduleChanged()));
     connect(m_interface, SIGNAL(wallpaperChanged(QString)), this, SIGNAL(wallpaperChanged()));
     connect(m_interface, SIGNAL(userWallpapersChanged()), this, SIGNAL(userWallpapersChanged()));
     connect(m_interface, SIGNAL(wallpaperFoldersChanged()), this,
@@ -52,6 +54,7 @@ void Appearance::init()
             SIGNAL(backgroundVisibleChanged()));
 
     emit darkModeChanged();
+    emit darkModeScheduleChanged();
     emit wallpaperChanged();
     emit userWallpapersChanged();
     emit wallpaperFoldersChanged();
@@ -85,6 +88,16 @@ bool Appearance::darkMode() const
 void Appearance::switchDarkMode(bool darkMode)
 {
     callService("setDarkMode", darkMode);
+}
+
+int Appearance::darkModeSchedule() const
+{
+    return serviceProperty("darkModeSchedule").toInt();
+}
+
+void Appearance::setDarkModeSchedule(int schedule)
+{
+    callService("setDarkModeSchedule", schedule);
 }
 
 // Without the service there is nothing to read, so the default applies.

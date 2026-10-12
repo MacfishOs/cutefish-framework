@@ -14,6 +14,8 @@ class Appearance : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool darkMode READ darkMode NOTIFY darkModeChanged)
+    Q_PROPERTY(int darkModeSchedule READ darkModeSchedule WRITE setDarkModeSchedule NOTIFY
+                       darkModeScheduleChanged)
     Q_PROPERTY(bool continuousCorners READ continuousCorners WRITE setContinuousCorners NOTIFY
                        continuousCornersChanged)
     Q_PROPERTY(int accentColorIndex READ accentColorIndex NOTIFY accentColorIndexChanged)
@@ -33,10 +35,20 @@ class Appearance : public QObject
     Q_PROPERTY(bool backgroundVisible READ backgroundVisible NOTIFY backgroundVisibleChanged)
 
 public:
+    enum DarkModeSchedule {
+        Never,
+        SunsetToSunrise,
+    };
+    Q_ENUM(DarkModeSchedule)
+
     explicit Appearance(QObject *parent = nullptr);
 
     bool darkMode() const;
+    // While a schedule runs, this holds until its next turn.
     Q_INVOKABLE void switchDarkMode(bool darkMode);
+
+    int darkModeSchedule() const;
+    Q_INVOKABLE void setDarkModeSchedule(int schedule);
 
     // Whether rounded corners are drawn as continuous curves, the same shape
     // the compositor gives window silhouettes. On until turned off.
@@ -81,6 +93,7 @@ public:
 
 signals:
     void darkModeChanged();
+    void darkModeScheduleChanged();
     void continuousCornersChanged();
     void accentColorIndexChanged();
     void fontPointSizeChanged();
