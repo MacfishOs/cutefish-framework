@@ -16,6 +16,7 @@ inline const QString adapterInterface = QStringLiteral("org.bluez.Adapter1");
 inline const QString deviceInterface = QStringLiteral("org.bluez.Device1");
 inline const QString propertiesInterface = QStringLiteral("org.freedesktop.DBus.Properties");
 inline const QString objectManagerInterface = QStringLiteral("org.freedesktop.DBus.ObjectManager");
+inline const QString gattCharacteristicInterface = QStringLiteral("org.bluez.GattCharacteristic1");
 inline const QString agentPath = QStringLiteral("/org/cutefish/BluetoothAgent");
 inline const QString agentManagerPath = QStringLiteral("/org/bluez");
 inline const QString agentManagerInterface = QStringLiteral("org.bluez.AgentManager1");

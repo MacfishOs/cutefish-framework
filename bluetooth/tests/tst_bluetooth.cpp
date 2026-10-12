@@ -199,6 +199,32 @@ private slots:
         QCOMPARE(fake->lastPath, adapter);
     }
 
+    void deviceInformation()
+    {
+        const QString service = device + QStringLiteral("/service000e");
+        const QString characteristic = QStringLiteral("org.bluez.GattCharacteristic1");
+        const auto add = [&](const QString &name, const QString &uuid, const QByteArray &value) {
+            fake->add(service + name,
+                      {{characteristic, {{"UUID", uuid}, {"Value", value}}}});
+        };
+        add(QStringLiteral("/char000f"), QStringLiteral("00002a29-0000-1000-8000-00805f9b34fb"),
+            "Logitech");
+        add(QStringLiteral("/char0011"), QStringLiteral("00002a24-0000-1000-8000-00805f9b34fb"),
+            "Pebble K390");
+        add(QStringLiteral("/char0015"), QStringLiteral("00002A26-0000-1000-8000-00805F9B34FB"),
+            QByteArray("RBK80.00_0011\0\0", 15));
+        QTRY_VERIFY(manager->object(service + QStringLiteral("/char0015")));
+        auto *entry = manager->object(device);
+        entry->readDeviceInformation();
+        QVERIFY(!fake->calls.contains(QStringLiteral("ReadValue")));
+        fake->set(device, deviceInterface, QStringLiteral("Connected"), true);
+        QTRY_VERIFY(entry->connected());
+        entry->readDeviceInformation();
+        QTRY_COMPARE(entry->modelNumber(), QStringLiteral("Pebble K390"));
+        QTRY_COMPARE(entry->firmwareRevision(), QStringLiteral("RBK80.00_0011"));
+        QCOMPARE(fake->calls.count(QStringLiteral("ReadValue")), 2);
+    }
+
     void pairThroughDefaultAgent()
     {
         QVERIFY(!manager->agentEnabled());

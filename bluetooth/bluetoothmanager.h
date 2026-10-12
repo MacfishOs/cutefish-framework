@@ -85,6 +85,7 @@ public:
                  const QVariantList &arguments = {});
     void discovery(BluetoothObject *adapter, bool start);
     void mediaCommand(BluetoothObject *device, const QString &command);
+    void readDeviceInformation(BluetoothObject *device);
     void fail(const QString &message);
     using Completion = std::function<void(const QDBusMessage &)>;
     // Background refreshes race object removal; their failures are not the user's concern.

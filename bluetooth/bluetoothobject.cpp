@@ -15,6 +15,11 @@ QVariant BluetoothObject::value(const QString &property) const
     return m_interfaces.value(isAdapter() ? adapterInterface : deviceInterface).value(property);
 }
 
+QVariant BluetoothObject::value(const QString &interface, const QString &property) const
+{
+    return m_interfaces.value(interface).value(property);
+}
+
 QString BluetoothObject::address() const
 {
     return value(QStringLiteral("Address")).toString();
@@ -205,6 +210,11 @@ void BluetoothObject::mediaCommand(const QString &command)
     m_manager->mediaCommand(this, command);
 }
 
+void BluetoothObject::readDeviceInformation()
+{
+    m_manager->readDeviceInformation(this);
+}
+
 void BluetoothObject::update(const QString &interface, const QVariantMap &properties,
                              const QStringList &invalidated)
 {
@@ -237,5 +247,21 @@ void BluetoothObject::setBusy(bool busy)
     if (m_busy == busy)
         return;
     m_busy = busy;
+    emit changed();
+}
+
+void BluetoothObject::setModelNumber(const QString &modelNumber)
+{
+    if (m_modelNumber == modelNumber)
+        return;
+    m_modelNumber = modelNumber;
+    emit changed();
+}
+
+void BluetoothObject::setFirmwareRevision(const QString &firmwareRevision)
+{
+    if (m_firmwareRevision == firmwareRevision)
+        return;
+    m_firmwareRevision = firmwareRevision;
     emit changed();
 }

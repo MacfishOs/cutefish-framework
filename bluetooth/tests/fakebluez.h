@@ -86,6 +86,11 @@ public:
             set(message.path(), deviceInterface, QStringLiteral("Connected"),
                 message.member() == QStringLiteral("Connect"));
             connection.send(message.createReply());
+        } else if (message.member() == QStringLiteral("ReadValue")) {
+            const auto value = objects.value(QDBusObjectPath(message.path()))
+                                       .value(QStringLiteral("org.bluez.GattCharacteristic1"))
+                                       .value(QStringLiteral("Value"));
+            connection.send(message.createReply(QVariantList {value.toByteArray()}));
         } else if (message.member() == QStringLiteral("RemoveDevice")) {
             remove(qvariant_cast<QDBusObjectPath>(args[0]).path(), {deviceInterface});
             connection.send(message.createReply());

@@ -587,6 +587,44 @@ void BluetoothManager::mediaCommand(BluetoothObject *device, const QString &comm
     fail(tr("This device has no media player."));
 }
 
+void BluetoothManager::readDeviceInformation(BluetoothObject *device)
+{
+    if (!device || object(device->path()) != device || !device->connected())
+        return;
+    static const QString modelNumberUuid = QStringLiteral("00002a24-0000-1000-8000-00805f9b34fb");
+    static const QString firmwareRevisionUuid =
+            QStringLiteral("00002a26-0000-1000-8000-00805f9b34fb");
+    QPointer<BluetoothObject> guard(device);
+    for (auto it = m_objects.cbegin(); it != m_objects.cend(); ++it) {
+        if (!it.key().startsWith(device->path() + QLatin1Char('/'))
+            || !it.value()->hasInterface(gattCharacteristicInterface))
+            continue;
+        const QString uuid =
+                it.value()->value(gattCharacteristicInterface, QStringLiteral("UUID")).toString()
+                        .toLower();
+        const bool model = uuid == modelNumberUuid;
+        if (!model && uuid != firmwareRevisionUuid)
+            continue;
+        call(it.key(), gattCharacteristicInterface, QStringLiteral("ReadValue"),
+             {QVariantMap {}},
+             [guard, model](const QDBusMessage &reply) {
+                 if (!guard || reply.type() == QDBusMessage::ErrorMessage)
+                     return;
+                 // Some devices pad the string with NUL bytes.
+                 QByteArray bytes = reply.arguments().value(0).toByteArray();
+                 const qsizetype end = bytes.indexOf('\0');
+                 if (end >= 0)
+                     bytes.truncate(end);
+                 const QString text = QString::fromUtf8(bytes).trimmed();
+                 if (model)
+                     guard->setModelNumber(text);
+                 else
+                     guard->setFirmwareRevision(text);
+             },
+             Errors::Ignore);
+    }
+}
+
 void BluetoothManager::setAgentEnabled(bool enabled)
 {
     if (m_agentEnabled == enabled)

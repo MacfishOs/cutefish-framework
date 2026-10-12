@@ -29,6 +29,10 @@ class BluetoothObject : public QObject
     Q_PROPERTY(QStringList uuids READ uuids NOTIFY changed)
     Q_PROPERTY(QString adapterPath READ adapterPath NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
+    // From the device's Device Information service; empty until readDeviceInformation()
+    // finds them on a connected device.
+    Q_PROPERTY(QString modelNumber READ modelNumber NOTIFY changed)
+    Q_PROPERTY(QString firmwareRevision READ firmwareRevision NOTIFY changed)
 public:
     BluetoothObject(const QString &path, BluetoothManager *manager);
 
@@ -53,6 +57,10 @@ public:
 
     bool busy() const { return m_busy; }
 
+    QString modelNumber() const { return m_modelNumber; }
+
+    QString firmwareRevision() const { return m_firmwareRevision; }
+
     bool isAdapter() const;
     bool isDevice() const;
 
@@ -61,6 +69,7 @@ public:
 
     quint64 revision(const QString &interface, const QString &property) const;
     QVariant value(const QString &property) const;
+    QVariant value(const QString &interface, const QString &property) const;
     void setName(const QString &name);
     void setPowered(bool enabled);
     void setDiscoverable(bool enabled);
@@ -71,6 +80,8 @@ public:
                 const QStringList &invalidated = {});
     void removeInterface(const QString &interface);
     void setBusy(bool busy);
+    void setModelNumber(const QString &modelNumber);
+    void setFirmwareRevision(const QString &firmwareRevision);
     Q_INVOKABLE void connectToDevice();
     Q_INVOKABLE void disconnectFromDevice();
     Q_INVOKABLE void pair();
@@ -81,6 +92,7 @@ public:
     Q_INVOKABLE void startDiscovery();
     Q_INVOKABLE void stopDiscovery();
     Q_INVOKABLE void mediaCommand(const QString &command);
+    Q_INVOKABLE void readDeviceInformation();
 signals:
     void changed();
 
@@ -92,4 +104,6 @@ private:
     QMap<QString, QMap<QString, quint64>> m_revisions;
     quint64 m_revision = 0;
     bool m_busy = false;
+    QString m_modelNumber;
+    QString m_firmwareRevision;
 };
