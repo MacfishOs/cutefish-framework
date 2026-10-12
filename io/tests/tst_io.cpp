@@ -668,7 +668,7 @@ private slots:
         QCOMPARE(errorCode([&] {
                      LocalFileSystem::restore(orphan.url(), ConflictPolicy::Fail, ctx);
                  }),
-                 EACCES);
+                 ENOENT);
 
         QVERIFY(QDir().mkpath(volume + "/docs"));
         QCOMPARE(LocalFileSystem::restore(old.url(), ConflictPolicy::Fail, ctx),
@@ -1493,6 +1493,141 @@ private slots:
         controller.submit({Operation::Trash, {local(dir.filePath("other"))}});
         QTRY_COMPARE(finished.size(), 5);
         QVERIFY(!controller.isRedoAvailable());
+    }
+
+    void controllerCopyUndo()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir().mkpath(dir.filePath("target")));
+        writeFile(dir.filePath("file"), "data");
+        TaskController controller;
+        QSignalSpy finished(&controller, &TaskController::taskFinished);
+
+        controller.submit({Operation::Copy,
+                           {local(dir.filePath("file"))},
+                           local(dir.filePath("target"))});
+        QTRY_COMPARE(finished.size(), 1);
+        QVERIFY(controller.undo());
+        QTRY_COMPARE(finished.size(), 2);
+        QVERIFY(!QFileInfo::exists(dir.filePath("target/file")));
+        QVERIFY(QFileInfo::exists(dir.filePath("file")));
+        QCOMPARE(LocalFileSystem::enumerate(QUrl("trash:/")).size(), 1);
+
+        // Redo brings the undone copy back from the trash.
+        QVERIFY(controller.redo());
+        QTRY_COMPARE(finished.size(), 3);
+        QCOMPARE(readFile(dir.filePath("target/file")), QByteArray("data"));
+        QVERIFY(controller.isUndoAvailable());
+        QVERIFY(!controller.isRedoAvailable());
+    }
+
+    void controllerMoveUndo()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir().mkpath(dir.filePath("a")));
+        QVERIFY(QDir().mkpath(dir.filePath("b")));
+        QVERIFY(QDir().mkpath(dir.filePath("target")));
+        writeFile(dir.filePath("a/one"), "one");
+        writeFile(dir.filePath("b/two"), "two");
+        writeFile(dir.filePath("target/two"), "old");
+        TaskController controller;
+        QSignalSpy finished(&controller, &TaskController::taskFinished);
+
+        controller.submit({Operation::Move,
+                           {local(dir.filePath("a/one")), local(dir.filePath("b/two"))},
+                           local(dir.filePath("target")),
+                           ConflictPolicy::KeepBoth});
+        QTRY_COMPARE(finished.size(), 1);
+        QCOMPARE(finished.first().first().value<Task *>()->errorString(), QString());
+        QCOMPARE(readFile(dir.filePath("target/two (1)")), QByteArray("two"));
+
+        // Each item goes back to its own folder under its old name.
+        QVERIFY(controller.undo());
+        QTRY_COMPARE(finished.size(), 2);
+        QCOMPARE(readFile(dir.filePath("a/one")), QByteArray("one"));
+        QCOMPARE(readFile(dir.filePath("b/two")), QByteArray("two"));
+        QCOMPARE(readFile(dir.filePath("target/two")), QByteArray("old"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("target/two (1)")));
+
+        QVERIFY(controller.redo());
+        QTRY_COMPARE(finished.size(), 3);
+        QCOMPARE(readFile(dir.filePath("target/one")), QByteArray("one"));
+        QCOMPARE(readFile(dir.filePath("target/two (1)")), QByteArray("two"));
+    }
+
+    void controllerRenameAndMkdirUndo()
+    {
+        QTemporaryDir dir;
+        TaskController controller;
+        QSignalSpy finished(&controller, &TaskController::taskFinished);
+
+        controller.submit({Operation::Mkdir, {}, local(dir.filePath("New Folder"))});
+        QTRY_COMPARE(finished.size(), 1);
+        controller.submit({Operation::Rename,
+                           {local(dir.filePath("New Folder"))},
+                           local(dir.filePath("Photos"))});
+        QTRY_COMPARE(finished.size(), 2);
+
+        QVERIFY(controller.undo());
+        QTRY_COMPARE(finished.size(), 3);
+        QVERIFY(QFileInfo(dir.filePath("New Folder")).isDir());
+        QVERIFY(!QFileInfo::exists(dir.filePath("Photos")));
+
+        QVERIFY(controller.undo());
+        QTRY_COMPARE(finished.size(), 4);
+        QVERIFY(!QFileInfo::exists(dir.filePath("New Folder")));
+        QVERIFY(!controller.isUndoAvailable());
+
+        QVERIFY(controller.redo());
+        QTRY_COMPARE(finished.size(), 5);
+        QVERIFY(controller.redo());
+        QTRY_COMPARE(finished.size(), 6);
+        QVERIFY(QFileInfo(dir.filePath("Photos")).isDir());
+    }
+
+    void controllerFailedUndoIsDropped()
+    {
+        QTemporaryDir dir;
+        writeFile(dir.filePath("file"));
+        TaskController controller;
+        QSignalSpy finished(&controller, &TaskController::taskFinished);
+
+        controller.submit({Operation::Rename,
+                           {local(dir.filePath("file"))},
+                           local(dir.filePath("renamed"))});
+        QTRY_COMPARE(finished.size(), 1);
+        QVERIFY(QFile::remove(dir.filePath("renamed")));
+
+        auto *task = controller.undo();
+        QVERIFY(task);
+        QSignalSpy result(task, &Task::result);
+        QTRY_COMPARE(result.size(), 1);
+        QCOMPARE(task->error(), ENOENT);
+        QVERIFY(!controller.isUndoAvailable());
+        QVERIFY(!controller.isRedoAvailable());
+    }
+
+    void controllerEmptyTrashForgetsRestores()
+    {
+        QTemporaryDir dir;
+        writeFile(dir.filePath("file"));
+        writeFile(dir.filePath("other"));
+        TaskController controller;
+        QSignalSpy finished(&controller, &TaskController::taskFinished);
+
+        controller.submit({Operation::Trash, {local(dir.filePath("file"))}});
+        QTRY_COMPARE(finished.size(), 1);
+        controller.submit({Operation::Rename,
+                           {local(dir.filePath("other"))},
+                           local(dir.filePath("renamed"))});
+        QTRY_COMPARE(finished.size(), 2);
+        controller.submit({Operation::EmptyTrash});
+        QTRY_COMPARE(finished.size(), 3);
+
+        QVERIFY(controller.undo());
+        QTRY_COMPARE(finished.size(), 4);
+        QVERIFY(QFileInfo::exists(dir.filePath("other")));
+        QVERIFY(!controller.isUndoAvailable());
     }
 
     void crossDeviceMove()

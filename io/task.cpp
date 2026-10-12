@@ -53,6 +53,15 @@ static TaskResult execute(const TaskRequest &request, OperationContext &ctx,
     const auto legacyProgress = ctx.progress;
     const auto conflictResolver = ctx.conflict;
 
+    // The folder a source goes into; Rename keeps its full destination path here.
+    const auto destinationOf = [&](qsizetype index) {
+        if (request.targets.isEmpty())
+            return request.destination;
+
+        return request.targets.value(index).adjusted(QUrl::RemoveFilename
+                                                     | QUrl::StripTrailingSlash);
+    };
+
     auto update = [&](bool force = false) {
         info.elapsedMs = elapsed.isValid() ? elapsed.elapsed() - pausedMs : 0;
         report(info, force);
@@ -87,9 +96,10 @@ static TaskResult execute(const TaskRequest &request, OperationContext &ctx,
 
         if (request.operation == Operation::Move || request.operation == Operation::Rename
             || request.operation == Operation::Trash || request.operation == Operation::Delete) {
-            for (const auto &url : request.sources) {
+            for (qsizetype i = 0; i < request.sources.size(); ++i) {
+                const auto &url = request.sources.at(i);
                 const bool allowedHomeMove = request.operation == Operation::Move
-                        && canMoveStandardFolderTo(url, request.destination);
+                        && canMoveStandardFolderTo(url, destinationOf(i));
                 if (isStandardFolder(url) && !allowedHomeMove)
                     throw Failure(EPERM, url.toLocalFile());
             }
@@ -116,8 +126,10 @@ static TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                         const auto source = FileSystemUrl(url).localPath();
                         LocalFileSystem::directorySize(source, scan);
 
+                        // Items going to their own folders are not checked up front.
                         if ((request.operation == Operation::Copy
                              || request.operation == Operation::Move)
+                            && request.targets.isEmpty()
                             && takesSpace(source, FileSystemUrl(request.destination).localPath(),
                                           request.operation == Operation::Move))
                             required += scan.allocated;
@@ -172,10 +184,16 @@ static TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                 case Operation::Move:
                 case Operation::Link:
                 case Operation::Rename: {
-                    const auto destination = FileSystemUrl(request.destination).localPath();
-                    const auto target = request.operation == Operation::Rename
-                            ? destination
-                            : QDir(destination).filePath(url.fileName());
+                    QString target;
+                    if (!request.targets.isEmpty()) {
+                        target = FileSystemUrl(request.targets.value(sourceIndex)).localPath();
+                    } else {
+                        const auto destination = FileSystemUrl(request.destination).localPath();
+                        target = request.operation == Operation::Rename
+                                ? destination
+                                : QDir(destination).filePath(url.fileName());
+                    }
+
                     const auto path = request.operation == Operation::Link
                             ? LocalFileSystem::link(source, target, request.conflict, ctx)
                             : request.operation == Operation::Copy
@@ -202,8 +220,10 @@ static TaskResult execute(const TaskRequest &request, OperationContext &ctx,
                 }
 
                 result.completedSources.append(url);
-                if (!output.isEmpty())
+                if (!output.isEmpty()) {
                     result.outputs.append(output);
+                    result.outputSources.append(url);
+                }
 
                 if (info.totalsKnown && sourceIndex < weights.size()) {
                     creditedBytes += weights[sourceIndex].first;
@@ -406,30 +426,56 @@ TaskController::~TaskController()
 
 Task *TaskController::submit(const TaskRequest &request)
 {
-    return submit(request, false);
+    return submit(request, History::Fresh);
+}
+
+// What puts back the part of an operation that was done, if anything can.
+static std::optional<TaskRequest> inverse(const TaskRequest &request, const TaskResult &result)
+{
+    if (result.outputs.isEmpty())
+        return {};
+
+    switch (request.operation) {
+    case Operation::Copy:
+    case Operation::Link:
+    case Operation::Mkdir:
+    case Operation::Restore:
+        return TaskRequest{Operation::Trash, result.outputs};
+    case Operation::Trash:
+        return TaskRequest{Operation::Restore, result.outputs, {}, ConflictPolicy::Ask};
+    case Operation::Move:
+    case Operation::Rename: {
+        // Out of a trash, the item would go back without its info file.
+        for (const auto &source : result.outputSources) {
+            if (!source.isLocalFile())
+                return {};
+        }
+
+        if (result.outputSources.size() != result.outputs.size())
+            return {};
+
+        TaskRequest back{Operation::Move, result.outputs, {}, ConflictPolicy::Ask};
+        back.targets = result.outputSources;
+        return back;
+    }
+    default:
+        return {};
+    }
 }
 
 // A fresh operation forks the history: what was undone before it can no
 // longer be redone. Undo and redo themselves keep the other stack.
-Task *TaskController::submit(const TaskRequest &request, bool keepRedo)
+Task *TaskController::submit(const TaskRequest &request, History history)
 {
-    if (!keepRedo && !m_redo.isEmpty()) {
+    if (history == History::Fresh && !m_redo.isEmpty()) {
         m_redo.clear();
         emit historyChanged();
     }
 
     auto *task = new Task(request, this);
 
-    connect(task, &Task::result, this, [this, request](Task *task) {
-        const auto &result = task->outcome();
-
-        if (request.operation == Operation::Trash && !result.outputs.isEmpty()) {
-            m_undo.append({Operation::Restore, result.outputs});
-            while (m_undo.size() > kMaxHistory)
-                m_undo.removeFirst();
-            emit historyChanged();
-        }
-
+    connect(task, &Task::result, this, [this, request, history](Task *task) {
+        record(request, task->outcome(), history);
         emit taskFinished(task);
         task->deleteLater();
     });
@@ -439,6 +485,52 @@ Task *TaskController::submit(const TaskRequest &request, bool keepRedo)
     return task;
 }
 
+void TaskController::record(const TaskRequest &request, const TaskResult &result,
+                            History history)
+{
+    bool changed = false;
+
+    if (const auto back = inverse(request, result)) {
+        auto &stack = history == History::Undo ? m_redo : m_undo;
+        stack.append(*back);
+        while (stack.size() > kMaxHistory)
+            stack.removeFirst();
+        changed = true;
+    }
+
+    // A cancelled undo or redo keeps what it did not reach; a failed one is dropped, as
+    // retrying would fail the same way.
+    if (history != History::Fresh && result.error.code == ECANCELED) {
+        auto remaining = request;
+        for (const auto &source : result.completedSources) {
+            const auto index = remaining.sources.indexOf(source);
+            if (index < 0)
+                continue;
+
+            remaining.sources.removeAt(index);
+            if (index < remaining.targets.size())
+                remaining.targets.removeAt(index);
+        }
+
+        if (!remaining.sources.isEmpty()) {
+            (history == History::Undo ? m_undo : m_redo).append(remaining);
+            changed = true;
+        }
+    }
+
+    // Emptied trash items cannot come back.
+    if (request.operation == Operation::EmptyTrash && !result.error) {
+        const auto restores = [](const TaskRequest &entry) {
+            return entry.operation == Operation::Restore;
+        };
+        changed |= m_undo.removeIf(restores) > 0;
+        changed |= m_redo.removeIf(restores) > 0;
+    }
+
+    if (changed)
+        emit historyChanged();
+}
+
 Task *TaskController::undo()
 {
     if (m_undo.isEmpty())
@@ -446,28 +538,9 @@ Task *TaskController::undo()
 
     const auto request = m_undo.takeLast();
     emit historyChanged();
-    auto *task = submit(request, true);
-
-    connect(task, &Task::result, this, [this, request](Task *done) {
-        const auto &result = done->outcome();
-        if (!result.outputs.isEmpty())
-            m_redo.append({Operation::Trash, result.outputs});
-
-        if (done->error()) {
-            auto remaining = request;
-            for (const auto &source : result.completedSources)
-                remaining.sources.removeAll(source);
-            if (!remaining.sources.isEmpty())
-                m_undo.append(remaining);
-        }
-
-        emit historyChanged();
-    });
-
-    return task;
+    return submit(request, History::Undo);
 }
 
-// Redoing a trash goes through the normal path, which records its undo again.
 Task *TaskController::redo()
 {
     if (m_redo.isEmpty())
@@ -475,22 +548,7 @@ Task *TaskController::redo()
 
     const auto request = m_redo.takeLast();
     emit historyChanged();
-    auto *task = submit(request, true);
-
-    connect(task, &Task::result, this, [this, request](Task *done) {
-        if (done->error()) {
-            auto remaining = request;
-            for (const auto &source : done->outcome().completedSources)
-                remaining.sources.removeAll(source);
-
-            if (!remaining.sources.isEmpty()) {
-                m_redo.append(remaining);
-                emit historyChanged();
-            }
-        }
-    });
-
-    return task;
+    return submit(request, History::Redo);
 }
 
 Task *copy(const QList<QUrl> &sources, const QUrl &destination)

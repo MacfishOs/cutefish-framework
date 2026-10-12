@@ -32,12 +32,16 @@ struct TaskRequest
     QList<QUrl> sources;
     QUrl destination;
     ConflictPolicy conflict = ConflictPolicy::Fail;
+    // When set, Copy, Move and Link put each source at its own path instead of into destination.
+    QList<QUrl> targets;
 };
 
 struct TaskResult
 {
     Error error;
     QList<QUrl> outputs;
+    // The source each output came from; empty for Mkdir.
+    QList<QUrl> outputSources;
     QList<QUrl> completedSources;
     quint64 bytes = 0;
     quint64 files = 0;
@@ -177,9 +181,16 @@ signals:
     void historyChanged();
 
 private:
-    Task *submit(const TaskRequest &request, bool keepRedo);
+    enum class History {
+        Fresh,
+        Undo,
+        Redo
+    };
 
-    // Trash operations each add an entry; a long session must not keep them all.
+    Task *submit(const TaskRequest &request, History history);
+    void record(const TaskRequest &request, const TaskResult &result, History history);
+
+    // Each undoable operation adds an entry; a long session must not keep them all.
     static constexpr int kMaxHistory = 50;
 
     QList<TaskRequest> m_undo;

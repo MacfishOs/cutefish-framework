@@ -260,7 +260,7 @@ QUrl LocalFileSystem::restore(const QUrl &url, ConflictPolicy policy, OperationC
     const auto info = infoPath(trash, name);
     TrashInfo details;
     if (!readTrashInfo(trash, name, &details))
-        throw Failure(EACCES, info);
+        throw Failure(QFileInfo::exists(info) ? EACCES : ENOENT, info);
 
     if (details.path.isEmpty())
         throw Failure(EINVAL, info);
