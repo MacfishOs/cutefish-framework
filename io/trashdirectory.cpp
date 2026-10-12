@@ -95,7 +95,7 @@ static bool holdsNoTrash(const QByteArray &type)
             "cgroup2",  "debugfs",   "tracefs",    "securityfs",  "bpf",
             "pstore",   "autofs",    "mqueue",     "hugetlbfs",   "configfs",
             "fusectl",  "efivarfs",  "nsfs",       "binfmt_misc", "rpc_pipefs",
-            "fuse.portal", "fuse.gvfsd-fuse",
+            "fuse.portal", "fuse.gvfsd-fuse", "fuse.cutefish-mountd",
             "nfs",      "nfs4",      "cifs",       "smb3",        "smbfs",
             "ncpfs",    "afs",       "ceph",       "9p",          "glusterfs",
             "coda",     "davfs",     "fuse.sshfs", "fuse.rclone", "fuse.davfs2",
