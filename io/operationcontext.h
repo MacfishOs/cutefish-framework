@@ -26,6 +26,8 @@ struct OperationContext
     quint64 allocated = 0;
     std::function<void(quint64, quint64)> progress;
     std::function<ConflictPolicy(const QString &source, const QString &destination)> conflict;
+    // Set once a Replace merges into an existing folder, which then holds more than was copied.
+    bool merged = false;
 
     void checkpoint(const QString &path = {}) const;
     void advance(quint64 amount);

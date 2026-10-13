@@ -1521,6 +1521,30 @@ private slots:
         QVERIFY(!controller.isRedoAvailable());
     }
 
+    void controllerMergeHasNoUndo()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir().mkpath(dir.filePath("source/folder")));
+        QVERIFY(QDir().mkpath(dir.filePath("target/folder")));
+        writeFile(dir.filePath("source/folder/new"), "new");
+        writeFile(dir.filePath("target/folder/old"), "old");
+        TaskController controller;
+        QSignalSpy finished(&controller, &TaskController::taskFinished);
+
+        // Undoing would take the folder's earlier contents along with the merged ones.
+        for (const auto operation : {Operation::Copy, Operation::Move}) {
+            controller.submit({operation,
+                               {local(dir.filePath("source/folder"))},
+                               local(dir.filePath("target")),
+                               ConflictPolicy::Replace});
+            QTRY_VERIFY(!finished.isEmpty());
+            finished.clear();
+            QCOMPARE(readFile(dir.filePath("target/folder/new")), QByteArray("new"));
+            QCOMPARE(readFile(dir.filePath("target/folder/old")), QByteArray("old"));
+            QVERIFY(!controller.isUndoAvailable());
+        }
+    }
+
     void controllerMoveUndo()
     {
         QTemporaryDir dir;

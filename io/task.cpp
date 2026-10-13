@@ -244,6 +244,7 @@ static TaskResult execute(const TaskRequest &request, OperationContext &ctx,
 
     result.bytes = ctx.bytes;
     result.files = ctx.files;
+    result.merged = ctx.merged;
 
     if (!result.error && info.totalsKnown) {
         info.processedBytes = info.totalBytes;
@@ -432,7 +433,7 @@ Task *TaskController::submit(const TaskRequest &request)
 // What puts back the part of an operation that was done, if anything can.
 static std::optional<TaskRequest> inverse(const TaskRequest &request, const TaskResult &result)
 {
-    if (result.outputs.isEmpty())
+    if (result.outputs.isEmpty() || result.merged)
         return {};
 
     switch (request.operation) {

@@ -391,6 +391,7 @@ static QString publish(int parent, const QByteArray &temporary, const QString &s
                 check(::fchmod(input.value, 0700), destination);
                 mergeStaged(input.value, output.value, destination, ctx);
                 check(::unlinkat(parent, temporary, AT_REMOVEDIR), destination);
+                ctx.merged = true;
             } else {
                 check(::renameat(parent, temporary, parent, name), destination);
             }

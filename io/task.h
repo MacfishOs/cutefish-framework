@@ -43,6 +43,8 @@ struct TaskResult
     // The source each output came from; empty for Mkdir.
     QList<QUrl> outputSources;
     QList<QUrl> completedSources;
+    // An output is a folder merged with what was already there, so it cannot be taken back.
+    bool merged = false;
     quint64 bytes = 0;
     quint64 files = 0;
 };
