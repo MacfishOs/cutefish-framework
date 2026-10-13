@@ -4,6 +4,7 @@
 #ifndef CUTEFISH_CUTEFISHNOTIFICATION_H
 #define CUTEFISH_CUTEFISHNOTIFICATION_H
 
+#include <QImage>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -27,6 +28,9 @@ public:
     void setAppName(const QString &name);
     void setIconName(const QString &name);
     void setImagePath(const QString &path);
+    // Sent as image data, which the server prefers to an image path, for a
+    // picture with no file. It crosses the bus, so keep it thumbnail-sized.
+    void setImage(const QImage &image);
     void setSummary(const QString &summary);
     void setBody(const QString &body);
     // Critical stays until it is dismissed.
@@ -61,6 +65,7 @@ private:
     QString m_appName;
     QString m_iconName;
     QString m_imagePath;
+    QImage m_image;
     QString m_summary;
     QString m_body;
     QStringList m_actions;

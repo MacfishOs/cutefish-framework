@@ -3,6 +3,7 @@
 
 #include "cutefishnotification.h"
 
+#include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
@@ -37,6 +38,11 @@ void Notification::setIconName(const QString &name)
 void Notification::setImagePath(const QString &path)
 {
     m_imagePath = path;
+}
+
+void Notification::setImage(const QImage &image)
+{
+    m_image = image;
 }
 
 void Notification::setSummary(const QString &summary)
@@ -141,6 +147,17 @@ void Notification::send()
         hints.insert(QStringLiteral("desktop-entry"), m_desktopEntry);
     if (!m_imagePath.isEmpty())
         hints.insert(QStringLiteral("image-path"), m_imagePath);
+    if (!m_image.isNull()) {
+        // The specification's (iiibiiay): width, height, rowstride, alpha,
+        // bits per sample, channels and RGBA bytes.
+        const QImage image = m_image.convertToFormat(QImage::Format_RGBA8888);
+        QDBusArgument data;
+        data.beginStructure();
+        data << image.width() << image.height() << int(image.bytesPerLine()) << true << 8 << 4
+             << QByteArray(reinterpret_cast<const char *>(image.constBits()), image.sizeInBytes());
+        data.endStructure();
+        hints.insert(QStringLiteral("image-data"), QVariant::fromValue(data));
+    }
 
     QDBusMessage message = QDBusMessage::createMethodCall(kService, kPath, kService,
                                                           QStringLiteral("Notify"));

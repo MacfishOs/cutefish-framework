@@ -3,9 +3,11 @@
 
 #include "cutefishnotification.h"
 
+#include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusContext>
 #include <QDBusMessage>
+#include <QImage>
 #include <QPointer>
 #include <QSignalSpy>
 #include <QtTest>
@@ -143,6 +145,37 @@ private slots:
         QCOMPARE(call.hints.value("urgency").typeId(), QMetaType::UChar);
         QCOMPARE(call.hints.value("urgency").toInt(), 2);
         QCOMPARE(call.timeout, 5000);
+    }
+
+    void sendsAnImageAsData()
+    {
+        QImage image(3, 2, QImage::Format_ARGB32);
+        image.fill(QColor(10, 20, 30, 255));
+
+        Notification notification;
+        notification.setImage(image);
+        notification.show();
+
+        QTRY_COMPARE(m_server.calls.size(), 1);
+        const QDBusArgument data = m_server.calls.at(0).hints.value("image-data").value<QDBusArgument>();
+        int width = 0;
+        int height = 0;
+        int rowStride = 0;
+        bool hasAlpha = false;
+        int bitsPerSample = 0;
+        int channels = 0;
+        QByteArray pixels;
+        data.beginStructure();
+        data >> width >> height >> rowStride >> hasAlpha >> bitsPerSample >> channels >> pixels;
+        data.endStructure();
+        QCOMPARE(width, 3);
+        QCOMPARE(height, 2);
+        QVERIFY(rowStride >= 12);
+        QVERIFY(hasAlpha);
+        QCOMPARE(bitsPerSample, 8);
+        QCOMPARE(channels, 4);
+        QCOMPARE(pixels.size(), rowStride * 2);
+        QCOMPARE(pixels.left(4), QByteArray("\x0a\x14\x1e\xff", 4));
     }
 
     void showAgainReplaces()
