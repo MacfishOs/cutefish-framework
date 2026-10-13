@@ -28,6 +28,7 @@
 
 #include <QDBusMessage>
 #include <QHash>
+#include <QJSValue>
 #include <QObject>
 #include <QUrl>
 #include <QVariantMap>
@@ -79,6 +80,10 @@ public Q_SLOTS:
     // The adapter, name and security of an access point in range: {device, name, security};
     // empty once it is gone.
     QVariantMap wirelessNetwork(const QString &accessPoint) const;
+    // Calls back with the access point NetworkManager lists for the network of
+    // `accessPoint`, at once or after a scan finds a remembered one again; never if the
+    // network is gone.
+    void whenScanned(const QString &accessPoint, const QJSValue &callback);
     void deactivateConnection(const QString &connection, const QString &device);
     void removeConnection(const QString &connection);
     void requestScan(const QString &interface = QString());
@@ -141,6 +146,8 @@ Q_SIGNALS:
     void hotspotFailed(const QString &message);
 
 private:
+    void withScannedAccessPoint(const QString &accessPoint, std::function<void(const QString &)> join);
+    void joinScanned();
     void addAndActivateWireless(const QString &device, const QString &specificObject,
                                 const QString &password, bool askForPassword);
     Enums::SecurityType accessPointSecurity(const QString &device, const QString &accessPoint) const;
@@ -171,6 +178,15 @@ private:
     QString m_hotspotActivation;
     // New profiles by the active connection of their first activation.
     QHash<QString, QString> m_forget;
+
+    struct PendingJoin {
+        QString accessPoint;
+        QString device;
+        QVariantMap properties;
+        std::function<void(const QString &)> join;
+    };
+    // Remembered networks clicked before a scan listed them again.
+    QList<PendingJoin> m_pendingJoins;
 };
 
 #endif // CUTEFISH_NETWORK_HANDLER_H

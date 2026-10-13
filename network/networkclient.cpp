@@ -8,9 +8,25 @@
 #include <QPointer>
 
 #include <pwd.h>
+#include <time.h>
 #include <unistd.h>
 
 using namespace NetworkDBus;
+
+// A scan sees its access points over a few seconds before LastScan, and NetworkManager
+// starts scans at least 8 s apart while connected.
+static constexpr qint64 kScanSpreadMs = 5000;
+// A scan drops the access points it missed as it ends; age drops them 250 s after one.
+static constexpr qint64 kAgedOutAfterMs = 60 * 1000;
+static constexpr int kMissedScansForgotten = 2;
+
+// LastScan and LastSeen count CLOCK_BOOTTIME, which runs on through suspend.
+static qint64 bootTimeMs()
+{
+    timespec now;
+    clock_gettime(CLOCK_BOOTTIME, &now);
+    return qint64(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
+}
 
 NetworkClient::NetworkClient(const QDBusConnection &bus, QObject *parent)
     : QObject(parent)
@@ -20,7 +36,10 @@ NetworkClient::NetworkClient(const QDBusConnection &bus, QObject *parent)
 
     m_changedTimer.setSingleShot(true);
     m_changedTimer.setInterval(0);
-    connect(&m_changedTimer, &QTimer::timeout, this, &NetworkClient::changed);
+    connect(&m_changedTimer, &QTimer::timeout, this, [this] {
+        pruneRemembered();
+        Q_EMIT changed();
+    });
 
     m_retryTimer.setSingleShot(true);
     m_retryTimer.setInterval(2000);
@@ -53,10 +72,20 @@ bool NetworkClient::has(const QString &path, const QString &interface) const
     return m_objects.value(path).contains(interface);
 }
 
+QVariantMap NetworkClient::properties(const QString &path, const QString &interface) const
+{
+    const auto object = m_objects.constFind(path);
+    if (object != m_objects.cend())
+        return object->value(interface);
+    if (interface == accessPointInterface)
+        return m_remembered.value(path).properties;
+    return {};
+}
+
 QVariant NetworkClient::property(const QString &path, const QString &interface,
                                  const QString &name) const
 {
-    return m_objects.value(path).value(interface).value(name);
+    return properties(path, interface).value(name);
 }
 
 QVariant NetworkClient::manager(const QString &name) const
@@ -96,6 +125,72 @@ QStringList NetworkClient::activeConnections() const
 QStringList NetworkClient::accessPoints(const QString &device) const
 {
     return property(device, wirelessInterface, QStringLiteral("AccessPoints")).toStringList();
+}
+
+QStringList NetworkClient::rememberedAccessPoints(const QString &device) const
+{
+    QStringList remembered;
+    for (auto it = m_remembered.cbegin(); it != m_remembered.cend(); ++it) {
+        if (it->device == device && listedAccessPoint(device, it->properties).isEmpty())
+            remembered << it.key();
+    }
+    remembered.sort();
+    return remembered;
+}
+
+bool NetworkClient::remembers(const QString &accessPoint) const
+{
+    return m_remembered.contains(accessPoint);
+}
+
+QString NetworkClient::accessPointDevice(const QString &accessPoint) const
+{
+    const auto remembered = m_remembered.constFind(accessPoint);
+    if (remembered != m_remembered.cend())
+        return remembered->device;
+    return has(accessPoint, accessPointInterface) ? m_accessPointDevices.value(accessPoint) : QString();
+}
+
+QString NetworkClient::scannedAccessPoint(const QString &accessPoint) const
+{
+    if (has(accessPoint, accessPointInterface))
+        return accessPoint;
+    const auto remembered = m_remembered.constFind(accessPoint);
+    if (remembered == m_remembered.cend())
+        return {};
+    return listedAccessPoint(remembered->device, remembered->properties);
+}
+
+QString NetworkClient::listedAccessPoint(const QString &device, const QVariantMap &accessPoint) const
+{
+    const auto value = [](const QVariantMap &properties, const char *name) {
+        return properties.value(QLatin1String(name));
+    };
+    const QString bssid = value(accessPoint, "HwAddress").toString();
+    const QByteArray ssid = value(accessPoint, "Ssid").toByteArray();
+
+    QString sameNetwork;
+    int strongest = -1;
+    for (const QString &path : accessPoints(device)) {
+        const auto object = m_objects.constFind(path);
+        if (object == m_objects.cend() || !object->contains(accessPointInterface))
+            continue;
+        const QVariantMap &listed = object->value(accessPointInterface);
+        if (!bssid.isEmpty() && value(listed, "HwAddress").toString().compare(bssid, Qt::CaseInsensitive) == 0)
+            return path;
+
+        const int strength = value(listed, "Strength").toInt();
+        if (ssid.isEmpty() || value(listed, "Ssid").toByteArray() != ssid || strength <= strongest)
+            continue;
+        bool sameSecurity = true;
+        for (const char *name : {"Mode", "Flags", "WpaFlags", "RsnFlags"})
+            sameSecurity = sameSecurity && value(listed, name).toUInt() == value(accessPoint, name).toUInt();
+        if (!sameSecurity)
+            continue;
+        sameNetwork = path;
+        strongest = strength;
+    }
+    return sameNetwork;
 }
 
 QStringList NetworkClient::connections() const
@@ -224,6 +319,8 @@ void NetworkClient::reset()
     m_settings.clear();
     m_settingsRequests.clear();
     m_permissions.clear();
+    m_accessPointDevices.clear();
+    m_remembered.clear();
 
     for (const QString &path : paths)
         Q_EMIT objectRemoved(path);
@@ -303,6 +400,8 @@ void NetworkClient::addInterfaces(const QString &path, const QVariantMap &interf
 
     if (interfaces.contains(connectionInterface))
         fetchSettings(path);
+    if (interfaces.contains(wirelessInterface))
+        noteAccessPoints(path);
 }
 
 void NetworkClient::interfacesAdded(const QDBusObjectPath &path, const NMVariantMapMap &interfaces)
@@ -327,6 +426,8 @@ void NetworkClient::interfacesRemoved(const QDBusObjectPath &path, const QString
     if (object == m_objects.end())
         return;
 
+    if (interfaces.contains(accessPointInterface))
+        rememberAccessPoint(objectPath, object->value(accessPointInterface));
     for (const QString &interface : interfaces)
         object->remove(interface);
 
@@ -357,6 +458,13 @@ void NetworkClient::propertiesChanged(const QString &interface, const QVariantMa
     QVariantMap &cached = (*object)[interface];
     for (auto it = properties.cbegin(); it != properties.cend(); ++it)
         cached.insert(it.key(), plain(it.value()));
+
+    if (interface == wirelessInterface) {
+        if (properties.contains(QStringLiteral("AccessPoints")))
+            noteAccessPoints(message.path());
+        if (properties.contains(QStringLiteral("LastScan")))
+            scanFinished(message.path());
+    }
     scheduleChanged();
 }
 
@@ -435,4 +543,55 @@ void NetworkClient::updateReady()
         return;
     m_ready = true;
     Q_EMIT readyChanged();
+}
+
+// NetworkManager drops every access point when Wi-Fi goes off, the device goes down or
+// asleep, or it starts a hotspot.
+bool NetworkClient::keepsAccessPoints(const QString &device) const
+{
+    return has(device, wirelessInterface) && manager(QStringLiteral("WirelessEnabled")).toBool()
+            && deviceState(device) >= DeviceDisconnected
+            && property(device, wirelessInterface, QStringLiteral("Mode")).toUInt() != ModeAp;
+}
+
+void NetworkClient::noteAccessPoints(const QString &device)
+{
+    for (const QString &accessPoint : accessPoints(device))
+        m_accessPointDevices.insert(accessPoint, device);
+}
+
+void NetworkClient::rememberAccessPoint(const QString &path, const QVariantMap &properties)
+{
+    const QString device = m_accessPointDevices.take(path);
+    if (device.isEmpty() || !keepsAccessPoints(device))
+        return;
+
+    // Seen by the last scan and gone long after it: it aged out rather than went away.
+    const qint64 lastScan = property(device, wirelessInterface, QStringLiteral("LastScan")).toLongLong();
+    const qint64 lastSeen = properties.value(QStringLiteral("LastSeen"), -1).toLongLong();
+    if (lastScan < 0 || lastSeen < 0 || lastSeen * 1000 < lastScan - kScanSpreadMs
+        || bootTimeMs() - lastScan < kAgedOutAfterMs)
+        return;
+    m_remembered.insert(path, {device, properties});
+}
+
+void NetworkClient::scanFinished(const QString &device)
+{
+    for (auto it = m_remembered.begin(); it != m_remembered.end();) {
+        if (it->device == device
+            && (!listedAccessPoint(device, it->properties).isEmpty() || ++it->missedScans >= kMissedScansForgotten))
+            it = m_remembered.erase(it);
+        else
+            ++it;
+    }
+}
+
+void NetworkClient::pruneRemembered()
+{
+    for (auto it = m_remembered.begin(); it != m_remembered.end();) {
+        if (keepsAccessPoints(it->device))
+            ++it;
+        else
+            it = m_remembered.erase(it);
+    }
 }

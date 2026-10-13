@@ -18,6 +18,8 @@
 
 #include <QtEndian>
 
+#include <time.h>
+
 using namespace Fixture;
 
 class NetworkClientTest : public QObject
@@ -98,6 +100,103 @@ private slots:
         QTRY_COMPARE(home.data(NetworkModel::SpecificPathRole).toString(), homeWeak);
         QVERIFY(home.isValid());
         QCOMPARE(home.data(NetworkModel::SignalRole).toInt(), 40);
+    }
+
+    void agedOutNetworkStaysUntilScansMissIt()
+    {
+        NetworkModel model;
+        QTRY_COMPARE(model.rowCount(), 5);
+        scannedAgo(300 * 1000);
+
+        dropAccessPoint(cafe);
+        QTRY_VERIFY(NetworkClient::instance()->remembers(cafe));
+        QTest::qWait(100);
+        QCOMPARE(row(model, QStringLiteral("Cafe")).data(NetworkModel::SpecificPathRole).toString(), cafe);
+        QCOMPARE(row(model, QStringLiteral("Cafe")).data(NetworkModel::SignalRole).toInt(), 50);
+
+        // NetworkManager drops an access point that two scans missed; so does the list.
+        scannedAgo(0);
+        QTest::qWait(100);
+        QVERIFY(row(model, QStringLiteral("Cafe")).isValid());
+        scannedAgo(0, 1);
+        QTRY_VERIFY(!row(model, QStringLiteral("Cafe")).isValid());
+        QVERIFY(!NetworkClient::instance()->remembers(cafe));
+    }
+
+    void networkAScanMissedGoesAtOnce()
+    {
+        NetworkModel model;
+        QTRY_COMPARE(model.rowCount(), 5);
+
+        scannedAgo(0);
+        dropAccessPoint(cafe);
+        QTRY_VERIFY(!row(model, QStringLiteral("Cafe")).isValid());
+
+        // Gone long after the last scan, which had already missed it.
+        scannedAgo(300 * 1000);
+        nm->set(office, FakeNM::accessPoint, QStringLiteral("LastSeen"), int(bootTimeMs() / 1000 - 400));
+        dropAccessPoint(office);
+        QTRY_VERIFY(!row(model, QStringLiteral("Office")).isValid());
+        QVERIFY(!NetworkClient::instance()->remembers(office));
+    }
+
+    void rememberedSavedNetworkKeepsItsProfile()
+    {
+        NetworkModel model;
+        QTRY_COMPARE(model.rowCount(), 5);
+        scannedAgo(300 * 1000);
+
+        dropAccessPoint(homeWeak);
+        dropAccessPoint(homeStrong);
+        nm->set(wifiDevice, FakeNM::device, QStringLiteral("AvailableConnections"), FakeNM::paths({}));
+        QTRY_VERIFY(NetworkClient::instance()->remembers(homeStrong));
+        QTRY_COMPARE(row(model, QStringLiteral("Home")).data(NetworkModel::SpecificPathRole).toString(), homeStrong);
+        QCOMPARE(row(model, QStringLiteral("Home")).data(NetworkModel::ConnectionPathRole).toString(), homeProfile);
+
+        // NetworkManager finds the profile's network itself.
+        Handler handler;
+        handler.activateConnection(homeProfile, wifiDevice, homeStrong);
+        QTRY_COMPARE(nm->count(QStringLiteral("ActivateConnection")), 1);
+        QCOMPARE(nm->last(QStringLiteral("ActivateConnection")).arguments().value(2).value<QDBusObjectPath>().path(),
+                 QStringLiteral("/"));
+    }
+
+    void rememberedNetworkIsJoinedOnceScanned()
+    {
+        Handler handler;
+        QTRY_VERIFY(NetworkClient::instance()->ready());
+        scannedAgo(300 * 1000);
+        const NMVariantMapMap cafeAgain {{FakeNM::accessPoint, nm->objects.value(cafe).value(FakeNM::accessPoint)}};
+        dropAccessPoint(cafe);
+        QTRY_VERIFY(NetworkClient::instance()->remembers(cafe));
+
+        handler.addAndActivateConnection(wifiDevice, cafe);
+        QTRY_COMPARE(nm->count(QStringLiteral("RequestScan")), 1);
+        QTest::qWait(100);
+        QCOMPARE(nm->count(QStringLiteral("AddAndActivateConnection")), 0);
+
+        const QString found = FakeNM::managerPath + QStringLiteral("/AccessPoint/7");
+        nm->add(found, cafeAgain);
+        nm->set(wifiDevice, FakeNM::wireless, QStringLiteral("AccessPoints"),
+                FakeNM::paths({homeStrong, homeWeak, hidden, library, office, found}));
+        scannedAgo(0);
+        QTRY_COMPARE(nm->count(QStringLiteral("AddAndActivateConnection")), 1);
+        QCOMPARE(nm->last(QStringLiteral("AddAndActivateConnection")).arguments().value(2).value<QDBusObjectPath>().path(),
+                 found);
+        QVERIFY(!NetworkClient::instance()->remembers(cafe));
+    }
+
+    void wifiOffForgetsRememberedNetworks()
+    {
+        NetworkModel model;
+        QTRY_COMPARE(model.rowCount(), 5);
+        scannedAgo(300 * 1000);
+        dropAccessPoint(cafe);
+        QTRY_VERIFY(NetworkClient::instance()->remembers(cafe));
+
+        nm->set(FakeNM::managerPath, FakeNM::manager, QStringLiteral("WirelessEnabled"), false);
+        QTRY_VERIFY(!NetworkClient::instance()->remembers(cafe));
+        QTRY_VERIFY(!row(model, QStringLiteral("Cafe")).isValid());
     }
 
     void unreadableProfileStillShowsItsNetworkInUse()
@@ -810,6 +909,33 @@ private:
                 return index;
         }
         return {};
+    }
+
+    static qint64 bootTimeMs()
+    {
+        timespec now;
+        clock_gettime(CLOCK_BOOTTIME, &now);
+        return qint64(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
+    }
+
+    // The device's last scan ended `ago` ms back and saw every access point it lists.
+    void scannedAgo(qint64 ago, qint64 offset = 0)
+    {
+        const qint64 lastScan = bootTimeMs() - ago + offset;
+        for (const QString &accessPoint : NetworkClient::instance()->accessPoints(wifiDevice))
+            nm->set(accessPoint, FakeNM::accessPoint, QStringLiteral("LastSeen"), int(lastScan / 1000));
+        nm->set(wifiDevice, FakeNM::wireless, QStringLiteral("LastScan"), lastScan);
+        QTRY_COMPARE(NetworkClient::instance()->property(wifiDevice, FakeNM::wireless, QStringLiteral("LastScan")).toLongLong(),
+                     lastScan);
+    }
+
+    void dropAccessPoint(const QString &accessPoint)
+    {
+        QStringList listed = NetworkClient::instance()->accessPoints(wifiDevice);
+        listed.removeAll(accessPoint);
+        nm->set(wifiDevice, FakeNM::wireless, QStringLiteral("AccessPoints"), FakeNM::paths(listed));
+        nm->remove(accessPoint);
+        QTRY_VERIFY(!NetworkClient::instance()->has(accessPoint, FakeNM::accessPoint));
     }
 
     static QString otherActive()

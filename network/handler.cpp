@@ -101,8 +101,11 @@ Handler::Handler(QObject *parent)
 void Handler::activateConnection(const QString &connection, const QString &device,
                                  const QString &specificObject)
 {
+    // Without an access point NetworkManager waits for a scan to find the profile's network.
+    const QString accessPoint = m_client->remembers(specificObject) ? m_client->scannedAccessPoint(specificObject)
+                                                                    : specificObject;
     m_client->call(managerPath, managerInterface, QStringLiteral("ActivateConnection"),
-                   {objectPath(connection), objectPath(device), objectPath(specificObject)}, this,
+                   {objectPath(connection), objectPath(device), objectPath(accessPoint)}, this,
                    {}, kAuthorizedCallTimeoutMs);
 }
 
@@ -115,6 +118,13 @@ void Handler::addAndActivateConnection(const QString &device, const QString &spe
 void Handler::addAndActivateWireless(const QString &device, const QString &specificObject,
                                      const QString &password, bool askForPassword)
 {
+    // A profile added without an access point is saved as a hidden network.
+    if (m_client->remembers(specificObject)) {
+        withScannedAccessPoint(specificObject, [this, device, password, askForPassword](const QString &accessPoint) {
+            addAndActivateWireless(device, accessPoint, password, askForPassword);
+        });
+        return;
+    }
     if (!m_client->has(specificObject, accessPointInterface))
         return;
 
@@ -181,6 +191,12 @@ void Handler::addAndActivateWireless(const QString &device, const QString &speci
 void Handler::addAndActivateEnterprise(const QString &device, const QString &specificObject,
                                        const QString &userName, const QString &password)
 {
+    if (m_client->remembers(specificObject)) {
+        withScannedAccessPoint(specificObject, [this, device, userName, password](const QString &accessPoint) {
+            addAndActivateEnterprise(device, accessPoint, userName, password);
+        });
+        return;
+    }
     if (!m_client->has(specificObject, accessPointInterface))
         return;
 
@@ -208,18 +224,52 @@ void Handler::addAndActivateEnterprise(const QString &device, const QString &spe
 
 QVariantMap Handler::wirelessNetwork(const QString &accessPoint) const
 {
-    if (!m_client->has(accessPoint, accessPointInterface))
+    const QString device = m_client->accessPointDevice(accessPoint);
+    if (device.isEmpty())
         return {};
+    return {{QStringLiteral("device"), device},
+            {QStringLiteral("name"),
+             WifiUtils::ssidLabel(m_client->property(accessPoint, accessPointInterface, QStringLiteral("Ssid")).toByteArray())},
+            {QStringLiteral("security"), int(accessPointSecurity(device, accessPoint))}};
+}
 
-    for (const QString &device : m_client->devices()) {
-        if (m_client->deviceType(device) != DeviceWifi || !m_client->accessPoints(device).contains(accessPoint))
-            continue;
-        return {{QStringLiteral("device"), device},
-                {QStringLiteral("name"),
-                 WifiUtils::ssidLabel(m_client->property(accessPoint, accessPointInterface, QStringLiteral("Ssid")).toByteArray())},
-                {QStringLiteral("security"), int(accessPointSecurity(device, accessPoint))}};
+void Handler::whenScanned(const QString &accessPoint, const QJSValue &callback)
+{
+    withScannedAccessPoint(accessPoint, [callback](const QString &scanned) {
+        QJSValue(callback).call({scanned});
+    });
+}
+
+void Handler::withScannedAccessPoint(const QString &accessPoint, std::function<void(const QString &)> join)
+{
+    const QString scanned = m_client->scannedAccessPoint(accessPoint);
+    if (!scanned.isEmpty()) {
+        join(scanned);
+        return;
     }
-    return {};
+    if (!m_client->remembers(accessPoint))
+        return;
+
+    // The device and properties outlive the remembered access point, which goes as soon as
+    // a scan lists its network again.
+    m_pendingJoins.append({accessPoint, m_client->accessPointDevice(accessPoint),
+                           m_client->properties(accessPoint, accessPointInterface), std::move(join)});
+    requestScan(m_client->property(m_pendingJoins.last().device, deviceInterface, QStringLiteral("Interface")).toString());
+}
+
+void Handler::joinScanned()
+{
+    for (int i = 0; i < m_pendingJoins.size();) {
+        const PendingJoin &pending = m_pendingJoins.at(i);
+        const QString scanned = m_client->listedAccessPoint(pending.device, pending.properties);
+        if (scanned.isEmpty() && m_client->remembers(pending.accessPoint)) {
+            ++i;
+            continue;
+        }
+        const PendingJoin joined = m_pendingJoins.takeAt(i);
+        if (!scanned.isEmpty())
+            joined.join(scanned);
+    }
 }
 
 Enums::SecurityType Handler::accessPointSecurity(const QString &device, const QString &accessPoint) const
@@ -948,6 +998,8 @@ QString Handler::hotspotDevice(uint *capabilities) const
 
 void Handler::update()
 {
+    joinScanned();
+
     const QString device = hotspotDevice();
     const bool capable = !device.isEmpty();
 

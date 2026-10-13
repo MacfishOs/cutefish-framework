@@ -33,6 +33,7 @@ public:
     bool ready() const { return m_ready; }
 
     bool has(const QString &path, const QString &interface) const;
+    QVariantMap properties(const QString &path, const QString &interface) const;
     QVariant property(const QString &path, const QString &interface, const QString &name) const;
     QVariant manager(const QString &name) const;
 
@@ -42,6 +43,18 @@ public:
     QString activeConnection(const QString &device) const;
     QStringList activeConnections() const;
     QStringList accessPoints(const QString &device) const;
+    // Access points the device no longer lists only because nothing scanned for a while;
+    // their properties stay readable through property().
+    QStringList rememberedAccessPoints(const QString &device) const;
+    bool remembers(const QString &accessPoint) const;
+    // The Wi-Fi device that lists the access point, or listed a remembered one.
+    QString accessPointDevice(const QString &accessPoint) const;
+    // `accessPoint` if NetworkManager lists it; for a remembered one, the same network's
+    // access point once a scan lists it again, empty until then.
+    QString scannedAccessPoint(const QString &accessPoint) const;
+    // What `device` lists for the access point with these properties: the same BSSID, else
+    // the strongest with the same name and security.
+    QString listedAccessPoint(const QString &device, const QVariantMap &accessPoint) const;
 
     // The profiles this user may read.
     QStringList connections() const;
@@ -94,6 +107,11 @@ private:
     void fetchSettings(const QString &path);
     void scheduleChanged();
     void updateReady();
+    bool keepsAccessPoints(const QString &device) const;
+    void noteAccessPoints(const QString &device);
+    void rememberAccessPoint(const QString &path, const QVariantMap &properties);
+    void scanFinished(const QString &device);
+    void pruneRemembered();
 
     QDBusConnection m_bus;
     QString m_owner;
@@ -108,6 +126,17 @@ private:
     quint64 m_permissionsRequest = 0;
     quint64 m_nextRequest = 0;
     QMap<QString, QString> m_permissions;
+    QHash<QString, QString> m_accessPointDevices;
+
+    struct RememberedAccessPoint {
+        QString device;
+        QVariantMap properties;
+        int missedScans = 0;
+    };
+    // wpa_supplicant drops an access point 250 s after a scan last saw it, and while
+    // connected NetworkManager hardly scans, so a list would open with only the network in
+    // use. These stay until two later scans miss them, as NetworkManager drops its own.
+    QHash<QString, RememberedAccessPoint> m_remembered;
     QTimer m_changedTimer;
     QTimer m_retryTimer;
 };

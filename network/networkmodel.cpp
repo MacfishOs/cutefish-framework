@@ -118,6 +118,27 @@ static QStringList profilesFor(const NetworkClient *client, const QString &devic
     return profiles;
 }
 
+// A Wi-Fi profile NetworkManager would use on the device once it lists the network.
+static QStringList laterProfilesFor(const NetworkClient *client, const QString &device, const QStringList &offered)
+{
+    const QString interface = client->property(device, deviceInterface, QStringLiteral("Interface")).toString();
+    const QString hwAddress = client->property(device, deviceInterface, QStringLiteral("HwAddress")).toString();
+
+    QStringList profiles;
+    for (const QString &profile : client->connections()) {
+        if (offered.contains(profile) || isPort(client, profile)
+            || client->setting(profile, connectionSetting, QStringLiteral("type")).toString() != wirelessSetting)
+            continue;
+        const QString boundInterface = client->setting(profile, connectionSetting, QStringLiteral("interface-name")).toString();
+        const QByteArray boundAddress = client->setting(profile, wirelessSetting, QStringLiteral("mac-address")).toByteArray();
+        if ((!boundInterface.isEmpty() && boundInterface != interface)
+            || (!boundAddress.isEmpty() && QString::fromLatin1(boundAddress.toHex(':')).compare(hwAddress, Qt::CaseInsensitive) != 0))
+            continue;
+        profiles << profile;
+    }
+    return profiles;
+}
+
 static QString firstAddress(const QVariantList &addressData, bool skipLinkLocal)
 {
     QString fallback;
@@ -385,6 +406,8 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
         int strength = -1;
         QString profile;
         QDateTime timestamp;
+        // NetworkManager lists one of its access points, rather than only remembering one.
+        bool listed = false;
     };
 
     const auto ap = [this](const QString &path, const char *name) {
@@ -402,7 +425,11 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
 
     QList<Network> networks;
     int activeNetwork = -1;
-    for (const QString &path : m_client->accessPoints(device)) {
+    const QStringList listed = m_client->accessPoints(device);
+    const QStringList accessPoints = listed + m_client->rememberedAccessPoints(device);
+    for (int i = 0; i < accessPoints.size(); ++i) {
+        const QString &path = accessPoints.at(i);
+        const bool remembered = i >= listed.size();
         const QByteArray ssid = WifiUtils::ssidKey(ap(path, "Ssid").toByteArray());
         const uint rsn = ap(path, "RsnFlags").toUInt();
         // Hidden networks have no name to show; our own hotspot shows up as an access point
@@ -431,20 +458,25 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
             index = networks.size() - 1;
         }
 
-        // The access point in use stands for its network; otherwise the strongest does.
+        // The access point in use stands for its network; otherwise the strongest listed one
+        // does, and a remembered one only while none is listed.
         Network &network = networks[index];
         if (path == activeAp) {
             activeNetwork = index;
-        } else if (activeNetwork == index || strength <= network.strength) {
+        } else if (activeNetwork == index || (remembered && network.listed) || strength <= network.strength) {
             continue;
         }
         network.accessPoint = path;
         network.strength = strength;
         network.security = security;
+        network.listed = !remembered;
     }
 
     bool activeUnlisted = false;
-    for (const QString &profile : profilesFor(m_client, device, wirelessSetting)) {
+    const QStringList offered = profilesFor(m_client, device, wirelessSetting);
+    // NetworkManager offers no profile for a network it no longer lists.
+    const QStringList profiles = offered + laterProfilesFor(m_client, device, offered);
+    for (const QString &profile : profiles) {
         const QString mode = m_client->setting(profile, wirelessSetting, QStringLiteral("mode")).toString();
         if (!mode.isEmpty() && mode != QLatin1String("infrastructure"))
             continue;
@@ -452,11 +484,12 @@ void NetworkModel::addWireless(const QString &device, QList<Item> &items) const
         const QByteArray ssid = WifiUtils::ssidKey(m_client->setting(profile, wirelessSetting, QStringLiteral("ssid")).toByteArray());
         const SecurityClass securityClass = profileClass(m_client, profile);
         const bool isActive = profile == activeProfile;
+        const bool isOffered = offered.contains(profile);
 
         int index = isActive ? activeNetwork : -1;
         int sameName = -1;
         for (int i = 0; index < 0 && i < networks.size(); ++i) {
-            if (networks.at(i).ssid != ssid)
+            if (networks.at(i).ssid != ssid || (!isOffered && networks.at(i).listed))
                 continue;
             if (networks.at(i).securityClass == securityClass)
                 index = i;
