@@ -3,6 +3,7 @@
 
 #include "user_interface.h"
 
+#include <QtCore/QHash>
 #include <QtCore/QVariantMap>
 
 namespace QtAccountsService {
@@ -19,7 +20,8 @@ public:
     QVariantMap values;
     // Values set but not yet confirmed; a GetAll answered meanwhile still has the old ones.
     QVariantMap pendingValues;
-    int pendingSets = 0;
+    // Calls still in flight per property in pendingValues.
+    QHash<QString, int> pendingCalls;
     quint64 refreshSerial = 0;
 };
 

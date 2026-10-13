@@ -113,8 +113,8 @@ private:
     void setObjectPath(const QString &path);
     void notifyAll();
     void refresh();
-    void watch(const QDBusPendingCall &call, void (UserAccount::*notify)() = nullptr,
-               bool displayName = false);
+    void watch(const QDBusPendingCall &call, const char *property = nullptr,
+               void (UserAccount::*notify)() = nullptr, bool displayName = false);
     void notePendingChange(const char *property, const QVariant &value,
                            void (UserAccount::*notify)(), bool displayName = false);
     void applyValues(const QVariantMap &reply);

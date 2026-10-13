@@ -47,6 +47,7 @@ void UserAccount::setObjectPath(const QString &path)
     d_ptr->objectPath = path;
     d_ptr->values.clear();
     d_ptr->pendingValues.clear();
+    d_ptr->pendingCalls.clear();
     d_ptr->values.insert(QStringLiteral("Uid"), path.mid(userPathPrefix.size()).toLongLong());
     d_ptr->service = new OrgFreedesktopAccountsUserInterface(serviceName, path,
                                                               d_ptr->bus, this);
@@ -156,17 +157,23 @@ void UserAccount::applyValues(const QVariantMap &reply)
         Q_EMIT accountChanged();
 }
 
-void UserAccount::watch(const QDBusPendingCall &call, void (UserAccount::*notify)(),
-                        bool displayName)
+void UserAccount::watch(const QDBusPendingCall &call, const char *property,
+                        void (UserAccount::*notify)(), bool displayName)
 {
-    ++d_ptr->pendingSets;
+    const QString key = property ? QString::fromLatin1(property) : QString();
+    if (property)
+        ++d_ptr->pendingCalls[key];
     auto *watcher = new QDBusPendingCallWatcher(call, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, notify, displayName](QDBusPendingCallWatcher *finished) {
+            [this, key, notify, displayName](QDBusPendingCallWatcher *finished) {
                 QDBusPendingReply<> reply = *finished;
                 finished->deleteLater();
-                if (--d_ptr->pendingSets == 0)
-                    d_ptr->pendingValues.clear();
+                // Only this property's value goes: another one still in flight keeps its own.
+                const auto calls = d_ptr->pendingCalls.find(key);
+                if (calls != d_ptr->pendingCalls.end() && --*calls == 0) {
+                    d_ptr->pendingCalls.erase(calls);
+                    d_ptr->pendingValues.remove(key);
+                }
                 if (reply.isError()) {
                     qWarning("AccountsService update failed: %s",
                              reply.error().message().toUtf8().constData());
@@ -231,7 +238,8 @@ void UserAccount::setAccountType(AccountType type)
 {
     if (accountType() == type)
         return;
-    watch(d_ptr->service->SetAccountType(static_cast<int>(type)), &UserAccount::accountTypeChanged);
+    watch(d_ptr->service->SetAccountType(static_cast<int>(type)), "AccountType",
+          &UserAccount::accountTypeChanged);
     notePendingChange("AccountType", static_cast<int>(type), &UserAccount::accountTypeChanged);
 }
 
@@ -244,7 +252,7 @@ void UserAccount::setLocked(bool locked)
 {
     if (isLocked() == locked)
         return;
-    watch(d_ptr->service->SetLocked(locked), &UserAccount::lockedChanged);
+    watch(d_ptr->service->SetLocked(locked), "Locked", &UserAccount::lockedChanged);
     notePendingChange("Locked", locked, &UserAccount::lockedChanged);
 }
 
@@ -257,7 +265,8 @@ void UserAccount::setAutomaticLogin(bool enabled)
 {
     if (automaticLogin() == enabled)
         return;
-    watch(d_ptr->service->SetAutomaticLogin(enabled), &UserAccount::automaticLoginChanged);
+    watch(d_ptr->service->SetAutomaticLogin(enabled), "AutomaticLogin",
+          &UserAccount::automaticLoginChanged);
     notePendingChange("AutomaticLogin", enabled, &UserAccount::automaticLoginChanged);
 }
 
@@ -280,7 +289,7 @@ void UserAccount::setPasswordMode(PasswordMode mode)
 {
     if (passwordMode() == mode)
         return;
-    watch(d_ptr->service->SetPasswordMode(static_cast<int>(mode)),
+    watch(d_ptr->service->SetPasswordMode(static_cast<int>(mode)), "PasswordMode",
           &UserAccount::passwordModeChanged);
     notePendingChange("PasswordMode", static_cast<int>(mode), &UserAccount::passwordModeChanged);
 }
@@ -309,7 +318,7 @@ void UserAccount::setUserName(const QString &name)
 {
     if (userName() == name)
         return;
-    watch(d_ptr->service->SetUserName(name), &UserAccount::userNameChanged, true);
+    watch(d_ptr->service->SetUserName(name), "UserName", &UserAccount::userNameChanged, true);
     notePendingChange("UserName", name, &UserAccount::userNameChanged, true);
 }
 
@@ -322,7 +331,7 @@ void UserAccount::setRealName(const QString &name)
 {
     if (realName() == name)
         return;
-    watch(d_ptr->service->SetRealName(name), &UserAccount::realNameChanged, true);
+    watch(d_ptr->service->SetRealName(name), "RealName", &UserAccount::realNameChanged, true);
     notePendingChange("RealName", name, &UserAccount::realNameChanged, true);
 }
 
@@ -341,7 +350,8 @@ void UserAccount::setHomeDirectory(const QString &path)
 {
     if (homeDirectory() == path)
         return;
-    watch(d_ptr->service->SetHomeDirectory(path), &UserAccount::homeDirectoryChanged);
+    watch(d_ptr->service->SetHomeDirectory(path), "HomeDirectory",
+          &UserAccount::homeDirectoryChanged);
     notePendingChange("HomeDirectory", path, &UserAccount::homeDirectoryChanged);
 }
 
@@ -354,7 +364,7 @@ void UserAccount::setShell(const QString &path)
 {
     if (shell() == path)
         return;
-    watch(d_ptr->service->SetShell(path), &UserAccount::shellChanged);
+    watch(d_ptr->service->SetShell(path), "Shell", &UserAccount::shellChanged);
     notePendingChange("Shell", path, &UserAccount::shellChanged);
 }
 
@@ -368,7 +378,7 @@ void UserAccount::setIconFileName(const QString &path)
 {
     if (iconFileName() == path)
         return;
-    watch(d_ptr->service->SetIconFile(path), &UserAccount::iconFileNameChanged);
+    watch(d_ptr->service->SetIconFile(path), "IconFile", &UserAccount::iconFileNameChanged);
     notePendingChange("IconFile", path, &UserAccount::iconFileNameChanged);
 }
 
@@ -381,7 +391,7 @@ void UserAccount::setEmail(const QString &address)
 {
     if (email() == address)
         return;
-    watch(d_ptr->service->SetEmail(address), &UserAccount::emailChanged);
+    watch(d_ptr->service->SetEmail(address), "Email", &UserAccount::emailChanged);
     notePendingChange("Email", address, &UserAccount::emailChanged);
 }
 
@@ -394,7 +404,7 @@ void UserAccount::setLanguage(const QString &locale)
 {
     if (language() == locale)
         return;
-    watch(d_ptr->service->SetLanguage(locale), &UserAccount::languageChanged);
+    watch(d_ptr->service->SetLanguage(locale), "Language", &UserAccount::languageChanged);
     notePendingChange("Language", locale, &UserAccount::languageChanged);
 }
 
@@ -407,7 +417,7 @@ void UserAccount::setLocation(const QString &place)
 {
     if (location() == place)
         return;
-    watch(d_ptr->service->SetLocation(place), &UserAccount::locationChanged);
+    watch(d_ptr->service->SetLocation(place), "Location", &UserAccount::locationChanged);
     notePendingChange("Location", place, &UserAccount::locationChanged);
 }
 
@@ -420,7 +430,7 @@ void UserAccount::setXSession(const QString &session)
 {
     if (xsession() == session)
         return;
-    watch(d_ptr->service->SetXSession(session), &UserAccount::xsessionChanged);
+    watch(d_ptr->service->SetXSession(session), "XSession", &UserAccount::xsessionChanged);
     notePendingChange("XSession", session, &UserAccount::xsessionChanged);
 }
 

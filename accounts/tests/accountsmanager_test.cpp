@@ -28,6 +28,7 @@ class TestUserAdaptor : public QDBusAbstractAdaptor
     Q_PROPERTY(QString RealName READ realName)
     Q_PROPERTY(qulonglong Uid READ uid)
     Q_PROPERTY(QString Email READ email)
+    Q_PROPERTY(QString Language READ language)
 
 public:
     TestUserAdaptor(QObject *parent, const QString &name, qulonglong uid)
@@ -41,6 +42,7 @@ public:
     QString realName() const { return m_realName; }
     qulonglong uid() const { return m_uid; }
     QString email() const { return m_email; }
+    QString language() const { return QStringLiteral("en_US.UTF-8"); }
 
 public Q_SLOTS:
     void SetUserName(const QString &name)
@@ -71,6 +73,13 @@ public Q_SLOTS:
             QDBusConnection::sessionBus().send(message.createReply());
             Q_EMIT Changed();
         });
+    }
+
+    // Refused, as when polkit denies it.
+    void SetLanguage(const QString &, const QDBusMessage &message)
+    {
+        QDBusConnection::sessionBus().send(
+                message.createErrorReply(QDBusError::AccessDenied, QStringLiteral("denied")));
     }
 
 Q_SIGNALS:
@@ -414,6 +423,23 @@ private Q_SLOTS:
         }
         QTest::qWait(400);
         QCOMPARE(account->email(), QStringLiteral("carol@example.org"));
+    }
+
+    void aRefusedChangeRevertsWhileAnotherIsPending()
+    {
+        AccountsManager manager(QDBusConnection::sessionBus());
+        QSignalSpy cached(&manager, &AccountsManager::userCached);
+        manager.cacheUser(QStringLiteral("carol"));
+        QTRY_COMPARE(cached.size(), 1);
+        UserAccount *account = manager.cachedUser(QStringLiteral("carol"));
+        QVERIFY(account);
+        QTRY_COMPARE(account->userName(), QStringLiteral("carol"));
+
+        account->setEmail(QStringLiteral("carol@example.net"));
+        account->setLanguage(QStringLiteral("fr_FR.UTF-8"));
+        QTRY_COMPARE_WITH_TIMEOUT(account->language(), QStringLiteral("en_US.UTF-8"), 200);
+        QCOMPARE(account->email(), QStringLiteral("carol@example.net"));
+        QTRY_COMPARE(account->email(), QStringLiteral("carol@example.net"));
     }
 
     void synchronousQueriesAndCreateDelete()
