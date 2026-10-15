@@ -21,6 +21,13 @@ include(CTest)
 include(GenerateExportHeader)
 include(CMakePackageConfigHelpers)
 
+# The Qt-free clients alone, without Qt: for scratch builds that need only them.
+option(CUTEFISH_FRAMEWORK_CLIENTS_ONLY "Build only the Qt-free clients under clients/" OFF)
+if(CUTEFISH_FRAMEWORK_CLIENTS_ONLY)
+    add_subdirectory(clients)
+    return()
+endif()
+
 find_package(Qt6 REQUIRED COMPONENTS
     Core
     Qml
@@ -56,6 +63,7 @@ add_subdirectory(appearance)
 add_subdirectory(audio)
 add_subdirectory(privacy)
 add_subdirectory(scrolling)
+add_subdirectory(clients)
 
 # One package for the libraries other Cutefish projects link against; each
 # library installs its own targets file next to it.

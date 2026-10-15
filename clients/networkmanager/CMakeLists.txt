@@ -1,0 +1,35 @@
+cutefish_add_client(networkmanager TARGET NetworkManagerClient
+    SOURCES
+        client.cpp
+        connections.cpp
+        handler.cpp
+        hotspot.cpp
+        inet.cpp
+        inet.h
+        iputils.cpp
+        networkmodel.cpp
+        secretreader.cpp
+        text.cpp
+        text.h
+        variants.cpp
+        vpnschema.cpp
+        vpnutils.cpp
+        wifiutils.cpp
+    HEADERS
+        client.h
+        connections.h
+        handler.h
+        hotspot.h
+        iputils.h
+        networkmodel.h
+        secretreader.h
+        types.h
+        variants.h
+        vpnschema.h
+        vpnutils.h
+        wifiutils.h
+)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
