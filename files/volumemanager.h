@@ -1,0 +1,95 @@
+// SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#pragma once
+
+#include <cstdint>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "base/dbus.h"
+#include "base/signal.h"
+#include "base/weak_ptr.h"
+
+namespace cutefish::files {
+
+struct Volume
+{
+    // The block device's UDisks2 object path.
+    std::string id;
+    std::string drive;
+    std::string device;
+    std::string name;
+    std::string icon;
+    std::vector<std::string> mountPoints;
+    uint64_t size = 0;
+    bool filesystem = false;
+    bool optical = false;
+    bool removable = false;
+    bool ejectable = false;
+    bool canPowerOff = false;
+
+    bool operator==(const Volume&) const = default;
+};
+
+// UDisks2's block devices, kept up to date from its signals, and mounting,
+// unmounting and ejecting them. Calls never block.
+class VolumeManager
+{
+public:
+    explicit VolumeManager(base::dbus::Connection* bus = base::dbus::Connection::system());
+    ~VolumeManager();
+
+    VolumeManager(const VolumeManager&) = delete;
+    VolumeManager& operator=(const VolumeManager&) = delete;
+
+    std::vector<Volume> volumes() const;
+    // An empty volume for an unknown id.
+    Volume volume(const std::string& id) const;
+
+    void mount(const std::string& id);
+    void unmount(const std::string& id);
+    // Unmounts every volume of the drive, then ejects it, or powers it off when
+    // it cannot be ejected.
+    void eject(const std::string& id);
+
+    base::Signal<const std::string&> volumeAdded;
+    base::Signal<const std::string&> volumeRemoved;
+    base::Signal<const std::string&> volumeChanged;
+    // id, "mount", "unmount" or "eject", and the mount point a mount chose.
+    base::Signal<const std::string&, const std::string&, const std::string&> operationFinished;
+    base::Signal<const std::string&, const std::string&, const std::string&> operationFailed;
+    base::Signal<const std::string&> errorOccurred;
+
+    using Interfaces = std::map<std::string, base::dbus::VariantMap>;
+    using Objects = std::map<base::dbus::ObjectPath, Interfaces>;
+
+private:
+    void refresh();
+    void rebuild();
+    void call(const std::string& id, const std::string& operation, const std::string& path,
+              const std::string& interface, const std::string& method);
+    void perform(const std::string& id, const std::string& operation, const std::string& path,
+                 const std::string& interface, const std::string& method, std::vector<std::string> unmounts,
+                 uint64_t generation);
+    // Drops a finished call's slot once its callback has returned.
+    void release(uint64_t call);
+
+    base::dbus::Connection* m_bus;
+    Objects m_objects;
+    std::map<std::string, Volume> m_volumes;
+    std::set<std::string> m_pending;
+    bool m_refreshing = false;
+    bool m_refreshAgain = false;
+    bool m_ownerKnown = false;
+    uint64_t m_generation = 0;
+    uint64_t m_nextCall = 1;
+    std::map<uint64_t, base::dbus::PendingCall> m_calls;
+    std::vector<base::dbus::Match> m_matches;
+    base::dbus::NameWatch m_ownerWatch;
+    base::WeakPtrFactory<VolumeManager> m_weakFactory{this};
+};
+
+} // namespace cutefish::files

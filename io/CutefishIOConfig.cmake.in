@@ -1,4 +1,0 @@
-@PACKAGE_INIT@
-include(CMakeFindDependencyMacro)
-find_dependency(Qt6 COMPONENTS Core DBus Gui Quick)
-include("${CMAKE_CURRENT_LIST_DIR}/CutefishIOTargets.cmake")
