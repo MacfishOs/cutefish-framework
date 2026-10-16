@@ -86,18 +86,16 @@ struct PhysicalDisplay
     std::vector<std::string> pathTopology;
     std::string make;
     std::string model;
-    std::string serialNumber;
     int physicalWidthMm = 0;
     int physicalHeightMm = 0;
     uint32_t connectionType = 0;
-    uint32_t panelOrientation = 0;
     uint32_t capabilities = 0;
     uint32_t recommendedScale120 = 120;
     std::vector<Mode> modes;
 
     auto tie() { return std::tie(sessionId, persistentKey, portKey, edidKey, connectorName, devicePath,
-                                 baseConnectorKey, pathTopology, make, model, serialNumber, physicalWidthMm,
-                                 physicalHeightMm, connectionType, panelOrientation, capabilities,
+                                 baseConnectorKey, pathTopology, make, model, physicalWidthMm,
+                                 physicalHeightMm, connectionType, capabilities,
                                  recommendedScale120, modes); }
 };
 
