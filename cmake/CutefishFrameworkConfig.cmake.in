@@ -1,12 +1,11 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
-find_dependency(Qt6 COMPONENTS Core Gui DBus Qml)
 
-# Without COMPONENTS only Application and Appearance are imported.
+# Without COMPONENTS, Protocols is imported.
 set(_cutefish_framework_components ${CutefishFramework_FIND_COMPONENTS})
 if(NOT _cutefish_framework_components)
-    set(_cutefish_framework_components Application Appearance)
+    set(_cutefish_framework_components Protocols)
 endif()
 
 foreach(_component IN LISTS _cutefish_framework_components)
@@ -14,17 +13,6 @@ foreach(_component IN LISTS _cutefish_framework_components)
         # The bindings' headers include wayland-client.h.
         find_dependency(PkgConfig)
         pkg_check_modules(WaylandClient REQUIRED IMPORTED_TARGET wayland-client)
-    elseif(_component STREQUAL "ScrollingQuick")
-        find_dependency(Qt6 COMPONENTS Quick)
-    elseif(_component STREQUAL "ScrollingWidgets")
-        find_dependency(Qt6 COMPONENTS Widgets)
-    endif()
-    # Both scrolling adapters link the shared physics.
-    if(_component MATCHES "^Scrolling.+" AND NOT TARGET Cutefish::Scrolling)
-        include("${CMAKE_CURRENT_LIST_DIR}/CutefishFrameworkScrollingTargets.cmake")
-    endif()
-    if(_component STREQUAL "Application")
-        include("${CMAKE_CURRENT_LIST_DIR}/CutefishApplication.cmake")
     endif()
     set(_targets "${CMAKE_CURRENT_LIST_DIR}/CutefishFramework${_component}Targets.cmake")
     if(EXISTS "${_targets}")

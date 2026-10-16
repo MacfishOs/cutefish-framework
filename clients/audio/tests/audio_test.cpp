@@ -145,6 +145,9 @@ protected:
         ::unsetenv("PIPEWIRE_CONFIG_NAME");
         ::unsetenv("PIPEWIRE_CONFIG_DIR");
         ::unsetenv("WIREPLUMBER_CONFIG_DIR");
+        const std::filesystem::path fragments = runtime + "/config/wireplumber/wireplumber.conf.d";
+        std::filesystem::create_directories(fragments);
+        std::filesystem::copy_file(WIREPLUMBER_TEST_CONFIG, fragments / "50-cutefish-test.conf");
         loop = new EventLoop;
         backend = Backend::shared();
         wait(*loop, 50ms);
