@@ -210,6 +210,9 @@ TEST_F(ThumbnailersTest, SkipsMissingPrograms)
 TEST_F(ThumbnailersTest, PicksUpNewThumbnailers)
 {
     EXPECT_FALSE(ThumbnailCache::self()->canThumbnail("text/markdown"));
+    // Directory times tick every few milliseconds; a file added in the same
+    // tick as the scan would leave the directory's time unchanged.
+    std::this_thread::sleep_for(20ms);
     installThumbnailer("markdown.thumbnailer", "Exec=true %i %o\nMimeType=text/markdown;\n");
 
     bool found = false;
