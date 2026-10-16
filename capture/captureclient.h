@@ -60,7 +60,7 @@ public:
     const Output *outputNamed(const QString &name) const;
 
     //! The ext_foreign_toplevel_handle_v1 identifier the compositor gives the
-    //! window with this cutefish_window_management_v1 id.
+    //! window with this compositor window id.
     static QString windowIdentifier(quint64 windowId);
 
     //! New sources, owned by the caller; null when there is nothing to capture.

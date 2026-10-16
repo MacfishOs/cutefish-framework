@@ -14,12 +14,10 @@ static const char *kPath = "/AppRuntime";
 
 // The environment an ordinary application must be started in.
 //
-// cutefish-shell runs on a privileged Wayland connection it inherited as
-// WAYLAND_SOCKET. That connection is the shell's proof of identity, so nothing
-// it launches may inherit it: an application that did would be handed the
-// private cutefish_shell_v1 and cutefish_window_management_v1 globals. The fd
-// itself is close-on-exec, but the variable naming it has to go as well, so
-// children fall back to the public WAYLAND_DISPLAY the session also set.
+// A WAYLAND_SOCKET the caller inherited is its own connection, and may be a
+// privileged one; nothing it launches may share it. The fd itself is
+// close-on-exec, but the variable naming it has to go as well, so children
+// fall back to the public WAYLAND_DISPLAY the session also set.
 static QProcessEnvironment applicationEnvironment(const QString &activationToken)
 {
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();

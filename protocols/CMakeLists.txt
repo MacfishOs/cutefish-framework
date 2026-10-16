@@ -13,12 +13,10 @@ set(protocols
     cutefish-shell-v1
     cutefish-surface-blur-v1
     cutefish-window-hints-v1
-    cutefish-window-management-v1
     wlr-data-control-unstable-v1
 )
-# cutefish_window_v1.create_capture_source makes an ext_image_capture_source_v1,
-# so its interface table is exported from here as well, with the toplevel
-# handle its own tables refer to.
+# The ext_image_capture_source_v1 and ext_foreign_toplevel_list_v1 tables are
+# exported from here as well, for clients that create capture sources.
 set(protocol_xml_ext-image-capture-source-v1
     "${WAYLAND_PROTOCOLS_DATADIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml")
 set(protocol_xml_ext-foreign-toplevel-list-v1
