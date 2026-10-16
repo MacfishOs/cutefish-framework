@@ -1,4 +1,4 @@
-# Qt-free clients of system services, one library per directory, linking only
+# Clients of system services, one library per directory, linking only
 # the toolkit's base library. They form the CutefishClients package; a
 # consumer asks for them by directory name:
 #   find_package(CutefishClients REQUIRED COMPONENTS appearance)

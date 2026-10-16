@@ -38,7 +38,7 @@ struct Rect
     int height = 0;
 
     bool isEmpty() const { return width <= 0 || height <= 0; }
-    // At least one pixel in common, as QRect::intersects() has it.
+    // At least one pixel in common; an empty rectangle intersects nothing.
     bool intersects(const Rect& other) const
     {
         return !isEmpty() && !other.isEmpty() && x < other.x + other.width && other.x < x + width

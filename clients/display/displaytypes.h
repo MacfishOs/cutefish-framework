@@ -6,7 +6,7 @@
 // Revision: 7acd40ddefff49c9d36144999aafdbb674dbd07a
 //
 // Adapted for Cutefish: plain value types for the compositor's versioned
-// session D-Bus tuples, without Ash, Mojo or Qt.
+// session D-Bus tuples, without Ash or Mojo.
 
 #pragma once
 

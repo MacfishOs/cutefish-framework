@@ -577,7 +577,7 @@ static const std::map<std::string, Table>& tables()
 
 static bool toBool(const std::string& value)
 {
-    // As a QVariant holding text reads as a bool.
+    // Text is true unless empty, "0" or "false" in any case.
     return !value.empty() && value != "0" && text::lower(value) != "false";
 }
 

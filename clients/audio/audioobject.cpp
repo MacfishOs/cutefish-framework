@@ -54,7 +54,7 @@ static void updateChoice(std::vector<AudioObject::Choice>& list, AudioObject::Ch
     list.push_back(std::move(choice));
 }
 
-// A whole number, as QString::toUInt() and toInt() read one.
+// A whole number that fills the text: digits, with a leading '-' for a signed type.
 template<typename T>
 static bool parseNumber(const std::string& text, T& value)
 {
