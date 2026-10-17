@@ -604,8 +604,9 @@ WireGuardForm wireGuardForm(const Settings& settings)
                 dns.push_back(inet::formatIpv6Bytes(bytes));
             }
         }
+        // Both families carry the same search domains.
         for (const std::string& domain : toStringList(value(ip, "dns-search"))) {
-            if (domain != "~")
+            if (domain != "~" && std::find(dns.begin(), dns.end(), domain) == dns.end())
                 dns.push_back(domain);
         }
     }

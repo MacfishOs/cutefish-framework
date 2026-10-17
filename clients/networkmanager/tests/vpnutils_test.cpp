@@ -143,6 +143,28 @@ TEST_F(VpnUtilsTest, WireGuardByHand)
     EXPECT_FALSE(vpn::wireGuardSettings(badAddress, {}, &error));
 }
 
+TEST_F(VpnUtilsTest, WireGuardSearchDomainsSurviveSaves)
+{
+    std::string error;
+    vpn::WireGuardForm form;
+    form.privateKey = "yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=";
+    form.addresses = "10.0.0.2/24, fd00::2/64";
+    form.dns = "10.0.0.1, fd00::1, corp.example";
+    form.peers = {{.publicKey = "xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg="}};
+    auto profile = vpn::wireGuardSettings(form, {}, &error);
+    ASSERT_TRUE(profile) << error;
+    EXPECT_EQ(toStringList(value(profile->at("ipv6"), "dns-search")), std::vector<std::string>{"corp.example"});
+
+    for (int save = 0; save < 2; ++save) {
+        const vpn::WireGuardForm back = vpn::wireGuardForm(*profile);
+        EXPECT_EQ(back.dns, "10.0.0.1, corp.example, fd00::1");
+        profile = vpn::wireGuardSettings(back, *profile, &error);
+        ASSERT_TRUE(profile) << error;
+        EXPECT_EQ(toStringList(value(profile->at("ipv4"), "dns-search")), std::vector<std::string>{"corp.example"});
+        EXPECT_EQ(toStringList(value(profile->at("ipv6"), "dns-search")), std::vector<std::string>{"corp.example"});
+    }
+}
+
 TEST_F(VpnUtilsTest, Failures)
 {
     // NM_ACTIVE_CONNECTION_STATE_REASON_USER_DISCONNECTED and _NO_SECRETS say nothing.
