@@ -175,8 +175,11 @@ void SecretReader::prompt(const std::string& prompt, std::function<void(bool dis
     auto state = std::make_shared<State>();
     state->done = std::move(done);
     std::weak_ptr<char> alive = m_alive;
-    const auto finish = [this, id, state, alive](bool dismissed, const Paths& result) {
-        if (alive.expired() || !state->done)
+    // The match owns the state; the timer it holds must not, or neither goes.
+    std::weak_ptr<State> weakState = state;
+    const auto finish = [this, id, weakState, alive](bool dismissed, const Paths& result) {
+        const std::shared_ptr<State> state = weakState.lock();
+        if (!state || alive.expired() || !state->done)
             return;
         auto callback = std::move(state->done);
         state->done = nullptr;
@@ -190,7 +193,7 @@ void SecretReader::prompt(const std::string& prompt, std::function<void(bool dis
     rule.path = prompt;
     rule.interface = promptInterface;
     rule.member = "Completed";
-    m_prompts.emplace(id, m_bus->subscribe(rule, [finish](const Message& message) {
+    m_prompts.emplace(id, m_bus->subscribe(rule, [finish, state](const Message& message) {
         bool dismissed = true;
         Variant result;
         message.read(dismissed, result);

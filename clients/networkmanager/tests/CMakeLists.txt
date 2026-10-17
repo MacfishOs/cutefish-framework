@@ -20,3 +20,10 @@ target_link_libraries(cutefish-networkmanager-client-bus-tests PRIVATE cutefish-
 # The client and the fake NetworkManager talk over a private session bus.
 add_test(NAME cutefish-networkmanager-client-bus-tests
          COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:cutefish-networkmanager-client-bus-tests>)
+
+add_executable(cutefish-networkmanager-secretreader-tests secretreader_test.cpp)
+set_target_properties(cutefish-networkmanager-secretreader-tests PROPERTIES AUTOMOC OFF AUTORCC OFF)
+target_link_libraries(cutefish-networkmanager-secretreader-tests PRIVATE cutefish-networkmanager-client GTest::gtest)
+# A fake Secret Service on a private session bus.
+add_test(NAME cutefish-networkmanager-secretreader-tests
+         COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:cutefish-networkmanager-secretreader-tests>)
