@@ -169,6 +169,30 @@ TEST(OutputModelTest, SwitchingOffAMirrorSourceKeepsItsMirrorsOn)
     EXPECT_TRUE(model.mirrorGroups().empty());
 }
 
+TEST(OutputModelTest, MirroringAMirrorSourceMovesItsMirrors)
+{
+    // Display 1 mirrors the primary display 0; display 2 extends.
+    DisplayClient::State state = extendedDisplays(3);
+    state.logical.erase(state.logical.begin() + 1);
+    state.logical[0].destinations.push_back("1");
+    {
+        OutputModel model;
+        model.setState(state);
+        ASSERT_TRUE(model.setReplicationSourceIndex(0, 2));
+        EXPECT_EQ(model.mirrorGroups(), (MirrorGroups{{"2", "0", "1"}}));
+        EXPECT_EQ(model.primary(), "2");
+    }
+    {
+        // Display 0 mirrors display 1 instead, which then mirrors nothing.
+        OutputModel model;
+        model.setState(state);
+        ASSERT_TRUE(model.setReplicationSourceIndex(0, 1));
+        EXPECT_EQ(model.replicationSourceIndex(1), 0);
+        EXPECT_EQ(model.mirrorGroups(), (MirrorGroups{{"1", "0"}}));
+        EXPECT_EQ(model.primary(), "1");
+    }
+}
+
 TEST(OutputModelTest, SelectedResolutionAndRefreshStayConsistent)
 {
     DisplayClient::State state;

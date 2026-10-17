@@ -442,6 +442,14 @@ bool OutputModel::setReplicationSourceIndex(int row, int index)
         return false;
     entry.mirrorSource = source;
     m_layoutDirty = true;
+    if (!entry.mirrorSource.empty()) {
+        // The displays that mirrored this one follow it to its source; a mirror
+        // cannot be the source of another.
+        for (Entry& mirror : m_entries) {
+            if (mirror.mirrorSource == entry.physical.sessionId)
+                mirror.mirrorSource = mirror.physical.sessionId == source ? std::string() : source;
+        }
+    }
     if (entry.primary && !entry.mirrorSource.empty()) {
         // The compositor takes the primary only from a mirror source.
         for (Entry& candidate : m_entries) {
