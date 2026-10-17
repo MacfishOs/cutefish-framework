@@ -321,10 +321,16 @@ static void validateDestination(const std::string& source, const std::string& de
         throw Failure(EINVAL, destination);
 }
 
-// A folder that holds the source cannot be replaced: merging into it would write the
-// source's copy into the source itself, and a move would then delete both.
+// Neither the source nor a folder that holds it can be replaced: a link would take
+// the place of what it points to, and merging into the folder would write the source's
+// copy into the source itself, which a move would then delete.
 static void validateReplacement(const std::string& source, const std::string& destination)
 {
+    struct stat a, b;
+    if (::lstat(native(source).c_str(), &a) == 0 && ::lstat(native(destination).c_str(), &b) == 0
+        && a.st_dev == b.st_dev && a.st_ino == b.st_ino)
+        throw Failure(EINVAL, destination);
+
     const std::string sourceParent = canonicalPath(absolutePathOf(source));
     const std::string destinationParent = canonicalPath(absolutePathOf(destination));
     if (sourceParent.empty() || destinationParent.empty())

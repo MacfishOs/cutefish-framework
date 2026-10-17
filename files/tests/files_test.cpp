@@ -1956,6 +1956,26 @@ TEST_F(FilesTest, LinkDrop)
     EXPECT_TRUE(exists(dir.filePath("file")));
 }
 
+TEST_F(FilesTest, LinkDoesNotReplaceWhatItPointsTo)
+{
+    TemporaryDirectory dir;
+    ASSERT_TRUE(makePath(dir.filePath("real")));
+    writeFile(dir.filePath("real/file"), "data");
+    ASSERT_EQ(::symlink("real", dir.filePath("alias").c_str()), 0);
+
+    OperationContext ctx;
+    EXPECT_EQ(errorCode([&] {
+                  LocalFileSystem::link(dir.filePath("real/file"), dir.filePath("alias/file"), ConflictPolicy::Replace,
+                                        ctx);
+              }),
+              EINVAL);
+
+    EXPECT_FALSE(isSymbolicLink(dir.filePath("real/file")));
+    EXPECT_EQ(readFile(dir.filePath("real/file")), "data");
+    for (const std::string& name : entries(dir.filePath("real")))
+        EXPECT_FALSE(name.starts_with(".cutefish-")) << name;
+}
+
 TEST_F(FilesTest, TypeDescriptionsAndIcons)
 {
     TemporaryDirectory dir;
