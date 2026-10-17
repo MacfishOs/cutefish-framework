@@ -307,7 +307,8 @@ void trashWatches(std::vector<std::string>* paths, WatchEntries* entries)
     }
 }
 
-// Paths are absolute, or in a volume's trash relative to its mount point.
+// Paths are absolute, or in a volume's trash relative to its mount point. A volume's
+// trash is the medium's to fill, so its paths name no place outside the volume.
 static std::string resolvedPath(const TrashDirectory& trash, const std::string& path)
 {
     if (path.empty() || path.find('\0') != std::string::npos)
@@ -322,7 +323,14 @@ static std::string resolvedPath(const TrashDirectory& trash, const std::string& 
     }
 
     const std::string clean = cleanPath(path);
-    return clean == "/" ? std::string() : clean;
+    if (clean == "/")
+        return {};
+
+    const std::string top = cleanPath(trash.topdir);
+    if (!top.empty() && top != "/" && !clean.starts_with(top + '/'))
+        return {};
+
+    return clean;
 }
 
 static std::optional<int> digits(std::string_view text, size_t& at, size_t count)

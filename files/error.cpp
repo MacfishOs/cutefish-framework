@@ -13,4 +13,10 @@ Failure::Failure(int code, const std::string& path)
 {
 }
 
+Failure::Failure(int code, const std::string& path, const std::string& message)
+    : std::runtime_error(message)
+    , error{code, path, message}
+{
+}
+
 } // namespace cutefish::files

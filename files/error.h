@@ -22,6 +22,8 @@ class Failure : public std::runtime_error
 {
 public:
     Failure(int code, const std::string& path);
+    // A message that says more than the code's own.
+    Failure(int code, const std::string& path, const std::string& message);
 
     Error error;
 };

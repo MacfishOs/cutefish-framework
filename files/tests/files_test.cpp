@@ -898,6 +898,97 @@ TEST_F(FilesTest, VolumeTrashListsRestoresAndEmpties)
     EXPECT_TRUE(exists(userTrash(share) + "/files/remote"));
 }
 
+// A volume's trash names places on that volume only: an item whose info file points
+// elsewhere stays listed, with no original location, and is not put back.
+TEST_F(FilesTest, VolumeTrashKeepsItemsOnVolume)
+{
+    TemporaryDirectory dir;
+    const auto volume = dir.filePath("stick");
+    const auto outside = dir.filePath("outside");
+    ASSERT_TRUE(makePath(userTrash(volume) + "/files"));
+    ASSERT_TRUE(makePath(userTrash(volume) + "/info"));
+    ASSERT_TRUE(makePath(outside));
+    ASSERT_TRUE(makePath(dir.filePath("stick2")));
+    ASSERT_EQ(::symlink(outside.c_str(), (volume + "/link").c_str()), 0);
+
+    writeMountTable(mountTable(), {{volume, "ext4"}});
+    struct EmptyTable
+    {
+        std::string table;
+        ~EmptyTable() { writeFile(table, {}); }
+    } emptyTable{mountTable()};
+
+    const std::vector<std::pair<std::string, std::string>> infos = {
+        {"away", outside + "/away"},
+        {"sibling", dir.filePath("stick2/sibling")},
+        {"climb", volume + "/../outside/climb"},
+        {"relativeClimb", "docs/../../outside/relativeClimb"},
+        {"linked", "link/linked"},
+        {"inside", volume + "/docs/inside"},
+        {"relative", "notes/relative"},
+    };
+    for (const auto& [name, path] : infos) {
+        writeFile(userTrash(volume) + "/files/" + name, name);
+        writeFile(userTrash(volume) + "/info/" + name + ".trashinfo", "[Trash Info]\nPath=" + path + '\n');
+    }
+
+    std::map<std::string, FileItem> items;
+    for (const auto& item : LocalFileSystem::enumerate(Url("trash:/")))
+        items.emplace(item.name(), item);
+    ASSERT_EQ(items.size(), infos.size());
+    EXPECT_TRUE(items["away"].originalPath().empty());
+    EXPECT_TRUE(items["sibling"].originalPath().empty());
+    EXPECT_TRUE(items["climb"].originalPath().empty());
+    EXPECT_TRUE(items["relativeClimb"].originalPath().empty());
+    EXPECT_EQ(items["linked"].originalPath(), volume + "/link/linked");
+    EXPECT_EQ(items["inside"].originalPath(), volume + "/docs/inside");
+    EXPECT_EQ(items["relative"].originalPath(), volume + "/notes/relative");
+
+    const auto failure = [&](const std::string& name) {
+        try {
+            OperationContext ctx;
+            LocalFileSystem::restore(items[name].url(), ConflictPolicy::Replace, ctx);
+        } catch (const Failure& failure) {
+            return failure.error;
+        }
+        return Error();
+    };
+
+    for (const std::string name : {"away", "sibling", "climb", "relativeClimb"}) {
+        const Error error = failure(name);
+        EXPECT_EQ(error.code, EINVAL) << name;
+        EXPECT_EQ(error.path, name);
+        EXPECT_EQ(error.message, "The original location is not known");
+        EXPECT_EQ(readFile(userTrash(volume) + "/files/" + name), name);
+        EXPECT_TRUE(exists(userTrash(volume) + "/info/" + name + ".trashinfo"));
+    }
+
+    const Error linked = failure("linked");
+    EXPECT_EQ(linked.code, EXDEV);
+    EXPECT_EQ(linked.message, "The original location is outside the volume it was deleted on");
+    EXPECT_TRUE(exists(userTrash(volume) + "/files/linked"));
+
+    EXPECT_TRUE(entries(outside).empty());
+    EXPECT_FALSE(exists(dir.filePath("stick2/sibling")));
+
+    OperationContext ctx;
+    EXPECT_EQ(LocalFileSystem::restore(items["inside"].url(), ConflictPolicy::Fail, ctx), local(volume + "/docs/inside"));
+    EXPECT_EQ(readFile(volume + "/docs/inside"), "inside");
+    EXPECT_EQ(LocalFileSystem::restore(items["relative"].url(), ConflictPolicy::Fail, ctx),
+              local(volume + "/notes/relative"));
+    EXPECT_EQ(readFile(volume + "/notes/relative"), "relative");
+
+    // The home trash is the user's own: any absolute path goes back.
+    writeFile(dir.filePath("home"), "home");
+    const auto trashed = LocalFileSystem::trash(local(dir.filePath("home")), ctx);
+    writeFile(FileSystemUrl::trashRoot() + "/info/" + trashed.fileName() + ".trashinfo",
+              "[Trash Info]\nPath=" + outside + "/home\n");
+    EXPECT_EQ(LocalFileSystem::restore(trashed, ConflictPolicy::Fail, ctx), local(outside + "/home"));
+    EXPECT_EQ(readFile(outside + "/home"), "home");
+
+    LocalFileSystem::emptyTrash(ctx);
+}
+
 TEST_F(FilesTest, TrashMonitorSeesVolumes)
 {
     TemporaryDirectory dir;

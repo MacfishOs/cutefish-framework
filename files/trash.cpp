@@ -319,6 +319,19 @@ Url LocalFileSystem::trash(const Url& url, OperationContext& ctx)
     return result;
 }
 
+// A link on a volume can lead anywhere: the folder an item goes back to, as far as
+// it exists, resolves inside the volume.
+static bool staysOnVolume(const TrashDirectory& trash, std::string folder)
+{
+    struct stat st;
+    while (folder != "/" && ::lstat(native(folder).c_str(), &st) != 0 && errno == ENOENT)
+        folder = absolutePathOf(folder);
+
+    const std::string real = canonicalPath(folder);
+    const std::string top = canonicalPath(trash.topdir);
+    return !real.empty() && !top.empty() && (top == "/" || isInside(real, top));
+}
+
 Url LocalFileSystem::restore(const Url& url, ConflictPolicy policy, OperationContext& ctx)
 {
     std::string name;
@@ -334,10 +347,13 @@ Url LocalFileSystem::restore(const Url& url, ConflictPolicy policy, OperationCon
         throw Failure(existsOrLinks(info) ? EACCES : ENOENT, info);
 
     if (details.path.empty())
-        throw Failure(EINVAL, info);
+        throw Failure(EINVAL, name, "The original location is not known");
 
     // A folder deleted since the item was trashed is made again.
     const std::string parent = absolutePathOf(details.path);
+    if (!trash.topdir.empty() && !staysOnVolume(trash, parent))
+        throw Failure(EXDEV, name, "The original location is outside the volume it was deleted on");
+
     errno = 0;
     if (!makePath(parent))
         throw Failure(errno ? errno : EIO, parent);

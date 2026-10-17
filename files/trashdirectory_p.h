@@ -51,7 +51,8 @@ void trashWatches(std::vector<std::string>* paths, WatchEntries* entries);
 
 struct TrashInfo
 {
-    // Absolute; empty when the info file names no usable path.
+    // Absolute; empty when the info file names no usable path, or in a volume's
+    // trash one outside the volume.
     std::string path;
     // Milliseconds since the epoch of the local time the file gives.
     std::optional<int64_t> deletionTime;
