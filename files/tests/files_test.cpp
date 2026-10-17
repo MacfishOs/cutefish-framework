@@ -1103,6 +1103,60 @@ TEST_F(FilesTest, TrashMonitorSeesVolumes)
     EXPECT_TRUE(waitFor(loop, [&] { return !monitor.isEmpty(); }));
 }
 
+// Every file made in a memory-backed folder or a system place would wake the
+// watcher, and none of them holds a trash.
+TEST_F(FilesTest, TrashWatchesOnlyVolumesThatCanHoldOne)
+{
+    if (::getuid() == 0)
+        GTEST_SKIP() << "Permissions do not apply to root";
+
+    TemporaryDirectory dir;
+    const auto memory = dir.filePath("tmp");
+    const auto locked = dir.filePath("credentials");
+    const auto stick = dir.filePath("media/u/stick");
+    const auto data = dir.filePath("mnt/data");
+    const auto runtime = "/run/user/" + std::to_string(::getuid());
+    for (const auto& path : {memory, locked, stick, data})
+        ASSERT_TRUE(makePath(path));
+    ASSERT_EQ(::chmod(locked.c_str(), 0), 0);
+    struct Restore
+    {
+        std::string path;
+        ~Restore() { ::chmod(path.c_str(), 0700); }
+    } restore{locked};
+
+    writeMountTable(mountTable(), {{"/", "ext4"},
+                                   {memory, "tmpfs"},
+                                   {runtime, "fuse.app"},
+                                   {locked, "ext4"},
+                                   {stick, "vfat"},
+                                   {data, "ext4"}});
+    struct EmptyTable
+    {
+        std::string table;
+        ~EmptyTable() { writeFile(table, {}); }
+    } emptyTable{mountTable()};
+
+    std::vector<std::string> points;
+    Internal::trashDirectories(&points);
+    EXPECT_EQ(sorted(points), sorted({"/", stick, data}));
+
+    std::vector<std::string> paths;
+    Internal::WatchEntries watched;
+    Internal::trashWatches(&paths, &watched);
+    EXPECT_FALSE(watched.contains("/"));
+    EXPECT_FALSE(watched.contains("/proc"));
+    EXPECT_FALSE(watched.contains(memory));
+    EXPECT_FALSE(watched.contains(runtime));
+    EXPECT_FALSE(watched.contains(locked));
+    EXPECT_TRUE(watched.contains(stick));
+    EXPECT_TRUE(watched.contains(data));
+
+    EXPECT_FALSE(Internal::volumeTakesTrash(memory));
+    EXPECT_FALSE(Internal::volumeTakesTrash(runtime));
+    EXPECT_TRUE(Internal::volumeTakesTrash(stick));
+}
+
 // A trash folder that cannot be watched is looked for again less and less often;
 // each look reads the mount table.
 TEST_F(FilesTest, TrashMonitorBacksOffFailingWatch)
@@ -1199,7 +1253,7 @@ TEST_F(FilesTest, TrashOnAnotherFilesystem)
             expect(remote.path() == "/home/remote");
             expect(!exists(volume + "/remote") && !exists(trash));
             expect(LocalFileSystem::restore(remote, ConflictPolicy::Fail, ctx) == local(volume + "/remote"));
-            writeMountTable(table, {{volume, "tmpfs"}});
+            writeMountTable(table, {{volume, "ext4"}});
 
             // A volume that takes no trash sends its files home.
             expect(makePath(volume + "/sub"));

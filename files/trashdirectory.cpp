@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <mutex>
 #include <set>
+#include <string_view>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -111,15 +112,24 @@ TrashDirectory trashDirectory(const Url& url, std::string* inside)
     return trashForId(id);
 }
 
-// Kernel interfaces, automounts and remote filesystems: looking into an automount
-// mounts it, and a hung share would block the listing and its watch.
-static bool holdsNoTrash(const std::string& type)
+// Kernel interfaces, memory-backed folders, automounts and remote filesystems: a
+// memory-backed trash would be lost at shutdown, so its files go home instead;
+// looking into an automount mounts it, and a hung share would block the listing and
+// its watch.
+static bool holdsNoTrash(const std::string& mountPoint, const std::string& type)
 {
+    // The system's own places; removable volumes may be mounted under /run/media.
+    for (const std::string_view system : {"/proc", "/sys", "/dev", "/run"}) {
+        if (mountPoint.starts_with(system) && (mountPoint.size() == system.size() || mountPoint[system.size()] == '/'))
+            return !mountPoint.starts_with("/run/media/");
+    }
+
     static const std::set<std::string, std::less<>> types = {
         "proc",     "sysfs",     "devtmpfs",   "devpts",      "cgroup",
         "cgroup2",  "debugfs",   "tracefs",    "securityfs",  "bpf",
         "pstore",   "autofs",    "mqueue",     "hugetlbfs",   "configfs",
         "fusectl",  "efivarfs",  "nsfs",       "binfmt_misc", "rpc_pipefs",
+        "tmpfs",    "ramfs",
         "fuse.portal", "fuse.gvfsd-fuse", "fuse.cutefish-mountd",
         "nfs",      "nfs4",      "cifs",       "smb3",        "smbfs",
         "ncpfs",    "afs",       "ceph",       "9p",          "glusterfs",
@@ -195,7 +205,9 @@ static std::vector<std::string> mountPoints()
     std::vector<std::string> result;
 
     for (const auto& [mountPoint, type] : mounts()) {
-        if (!holdsNoTrash(type))
+        // A volume the user cannot enter, such as a service's credentials, has no
+        // trash of theirs.
+        if (!holdsNoTrash(mountPoint, type) && ::access(mountPoint.c_str(), X_OK) == 0)
             result.push_back(mountPoint);
     }
 
@@ -206,7 +218,7 @@ bool volumeTakesTrash(const std::string& topdir)
 {
     for (const auto& [mountPoint, type] : mounts()) {
         if (mountPoint == topdir)
-            return !holdsNoTrash(type);
+            return !holdsNoTrash(mountPoint, type);
     }
 
     return true;
@@ -298,9 +310,13 @@ void trashWatches(std::vector<std::string>* paths, WatchEntries* entries)
 
     const std::string user = ".Trash-" + userId();
     for (const std::string& topdir : points) {
-        auto& names = (*entries)[topdir];
-        names.push_back(".Trash");
-        names.push_back(user);
+        // Where the user cannot make a trash, such as /, one an administrator makes
+        // later is found by the next listing.
+        if (::access(topdir.c_str(), W_OK) == 0) {
+            auto& names = (*entries)[topdir];
+            names.push_back(".Trash");
+            names.push_back(user);
+        }
 
         if (isDirectory(joined(topdir, ".Trash")))
             (*entries)[joined(topdir, ".Trash")].push_back(userId());
