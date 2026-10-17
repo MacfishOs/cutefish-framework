@@ -530,3 +530,18 @@ TEST_F(AudioTest, Reconnect)
     sink->setVolume(0.3);
     ASSERT_TRUE(until([&] { return near(sink->volume(), 0.3); }));
 }
+
+// As a page that shows sound opens and closes: each backend reads the graph
+// and is the last one to go.
+TEST_F(AudioTest, LastBackendComesAndGoes)
+{
+    drivers.clear();
+    backend.reset();
+    for (int i = 0; i < 5; ++i) {
+        backend = Backend::shared();
+        ASSERT_TRUE(waitFor(*loop, [] { return backend->isConnected() && find("test-output-a"); }, 10s));
+        backend.reset();
+    }
+    backend = Backend::shared();
+    ASSERT_TRUE(waitFor(*loop, [] { return backend->isConnected() && find("test-output-a"); }, 10s));
+}

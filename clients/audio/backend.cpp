@@ -8,6 +8,7 @@
 #include <charconv>
 #include <chrono>
 #include <cstring>
+#include <mutex>
 #include <sys/epoll.h>
 
 #include <spa/param/audio/raw.h>
@@ -249,6 +250,16 @@ const pw_metadata_events Backend::metadataEvents = [] {
     return events;
 }();
 
+// The last backend's loop and context, for the next one on the thread. A
+// context's modules allocate on load what unloading them never frees, so a
+// page that comes and goes would otherwise leak with each context.
+struct SpareContext
+{
+    pw_loop* loop = nullptr;
+    pw_context* context = nullptr;
+};
+static thread_local SpareContext s_spare;
+
 std::shared_ptr<Backend> Backend::shared()
 {
     static std::weak_ptr<Backend> instance;
@@ -263,7 +274,9 @@ std::shared_ptr<Backend> Backend::shared()
 Backend::Backend()
     : m_eventLoop(base::EventLoop::current())
 {
-    pw_init(nullptr, nullptr);
+    // Once per process, never undone: the spare context outlives every backend.
+    static std::once_flag initialized;
+    std::call_once(initialized, [] { pw_init(nullptr, nullptr); });
     m_retry.setSingleShot(true);
     m_retry.onTimeout = [this] { connectToDaemon(); };
     m_failure.setSingleShot(true);
@@ -278,8 +291,11 @@ Backend::~Backend()
     m_retry.stop();
     m_failure.stop();
     disconnectFromDaemon();
+    if (m_context && !s_spare.context) {
+        s_spare = {std::exchange(m_loop, nullptr), std::exchange(m_context, nullptr)};
+        return;
+    }
     releaseContext();
-    pw_deinit();
 }
 
 std::vector<std::shared_ptr<AudioObject>> Backend::objects() const
@@ -313,6 +329,10 @@ void Backend::connectToDaemon()
     if (m_core)
         return;
     m_failurePending = false;
+    if (!m_loop && s_spare.context) {
+        m_loop = std::exchange(s_spare.loop, nullptr);
+        m_context = std::exchange(s_spare.context, nullptr);
+    }
     // A context loads its modules and configuration when created; kept across
     // attempts, a retry while the daemon is away costs only the connect.
     if (!m_loop) {
