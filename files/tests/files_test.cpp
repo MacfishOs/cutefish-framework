@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <ctime>
 #include <fcntl.h>
@@ -1799,9 +1800,9 @@ TEST_F(FilesTest, AsynchronousTasksAndPaste)
     Spy asked(moveTask->conflictRequested);
     Spy moved(moveTask->result);
     EXPECT_TRUE(waitFor(loop, [&] { return asked.count() == 1; }));
-    EXPECT_EQ(std::get<0>(asked.calls.front()), dir.filePath("source"));
-    EXPECT_EQ(std::get<1>(asked.calls.front()), dir.filePath("target/source"));
-    moveTask->resolveConflict(int(ConflictPolicy::KeepBoth));
+    EXPECT_EQ(std::get<1>(asked.calls.front()), dir.filePath("source"));
+    EXPECT_EQ(std::get<2>(asked.calls.front()), dir.filePath("target/source"));
+    EXPECT_TRUE(moveTask->resolveConflict(std::get<0>(asked.calls.front()), int(ConflictPolicy::KeepBoth)));
     EXPECT_TRUE(waitFor(loop, [&] { return moved.count() == 1; }));
     EXPECT_FALSE(exists(dir.filePath("source")));
     EXPECT_EQ(readFile(dir.filePath("target/source (1)")), "payload");
@@ -1837,13 +1838,54 @@ TEST_F(FilesTest, ConflictResolutionAppliesToAll)
     Spy finished(task.result);
     task.start();
     EXPECT_TRUE(waitFor(loop, [&] { return conflict.count() == 1; }));
-    task.resolveConflict(int(ConflictPolicy::Replace), true);
+    task.resolveConflict(std::get<0>(conflict.calls.front()), int(ConflictPolicy::Replace), true);
 
     EXPECT_TRUE(waitFor(loop, [&] { return finished.count() == 1; }));
     EXPECT_EQ(conflict.count(), 1u);
     EXPECT_EQ(task.state(), Task::State::Succeeded);
     EXPECT_EQ(readFile(dir.filePath("target/a")), "new a");
     EXPECT_EQ(readFile(dir.filePath("target/b")), "new b");
+}
+
+// A second answer to a conflict, arriving once the worker waits at the next
+// one but before that one is announced, must not answer it unseen.
+TEST_F(FilesTest, DuplicateConflictAnswerIsRefused)
+{
+    TemporaryDirectory dir;
+    ASSERT_TRUE(makePath(dir.filePath("target")));
+    writeFile(dir.filePath("a"), "new a");
+    writeFile(dir.filePath("b"), "new b");
+    writeFile(dir.filePath("target/a"), "old a");
+    writeFile(dir.filePath("target/b"), "old b");
+
+    Task task({Operation::Copy,
+               {local(dir.filePath("a")), local(dir.filePath("b"))},
+               local(dir.filePath("target")),
+               ConflictPolicy::Ask});
+    Spy conflict(task.conflictRequested);
+    Spy finished(task.result);
+    task.start();
+    ASSERT_TRUE(waitFor(loop, [&] { return conflict.count() == 1; }));
+    const uint32_t first = std::get<0>(conflict.calls.front());
+    EXPECT_FALSE(task.resolveConflict(first + 1, int(ConflictPolicy::Replace)));
+    EXPECT_TRUE(task.resolveConflict(first, int(ConflictPolicy::Replace)));
+
+    // The loop does not run here, so the next conflict is waiting but not yet announced.
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_FALSE(task.resolveConflict(first, int(ConflictPolicy::Replace)));
+
+    ASSERT_TRUE(waitFor(loop, [&] { return conflict.count() == 2; }));
+    const uint32_t second = std::get<0>(conflict.calls.back());
+    EXPECT_NE(second, first);
+    EXPECT_EQ(std::get<1>(conflict.calls.back()), dir.filePath("b"));
+    EXPECT_EQ(finished.count(), 0u);
+    EXPECT_TRUE(task.resolveConflict(second, int(ConflictPolicy::Skip)));
+    EXPECT_FALSE(task.resolveConflict(second, int(ConflictPolicy::Replace)));
+
+    ASSERT_TRUE(waitFor(loop, [&] { return finished.count() == 1; }));
+    EXPECT_EQ(task.state(), Task::State::Succeeded);
+    EXPECT_EQ(readFile(dir.filePath("target/a")), "new a");
+    EXPECT_EQ(readFile(dir.filePath("target/b")), "old b");
 }
 
 TEST_F(FilesTest, PasteIntoOwnFolderDuplicatesWithoutAsking)
@@ -1874,7 +1916,7 @@ TEST_F(FilesTest, AsynchronousConflictAndCancel)
     Spy finished(task.result);
     task.start();
     EXPECT_TRUE(waitFor(loop, [&] { return conflict.count() == 1; }));
-    task.resolveConflict(int(ConflictPolicy::KeepBoth));
+    task.resolveConflict(std::get<0>(conflict.calls.front()), int(ConflictPolicy::KeepBoth));
     EXPECT_TRUE(waitFor(loop, [&] { return finished.count() == 1; }));
     EXPECT_EQ(task.state(), Task::State::Succeeded);
     EXPECT_EQ(readFile(dir.filePath("target/source (1)")), "new");

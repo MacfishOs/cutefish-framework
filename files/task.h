@@ -90,9 +90,11 @@ public:
 
     void start();
     void cancel();
-    // A ConflictPolicy other than Ask; applyToAll answers every later conflict
-    // of this task the same way.
-    void resolveConflict(int policy, bool applyToAll = false);
+    // Answers the conflict that conflictRequested announced with this id, with
+    // a ConflictPolicy other than Ask; applyToAll answers every later conflict
+    // of this task the same way. False, and nothing changes, when that conflict
+    // is not the one waiting: already answered, or never asked.
+    bool resolveConflict(uint32_t conflict, int policy, bool applyToAll = false);
 
     State state() const { return m_state; }
     const TaskProgress& progressInfo() const { return m_progressInfo; }
@@ -117,8 +119,9 @@ public:
 
     base::Signal<uint64_t, uint64_t> progress;
     base::Signal<> progressInfoChanged;
-    // Answer with resolveConflict(); without a listener every conflict fails.
-    base::Signal<const std::string&, const std::string&> conflictRequested;
+    // The conflict's id, source and destination. Answer with resolveConflict();
+    // without a listener every conflict fails.
+    base::Signal<uint32_t, const std::string&, const std::string&> conflictRequested;
     base::Signal<State> stateChanged;
     base::Signal<Task*> result;
 
@@ -139,6 +142,8 @@ private:
     ConflictPolicy m_resolution = ConflictPolicy::Fail;
     std::optional<ConflictPolicy> m_resolutionForAll;
     bool m_resolved = false;
+    uint32_t m_lastConflict = 0;
+    uint32_t m_pendingConflict = 0;
     std::vector<base::Subscription> m_finishedCallbacks;
     base::WeakPtrFactory<Task> m_weakFactory{this};
 };

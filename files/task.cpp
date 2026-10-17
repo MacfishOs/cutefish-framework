@@ -280,13 +280,17 @@ void Task::cancel()
     m_conflictCondition.notify_all();
 }
 
-void Task::resolveConflict(int policy, bool applyToAll)
+bool Task::resolveConflict(uint32_t conflict, int policy, bool applyToAll)
 {
     if (policy < int(ConflictPolicy::Fail) || policy >= int(ConflictPolicy::Ask))
-        return;
+        return false;
 
     {
         const std::lock_guard lock(m_conflictMutex);
+        if (conflict == 0 || conflict != m_pendingConflict)
+            return false;
+
+        m_pendingConflict = 0;
         m_resolution = ConflictPolicy(policy);
         m_resolved = true;
         if (applyToAll)
@@ -294,6 +298,7 @@ void Task::resolveConflict(int policy, bool applyToAll)
     }
 
     m_conflictCondition.notify_all();
+    return true;
 }
 
 void Task::whenFinished(std::function<void(Task*)> callback)
@@ -347,20 +352,25 @@ void Task::start()
             return *m_resolutionForAll;
 
         m_resolved = false;
-        loop.post([self, source, destination] {
+        // A new id, so a late answer to an earlier conflict cannot resolve this one.
+        const uint32_t conflict = ++m_lastConflict;
+        m_pendingConflict = conflict;
+        loop.post([self, conflict, source, destination] {
             Task* task = self.get();
             if (!task)
                 return;
 
             if (!task->conflictRequested.isEmpty())
-                task->conflictRequested.emit(source, destination);
+                task->conflictRequested.emit(conflict, source, destination);
             else
-                task->resolveConflict(int(ConflictPolicy::Fail));
+                task->resolveConflict(conflict, int(ConflictPolicy::Fail));
         });
 
         m_conflictCondition.wait(lock, [this] {
             return m_resolved || m_context->canceled.load();
         });
+
+        m_pendingConflict = 0;
 
         m_context->checkpoint(destination);
         return m_resolution;
