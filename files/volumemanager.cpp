@@ -3,6 +3,7 @@
 
 #include "files/volumemanager.h"
 
+#include <algorithm>
 #include <chrono>
 
 #include "base/event_loop.h"
@@ -20,6 +21,7 @@ static const std::string root = "/org/freedesktop/UDisks2";
 static const std::string blockInterface = service + ".Block";
 static const std::string driveInterface = service + ".Drive";
 static const std::string filesystemInterface = service + ".Filesystem";
+static const std::string encryptedInterface = service + ".Encrypted";
 
 static std::string decodePath(const std::vector<uint8_t>& bytes)
 {
@@ -28,6 +30,20 @@ static std::string decodePath(const std::vector<uint8_t>& bytes)
         path.pop_back();
 
     return path;
+}
+
+static bool isSet(const ObjectPath& path)
+{
+    return !path.path.empty() && path.path != "/";
+}
+
+static bool isSystemMountPoint(const std::string& path)
+{
+    for (const std::string prefix : {"/media/", "/run/media/", "/mnt/"}) {
+        if (path.starts_with(prefix))
+            return false;
+    }
+    return path != "/mnt";
 }
 
 template<typename T>
@@ -150,7 +166,7 @@ void VolumeManager::rebuild()
             continue;
 
         const VariantMap& block = blockFound->second;
-        if (value<bool>(block, "HintIgnore"))
+        if (value<bool>(block, "HintIgnore") || isSet(value<ObjectPath>(block, "CryptoBackingDevice")))
             continue;
 
         Volume v;
@@ -164,32 +180,53 @@ void VolumeManager::rebuild()
                 drive = found->second;
         }
 
+        const Interfaces* contents = &interfaces;
+        const VariantMap* cleartextBlock = nullptr;
+        if (const auto encrypted = interfaces.find(encryptedInterface); encrypted != interfaces.cend()) {
+            v.encrypted = true;
+            const ObjectPath cleartext = value<ObjectPath>(encrypted->second, "CleartextDevice");
+            const auto cleartextObject = isSet(cleartext) ? m_objects.find(cleartext) : m_objects.cend();
+            if (cleartextObject != m_objects.cend()) {
+                v.cleartext = cleartext.path;
+                contents = &cleartextObject->second;
+                if (const auto found = contents->find(blockInterface); found != contents->cend())
+                    cleartextBlock = &found->second;
+            }
+        }
+
         v.device = decodePath(value<std::vector<uint8_t>>(block, "PreferredDevice"));
         v.size = value<uint64_t>(block, "Size");
-        v.filesystem = interfaces.contains(filesystemInterface);
+        v.filesystem = contents->contains(filesystemInterface);
+        v.system = value<bool>(block, "HintSystem");
         v.optical = value<bool>(drive, "Optical");
         v.removable = value<bool>(drive, "Removable") || value<std::string>(drive, "ConnectionBus") == "usb";
         v.ejectable = value<bool>(drive, "Ejectable");
         v.canPowerOff = value<bool>(drive, "CanPowerOff");
 
         v.name = value<std::string>(block, "HintName");
+        if (v.name.empty() && cleartextBlock)
+            v.name = value<std::string>(*cleartextBlock, "IdLabel");
         if (v.name.empty())
             v.name = value<std::string>(block, "IdLabel");
         if (v.name.empty())
-            v.name = v.size ? Locale::system().formattedDataSize(int64_t(v.size)) + " Volume"
+            v.name = v.size ? Locale::system().formattedDataSize(int64_t(v.size))
+                            + (v.encrypted ? " Encrypted Volume" : " Volume")
                             : Internal::fileNameOf(v.device);
 
         v.icon = value<std::string>(block, "HintIconName");
         if (v.icon.empty())
             v.icon = v.optical ? "drive-optical" : v.removable ? "drive-removable-media" : "drive-harddisk";
 
-        if (const auto filesystem = interfaces.find(filesystemInterface); filesystem != interfaces.cend()) {
+        if (const auto filesystem = contents->find(filesystemInterface); filesystem != contents->cend()) {
             for (const auto& point : value<std::vector<std::vector<uint8_t>>>(filesystem->second, "MountPoints")) {
                 const std::string mountPoint = decodePath(point);
                 if (!mountPoint.empty())
                     v.mountPoints.push_back(mountPoint);
             }
         }
+
+        if (std::ranges::any_of(v.mountPoints, isSystemMountPoint))
+            continue;
 
         next.emplace(v.id, v);
     }
@@ -210,27 +247,74 @@ void VolumeManager::rebuild()
     }
 }
 
+// The block whose filesystem a volume mounts.
+static std::string filesystemPath(const Volume& volume)
+{
+    return volume.encrypted ? volume.cleartext : volume.id;
+}
+
 void VolumeManager::mount(const std::string& id)
 {
-    call(id, "mount", id, filesystemInterface, "Mount");
+    const auto v = volume(id);
+    if (v.locked()) {
+        operationFailed.emit(id, "mount", "The device is locked.");
+        return;
+    }
+    start(id, "mount", {{filesystemPath(v), filesystemInterface, "Mount", {}}});
 }
 
 void VolumeManager::unmount(const std::string& id)
 {
-    call(id, "unmount", id, filesystemInterface, "Unmount");
+    const auto v = volume(id);
+    std::vector<Step> steps;
+    if (!v.encrypted || !v.mountPoints.empty())
+        steps.push_back({filesystemPath(v), filesystemInterface, "Unmount", {}});
+    if (v.encrypted && !v.locked())
+        steps.push_back({id, encryptedInterface, "Lock", {}});
+    start(id, "unmount", std::move(steps));
+}
+
+void VolumeManager::unlock(const std::string& id, const std::string& passphrase)
+{
+    const auto v = volume(id);
+    if (!v.locked()) {
+        mount(id);
+        return;
+    }
+    start(id, "unlock", {{id, encryptedInterface, "Unlock", passphrase}, {{}, filesystemInterface, "Mount", {}}});
 }
 
 void VolumeManager::eject(const std::string& id)
 {
     const auto v = volume(id);
-    call(id, "eject", v.drive, driveInterface, v.ejectable ? "Eject" : "PowerOff");
+    std::vector<Step> steps;
+    for (const auto& [otherId, other] : m_volumes) {
+        if (other.drive != v.drive)
+            continue;
+        if (!other.mountPoints.empty())
+            steps.push_back({filesystemPath(other), filesystemInterface, "Unmount", {}});
+        if (other.encrypted && !other.locked())
+            steps.push_back({other.id, encryptedInterface, "Lock", {}});
+    }
+    if (v.ejectable || v.canPowerOff)
+        steps.push_back({v.drive, driveInterface, v.ejectable ? "Eject" : "PowerOff", {}});
+    start(id, "eject", std::move(steps));
 }
 
-void VolumeManager::call(const std::string& id, const std::string& operation, const std::string& path,
-                         const std::string& interface, const std::string& method)
+void VolumeManager::start(const std::string& id, const std::string& operation, std::vector<Step> steps)
 {
     const auto v = volume(id);
-    if (v.id.empty() || (operation == "eject" ? !(v.ejectable || v.canPowerOff) : !v.filesystem)) {
+    bool supported = !v.id.empty() && !steps.empty();
+    if (operation == "eject")
+        supported = supported && (v.ejectable || v.canPowerOff);
+    else if (operation == "mount")
+        supported = supported && v.filesystem;
+    else if (operation == "unmount")
+        supported = supported && (v.filesystem || v.encrypted);
+    else
+        supported = supported && v.encrypted;
+
+    if (!supported) {
         operationFailed.emit(id, operation, "The device does not support this operation.");
         return;
     }
@@ -245,61 +329,61 @@ void VolumeManager::call(const std::string& id, const std::string& operation, co
     }
 
     m_pending.insert(id);
-
-    std::vector<std::string> unmounts;
-    if (operation == "eject") {
-        for (const auto& [otherId, other] : m_volumes) {
-            if (other.drive == v.drive && !other.mountPoints.empty())
-                unmounts.push_back(other.id);
-        }
-    }
-
-    perform(id, operation, path, interface, method, unmounts, m_generation);
+    perform(id, operation, std::move(steps), m_generation);
 }
 
-void VolumeManager::perform(const std::string& id, const std::string& operation, const std::string& path,
-                            const std::string& interface, const std::string& method, std::vector<std::string> unmounts,
+void VolumeManager::perform(const std::string& id, const std::string& operation, std::vector<Step> steps,
                             uint64_t generation)
 {
-    const bool unmounting = !unmounts.empty();
-    const std::string target = unmounting ? unmounts.front() : path;
-    if (unmounting)
-        unmounts.erase(unmounts.begin());
+    const Step step = steps.front();
+    steps.erase(steps.begin());
 
-    Proxy proxy(m_bus, service, target, unmounting ? filesystemInterface : interface);
+    Proxy proxy(m_bus, service, step.path, step.interface);
     proxy.setTimeout(120s);
+    // An internal device takes an administrator's password to mount.
+    proxy.setInteractiveAuthorizationAllowed(true);
     const uint64_t callId = m_nextCall++;
 
-    m_calls[callId] = proxy.callAsync(
-        unmounting ? "Unmount" : method,
-        [this, callId, id, operation, path, interface, method, unmounts, unmounting, generation](const Reply& reply) {
-            release(callId);
+    auto done = [this, callId, id, operation, step, steps, generation](const Reply& reply) mutable {
+        release(callId);
 
-            if (generation != m_generation || (operation != "eject" && !m_volumes.contains(id))) {
-                m_pending.erase(id);
-                operationFailed.emit(id, operation, "The device is no longer available.");
-                return;
-            }
+        if (generation != m_generation || (operation != "eject" && !m_volumes.contains(id))) {
+            m_pending.erase(id);
+            operationFailed.emit(id, operation, "The device is no longer available.");
+            return;
+        }
 
-            if (reply.isError()) {
-                m_pending.erase(id);
+        if (reply.isError()) {
+            m_pending.erase(id);
+            // libblockdev reports cryptsetup's EPERM for a passphrase that opens no key slot.
+            const bool rejected = step.method == "Unlock"
+                    && reply.error().message.find("Operation not permitted") != std::string::npos;
+            if (rejected)
+                passphraseRejected.emit(id);
+            else
                 operationFailed.emit(id, operation, reply.error().message);
-            } else if (unmounting) {
-                perform(id, operation, path, interface, method, unmounts, generation);
-                return;
-            } else {
-                m_pending.erase(id);
+        } else if (!steps.empty()) {
+            if (step.method == "Unlock" && steps.front().path.empty())
+                steps.front().path = reply.value<ObjectPath>().value_or(ObjectPath()).path;
+            perform(id, operation, std::move(steps), generation);
+            return;
+        } else {
+            m_pending.erase(id);
 
-                std::string mountPoint;
-                if (operation == "mount")
-                    mountPoint = reply.value<std::string>().value_or(std::string());
+            std::string mountPoint;
+            if (step.method == "Mount")
+                mountPoint = reply.value<std::string>().value_or(std::string());
 
-                operationFinished.emit(id, operation, mountPoint);
-            }
+            operationFinished.emit(id, operation, mountPoint);
+        }
 
-            refresh();
-        },
-        VariantMap());
+        refresh();
+    };
+
+    if (step.passphrase)
+        m_calls[callId] = proxy.callAsync(step.method, std::move(done), *step.passphrase, VariantMap());
+    else
+        m_calls[callId] = proxy.callAsync(step.method, std::move(done), VariantMap());
 }
 
 } // namespace cutefish::files

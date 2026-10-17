@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -25,17 +26,28 @@ struct Volume
     std::string icon;
     std::vector<std::string> mountPoints;
     uint64_t size = 0;
+    // The filesystem, of the unlocked cleartext device for an encrypted volume.
     bool filesystem = false;
+    // UDisks2's HintSystem: an internal device, which takes an administrator
+    // to mount.
+    bool system = false;
+    bool encrypted = false;
+    // The cleartext block's object path; empty while the volume is locked.
+    std::string cleartext;
     bool optical = false;
     bool removable = false;
     bool ejectable = false;
     bool canPowerOff = false;
 
+    bool locked() const { return encrypted && cleartext.empty(); }
+
     bool operator==(const Volume&) const = default;
 };
 
 // UDisks2's block devices, kept up to date from its signals, and mounting,
-// unmounting and ejecting them. Calls never block.
+// unmounting and ejecting them. Calls never block. Blocks mounted outside
+// /media, /run/media and /mnt (the root, home and boot filesystems) are left
+// out, and an unlocked encrypted volume stands for its cleartext block.
 class VolumeManager
 {
 public:
@@ -50,30 +62,43 @@ public:
     Volume volume(const std::string& id) const;
 
     void mount(const std::string& id);
+    // Locks an encrypted volume once its filesystem is unmounted.
     void unmount(const std::string& id);
-    // Unmounts every volume of the drive, then ejects it, or powers it off when
-    // it cannot be ejected.
+    // Unlocks an encrypted volume and mounts its filesystem; finishes as
+    // "unlock" with the mount point. A wrong passphrase fails with
+    // passphraseRejected instead of operationFailed.
+    void unlock(const std::string& id, const std::string& passphrase);
+    // Unmounts every volume of the drive and locks its encrypted ones, then
+    // ejects it, or powers it off when it cannot be ejected.
     void eject(const std::string& id);
 
     base::Signal<const std::string&> volumeAdded;
     base::Signal<const std::string&> volumeRemoved;
     base::Signal<const std::string&> volumeChanged;
-    // id, "mount", "unmount" or "eject", and the mount point a mount chose.
+    // id, "mount", "unmount", "unlock" or "eject", and the mount point a mount
+    // or unlock chose.
     base::Signal<const std::string&, const std::string&, const std::string&> operationFinished;
     base::Signal<const std::string&, const std::string&, const std::string&> operationFailed;
+    base::Signal<const std::string&> passphraseRejected;
     base::Signal<const std::string&> errorOccurred;
 
     using Interfaces = std::map<std::string, base::dbus::VariantMap>;
     using Objects = std::map<base::dbus::ObjectPath, Interfaces>;
 
 private:
+    struct Step
+    {
+        // Empty for the cleartext block the Unlock before it returned.
+        std::string path;
+        std::string interface;
+        std::string method;
+        std::optional<std::string> passphrase;
+    };
+
     void refresh();
     void rebuild();
-    void call(const std::string& id, const std::string& operation, const std::string& path,
-              const std::string& interface, const std::string& method);
-    void perform(const std::string& id, const std::string& operation, const std::string& path,
-                 const std::string& interface, const std::string& method, std::vector<std::string> unmounts,
-                 uint64_t generation);
+    void start(const std::string& id, const std::string& operation, std::vector<Step> steps);
+    void perform(const std::string& id, const std::string& operation, std::vector<Step> steps, uint64_t generation);
     // Drops a finished call's slot once its callback has returned.
     void release(uint64_t call);
 
