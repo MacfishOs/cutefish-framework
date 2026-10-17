@@ -72,6 +72,8 @@ public:
     std::tuple<std::string, uint32_t, uint32_t> historyRequest;
     std::unique_ptr<Object> upowerObject;
     std::unique_ptr<Object> deviceObject;
+    double displayPercentage = 41.6;
+    std::unique_ptr<Object> displayObject;
 
 private:
     void run(std::promise<bool>& ready)
@@ -133,11 +135,19 @@ private:
         });
         published = device.publish() && published;
 
+        displayObject = std::make_unique<Object>(connection.get(), "/org/freedesktop/UPower/devices/DisplayDevice",
+                                                 kDeviceInterface);
+        displayObject->addProperty("IsPresent", [this] { return m_battery; });
+        displayObject->addProperty("Type", [this] { return uint32_t(m_battery ? 2 : 0); });
+        displayObject->addProperty("Percentage", [this] { return displayPercentage; });
+        published = displayObject->publish() && published;
+
         ready.set_value(published);
         loop.run();
         batteryObject.reset();
         upowerObject.reset();
         deviceObject.reset();
+        displayObject.reset();
     }
 
     bool m_battery;
@@ -245,6 +255,38 @@ TEST_F(UPowerTest, ThePowerSourceFollowsUPower)
     EXPECT_EQ(changes, 1);
     // The service's figures depend on the power source, so it reads again.
     ASSERT_TRUE(waitFor([&] { return m_services->inService([&] { return m_services->refreshes; }) == 1; }));
+}
+
+TEST_F(UPowerTest, WithoutASessionBusTheDisplayDeviceIsRead)
+{
+    startServices();
+    BatteryStatus status(nullptr, bus());
+    ASSERT_TRUE(waitFor([&] { return status.isReady(); }));
+    EXPECT_TRUE(status.isAvailable());
+    EXPECT_EQ(status.chargePercent(), 42);
+    EXPECT_EQ(status.statusString(), "");
+
+    int percent = 0;
+    Subscription subscription = status.chargePercentChanged.connect([&] { ++percent; });
+    m_services->inService([&] {
+        m_services->displayPercentage = 80.2;
+        m_services->displayObject->emitPropertiesChanged({"Percentage"});
+    });
+    ASSERT_TRUE(waitFor([&] { return status.chargePercent() == 80; }));
+    EXPECT_EQ(percent, 1);
+
+    // Nothing asks a service that is not there.
+    status.refresh();
+    runFor(50ms);
+    EXPECT_EQ(m_services->inService([&] { return m_services->refreshes; }), 0);
+}
+
+TEST_F(UPowerTest, WithoutASessionBusOrABatteryNothingIsAvailable)
+{
+    startServices(false);
+    BatteryStatus status(nullptr, bus());
+    ASSERT_TRUE(waitFor([&] { return status.isReady(); }));
+    EXPECT_FALSE(status.isAvailable());
 }
 
 TEST_F(UPowerTest, SharedStatusIsOneWhileHeld)

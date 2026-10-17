@@ -4,6 +4,7 @@
 #include "cutefish/upower/battery_status.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "base/event_loop.h"
 #include "cutefish/upower/device.h"
@@ -18,6 +19,9 @@ static constexpr const char* kInterface = "com.cutefish.Services.Battery";
 
 static constexpr const char* kUPowerService = "org.freedesktop.UPower";
 static constexpr const char* kUPowerPath = "/org/freedesktop/UPower";
+static constexpr const char* kDisplayDevicePath = "/org/freedesktop/UPower/devices/DisplayDevice";
+// UPower's device type of a battery.
+static constexpr int64_t kTypeBattery = 2;
 
 std::shared_ptr<BatteryStatus> BatteryStatus::shared()
 {
@@ -38,6 +42,18 @@ BatteryStatus::BatteryStatus(Connection* sessionBus, Connection* systemBus)
     : m_service(sessionBus, kService, kPath, kInterface)
     , m_upower(systemBus, kUPowerService, kUPowerPath, kUPowerService)
 {
+    if (!sessionBus && systemBus) {
+        m_displayDevice = std::make_unique<Device>(kDisplayDevicePath, systemBus);
+        m_displayDeviceSubscriptions.push_back(
+                m_displayDevice->propertiesChanged.connect([this](const VariantMap&) { applyDisplayDevice(); }));
+        m_displayDeviceSubscriptions.push_back(m_displayDevice->readyChanged.connect([this] {
+            if (!m_ready) {
+                m_ready = true;
+                readyChanged.emit();
+            }
+        }));
+    }
+
     // The signals only say that something moved; one GetAll brings every value up to date.
     for (const char* signal : {"chargeStateChanged", "chargePercentChanged", "capacityChanged",
                                "remainingTimeChanged", "lastChargedPercentChanged", "lastChargedSecsChanged"})
@@ -51,7 +67,8 @@ BatteryStatus::BatteryStatus(Connection* sessionBus, Connection* systemBus)
                     fetchOnBattery();
             }));
 
-    fetchState();
+    if (!m_displayDevice)
+        fetchState();
     fetchOnBattery();
 }
 
@@ -59,7 +76,8 @@ BatteryStatus::~BatteryStatus() = default;
 
 void BatteryStatus::refresh()
 {
-    m_service.send("refresh");
+    if (m_service.isValid())
+        m_service.send("refresh");
 }
 
 void BatteryStatus::fetchState()
@@ -122,6 +140,28 @@ void BatteryStatus::applyState(const VariantMap& properties)
     if (m_udi != udi) {
         m_udi = udi;
         udiChanged.emit();
+    }
+}
+
+void BatteryStatus::applyDisplayDevice()
+{
+    const VariantMap& properties = m_displayDevice->properties();
+    const auto present = properties.find("IsPresent");
+    const auto type = properties.find("Type");
+    const auto percentage = properties.find("Percentage");
+    const bool available = present != properties.end() && present->second.value<bool>(false)
+            && type != properties.end() && integerValue(type->second) == kTypeBattery;
+    // Rounded as the service rounds it.
+    const int chargePercent =
+            percentage == properties.end() ? 0 : int(std::lround(percentage->second.value<double>(0)));
+
+    if (m_chargePercent != chargePercent) {
+        m_chargePercent = chargePercent;
+        chargePercentChanged.emit();
+    }
+    if (m_available != available) {
+        m_available = available;
+        availableChanged.emit();
     }
 }
 

@@ -13,6 +13,8 @@
 
 namespace cutefish::upower {
 
+class Device;
+
 // The battery as cutefish-services reports it, and whether the system runs
 // on it (UPower's OnBattery). Everything is read asynchronously and kept
 // here, so the getters never block.
@@ -23,6 +25,9 @@ public:
     // holds it.
     static std::shared_ptr<BatteryStatus> shared();
 
+    // Without a session bus, as at the login screen, the level and whether
+    // there is a battery come from UPower's display device; the service's
+    // other figures stay unset.
     explicit BatteryStatus(base::dbus::Connection* sessionBus = base::dbus::Connection::session(),
                            base::dbus::Connection* systemBus = base::dbus::Connection::system());
     ~BatteryStatus();
@@ -62,11 +67,14 @@ public:
 private:
     void fetchState();
     void applyState(const base::dbus::VariantMap& properties);
+    void applyDisplayDevice();
     void fetchOnBattery();
     void setOnBattery(bool onBattery);
 
     base::dbus::Proxy m_service;
     base::dbus::Proxy m_upower;
+    std::unique_ptr<Device> m_displayDevice;
+    std::vector<base::Subscription> m_displayDeviceSubscriptions;
     std::vector<base::dbus::Match> m_matches;
     base::dbus::PendingCall m_stateCall;
     base::dbus::PendingCall m_onBatteryCall;
