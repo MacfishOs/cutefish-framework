@@ -197,8 +197,11 @@ Form form(const Settings& settings)
         }
     }
 
-    // The switch stands for both families; IPv4's decides when they differ.
-    form.automaticDns = !toBool(value(group(settings, ipv4Setting), "ignore-auto-dns"));
+    // The switch stands for both families; IPv4's decides when they differ,
+    // unless IPv4 takes no name servers and so keeps a value nothing writes.
+    const std::string& dnsFamily =
+        configurable(form.ipv4Method) || !configurable(form.ipv6Method) ? ipv4Setting : ipv6Setting;
+    form.automaticDns = !toBool(value(group(settings, dnsFamily), "ignore-auto-dns"));
     form.dns = text::join(dnsServers(settings), ", ");
     return form;
 }

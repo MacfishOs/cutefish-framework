@@ -264,6 +264,30 @@ TEST(IpUtils, WritesNameServers)
     EXPECT_FALSE(toBool(value(cleared->at("ipv4"), "ignore-auto-dns")));
 }
 
+TEST(IpUtils, AutomaticDnsOfAnIpv6OnlyProfile)
+{
+    Settings existing = automaticProfile();
+    existing["ipv4"] = {{"method", Variant(std::string("disabled"))}};
+    ip::Form form = ip::form(existing);
+    EXPECT_TRUE(form.automaticDns);
+    form.automaticDns = false;
+    form.dns = "2606:4700::1111";
+
+    bool changed = false;
+    std::string error;
+    const auto profile = ip::settings(form, existing, &changed, &error);
+    ASSERT_TRUE(profile) << error;
+    EXPECT_TRUE(toBool(value(profile->at("ipv6"), "ignore-auto-dns")));
+
+    // Read back, the switch is off as saved, and another server keeps it off.
+    form = ip::form(*profile);
+    EXPECT_FALSE(form.automaticDns);
+    form.dns = "2001:4860:4860::8888";
+    const auto edited = ip::settings(form, *profile, &changed, &error);
+    ASSERT_TRUE(edited) << error;
+    EXPECT_TRUE(toBool(value(edited->at("ipv6"), "ignore-auto-dns")));
+}
+
 TEST(IpUtils, WritesDnsDataWhereItCameFrom)
 {
     Settings existing = automaticProfile();
