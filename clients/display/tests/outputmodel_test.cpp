@@ -152,6 +152,23 @@ TEST(OutputModelTest, MirroringThePrimaryNeedsAnExtendedSource)
     }
 }
 
+TEST(OutputModelTest, SwitchingOffAMirrorSourceKeepsItsMirrorsOn)
+{
+    // Display 1 mirrors the primary display 0.
+    DisplayClient::State state = extendedDisplays(2);
+    state.logical.pop_back();
+    state.logical[0].destinations.push_back("1");
+    OutputModel model;
+    model.setState(state);
+    ASSERT_EQ(model.replicationSourceIndex(1), 1);
+
+    ASSERT_TRUE(model.setEnabled(0, false));
+    EXPECT_TRUE(model.isEnabled(1));
+    EXPECT_EQ(model.replicationSourceIndex(1), 0);
+    EXPECT_EQ(model.primary(), "1");
+    EXPECT_TRUE(model.mirrorGroups().empty());
+}
+
 TEST(OutputModelTest, SelectedResolutionAndRefreshStayConsistent)
 {
     DisplayClient::State state;

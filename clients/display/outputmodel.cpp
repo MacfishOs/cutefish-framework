@@ -308,6 +308,13 @@ bool OutputModel::setEnabled(int row, bool enabled)
         return false;
     entry.enabled = enabled;
     m_layoutDirty = true;
+    if (!entry.enabled) {
+        // A display that showed this one's picture extends the desktop instead.
+        for (Entry& mirror : m_entries) {
+            if (mirror.mirrorSource == entry.physical.sessionId)
+                mirror.mirrorSource.clear();
+        }
+    }
     if (!entry.enabled && entry.primary) {
         entry.primary = false;
         for (Entry& candidate : m_entries) {
