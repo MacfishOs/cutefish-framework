@@ -727,6 +727,59 @@ TEST_F(FilesTest, MalformedTrashInfo)
     EXPECT_TRUE(exists(FileSystemUrl(url).localPath()));
 }
 
+// An info file that is a pipe, or a link to one, leaves the item without details
+// instead of blocking the listing.
+TEST_F(FilesTest, TrashInfoThatIsNoFile)
+{
+    TemporaryDirectory dir;
+    writeFile(dir.filePath("piped"));
+    writeFile(dir.filePath("linked"));
+    writeFile(dir.filePath("plain"));
+
+    OperationContext ctx;
+    const auto piped = LocalFileSystem::trash(local(dir.filePath("piped")), ctx);
+    const auto linked = LocalFileSystem::trash(local(dir.filePath("linked")), ctx);
+    const auto plain = LocalFileSystem::trash(local(dir.filePath("plain")), ctx);
+
+    const auto info = FileSystemUrl::trashRoot() + "/info/";
+    ASSERT_EQ(::unlink((info + piped.fileName() + ".trashinfo").c_str()), 0);
+    ASSERT_EQ(::mkfifo((info + piped.fileName() + ".trashinfo").c_str(), 0600), 0);
+    ASSERT_EQ(::unlink((info + linked.fileName() + ".trashinfo").c_str()), 0);
+    ASSERT_EQ(::symlink((info + piped.fileName() + ".trashinfo").c_str(),
+                        (info + linked.fileName() + ".trashinfo").c_str()),
+              0);
+
+    const pid_t pid = ::fork();
+    ASSERT_GE(pid, 0);
+    if (pid == 0) {
+        ::alarm(10);
+
+        try {
+            std::map<std::string, FileItem> items;
+            for (const auto& item : LocalFileSystem::enumerate(Url("trash:/")))
+                items.emplace(item.name(), item);
+
+            OperationContext child;
+            const bool passed = items.size() == 3 && items[piped.fileName()].originalPath().empty()
+                && items[linked.fileName()].originalPath().empty()
+                && items[plain.fileName()].originalPath() == dir.filePath("plain")
+                && FileItem(piped).originalPath().empty()
+                && errorCode([&] { LocalFileSystem::restore(linked, ConflictPolicy::Fail, child); }) == EACCES;
+            ::_exit(passed ? 0 : 1);
+        } catch (...) {
+            ::_exit(100);
+        }
+    }
+
+    int status = 0;
+    ASSERT_EQ(::waitpid(pid, &status, 0), pid);
+    EXPECT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WIFEXITED(status) ? WEXITSTATUS(status) : -WTERMSIG(status), 0);
+
+    LocalFileSystem::emptyTrash(ctx);
+    EXPECT_TRUE(entries(info).empty());
+}
+
 TEST_F(FilesTest, VolumeTrashListsRestoresAndEmpties)
 {
     TemporaryDirectory dir;

@@ -57,6 +57,10 @@ struct TrashInfo
     std::optional<int64_t> deletionTime;
 };
 
+// A file in a trash, up to a size no trash file needs. A volume's trash is the
+// medium's to fill: a pipe there, or a link to a device, would block or never end.
+std::optional<std::string> readTrashFile(const std::string& path);
+
 // Reads the info file of the item name at the top of trash; false when it cannot.
 bool readTrashInfo(const TrashDirectory& trash, const std::string& name, TrashInfo* info);
 

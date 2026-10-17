@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <ctime>
+#include <fcntl.h>
 #include <mutex>
 #include <set>
 #include <sys/stat.h>
@@ -17,6 +18,7 @@
 #include "base/url.h"
 #include "files/error.h"
 #include "pathutils_p.h"
+#include "posix_p.h"
 
 namespace cutefish::files::Internal {
 
@@ -419,16 +421,41 @@ static std::optional<int64_t> parseIsoDate(std::string_view text)
     return int64_t(seconds) * 1000 + millisecond;
 }
 
+std::optional<std::string> readTrashFile(const std::string& path)
+{
+    constexpr size_t Limit = 1024 * 1024;
+
+    Fd fd(::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC));
+    struct stat st;
+    if (fd.value < 0 || ::fstat(fd.value, &st) < 0 || !S_ISREG(st.st_mode))
+        return std::nullopt;
+
+    std::string contents;
+    char buffer[16384];
+    while (contents.size() < Limit) {
+        const ssize_t size = ::read(fd.value, buffer, std::min(sizeof(buffer), Limit - contents.size()));
+        if (size < 0 && errno == EINTR)
+            continue;
+        if (size < 0)
+            return std::nullopt;
+        if (size == 0)
+            break;
+        contents.append(buffer, size_t(size));
+    }
+
+    return contents;
+}
+
 bool readTrashInfo(const TrashDirectory& trash, const std::string& name, TrashInfo* info)
 {
-    const std::optional<std::string> contents = file::read(trash.path + "/info/" + name + ".trashinfo");
+    const std::optional<std::string> contents = readTrashFile(trash.path + "/info/" + name + ".trashinfo");
     if (!contents)
         return false;
 
     bool group = false;
 
     for (const std::string_view rawLine : strings::splitViews(*contents, '\n')) {
-        const std::string_view line = strings::trimmed(rawLine.substr(0, 1024 * 1024));
+        const std::string_view line = strings::trimmed(rawLine);
         if (line.starts_with('['))
             group = line == "[Trash Info]";
         else if (group && line.starts_with("Path="))
