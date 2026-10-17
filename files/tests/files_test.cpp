@@ -684,6 +684,34 @@ TEST_F(FilesTest, TrashRecursiveDuplicateAndEmpty)
     EXPECT_TRUE(entries(FileSystemUrl::trashRoot() + "/info").empty());
 }
 
+// Sizes other implementations cached for trashed folders go with the folders.
+TEST_F(FilesTest, TrashForgetsCachedDirectorySizes)
+{
+    TemporaryDirectory dir;
+    ASSERT_TRUE(makePath(dir.filePath("a folder")));
+    ASSERT_TRUE(makePath(dir.filePath("kept")));
+
+    OperationContext ctx;
+    const auto folder = LocalFileSystem::trash(local(dir.filePath("a folder")), ctx);
+    const auto kept = LocalFileSystem::trash(local(dir.filePath("kept")), ctx);
+
+    const auto sizes = FileSystemUrl::trashRoot() + "/directorysizes";
+    writeFile(sizes, "4096 1760000000000 a%20folder\n8192 1760000000000 kept\n");
+
+    EXPECT_EQ(LocalFileSystem::restore(folder, ConflictPolicy::Fail, ctx), local(dir.filePath("a folder")));
+    EXPECT_EQ(readFile(sizes), "8192 1760000000000 kept\n");
+
+    const auto again = LocalFileSystem::trash(local(dir.filePath("a folder")), ctx);
+    writeFile(sizes, "4096 1760000000000 a%20folder\n8192 1760000000000 kept\n");
+    LocalFileSystem::remove(again, ctx);
+    EXPECT_FALSE(exists(FileSystemUrl(again).localPath()));
+    EXPECT_EQ(readFile(sizes), "8192 1760000000000 kept\n");
+
+    LocalFileSystem::emptyTrash(ctx);
+    EXPECT_FALSE(exists(FileSystemUrl(kept).localPath()));
+    EXPECT_FALSE(exists(sizes));
+}
+
 TEST_F(FilesTest, LongTrashNameAndOrphanMetadata)
 {
     TemporaryDirectory dir;

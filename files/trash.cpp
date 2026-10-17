@@ -7,6 +7,8 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 
+#include "base/file.h"
+#include "base/strings.h"
 #include "base/url.h"
 #include "base/uuid.h"
 #include "files/localfilesystem.h"
@@ -156,6 +158,43 @@ static std::string infoPath(const TrashDirectory& trash, const std::string& name
     return trash.path + "/info/" + name + ".trashinfo";
 }
 
+// The trash specification's cache of trashed folders' sizes, which other
+// implementations write: a line of size, info file time and encoded name each.
+static std::string directorySizesPath(const TrashDirectory& trash)
+{
+    return trash.path + "/directorysizes";
+}
+
+// A size cached for an item no longer in the trash would be read for the next item
+// of that name.
+static void forgetDirectorySize(const TrashDirectory& trash, const std::string& name)
+{
+    const auto path = directorySizesPath(trash);
+    const std::optional<std::string> contents = readTrashFile(path);
+    if (!contents)
+        return;
+
+    std::string kept;
+    bool forgotten = false;
+
+    for (const std::string_view line : base::strings::splitViews(*contents, '\n')) {
+        const size_t size = line.find(' ');
+        const size_t time = size == std::string_view::npos ? size : line.find(' ', size + 1);
+        if (time != std::string_view::npos && base::url::percentDecoded(line.substr(time + 1)) == name) {
+            forgotten = true;
+            continue;
+        }
+
+        if (!line.empty()) {
+            kept += line;
+            kept += '\n';
+        }
+    }
+
+    if (forgotten)
+        base::file::writeAtomically(path, kept);
+}
+
 void LocalFileSystem::remove(const Url& url, OperationContext& ctx)
 {
     const auto path = FileSystemUrl(url).localPath();
@@ -180,6 +219,8 @@ void LocalFileSystem::remove(const Url& url, OperationContext& ctx)
         const auto info = infoPath(trash, inside);
         if (::unlink(native(info).c_str()) < 0 && errno != ENOENT)
             throw Failure(errno, info);
+
+        forgetDirectorySize(trash, inside);
     }
 }
 
@@ -306,6 +347,7 @@ Url LocalFileSystem::restore(const Url& url, ConflictPolicy policy, OperationCon
         return {};
 
     check(::unlink(native(info).c_str()), info);
+    forgetDirectorySize(trash, name);
     return Url::fromLocalFile(result);
 }
 
@@ -344,6 +386,10 @@ static void empty(const TrashDirectory& trash, OperationContext& ctx)
         if (name.ends_with(".trashinfo"))
             eraseAt(fd, name, path, ctx);
     });
+
+    const auto sizes = directorySizesPath(trash);
+    if (::unlink(native(sizes).c_str()) < 0 && errno != ENOENT)
+        throw Failure(errno, sizes);
 }
 
 // A volume that fails to empty, being read-only say, does not keep the others full.
