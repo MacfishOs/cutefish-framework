@@ -8,9 +8,11 @@
 #include <ctime>
 #include <fcntl.h>
 #include <linux/capability.h>
+#include <linux/fs.h>
 #include <map>
 #include <sched.h>
 #include <sys/inotify.h>
+#include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -616,6 +618,84 @@ TEST_F(FilesTest, RemoveStopsAtMounts)
     if (WEXITSTATUS(status) == 77)
         GTEST_SKIP() << "Unprivileged user namespaces are unavailable";
     EXPECT_EQ(WEXITSTATUS(status), 0);
+}
+
+TEST_F(FilesTest, RenameToANewCaseWhereNamesIgnoreCase)
+{
+    TemporaryDirectory dir;
+    ASSERT_TRUE(makePath(dir.filePath("mount")));
+
+    const uid_t uid = ::getuid();
+    const gid_t gid = ::getgid();
+    const pid_t pid = ::fork();
+    ASSERT_GE(pid, 0);
+    if (pid == 0) {
+        if (::unshare(CLONE_NEWUSER | CLONE_NEWNS) != 0)
+            ::_exit(77);
+
+        if (!writeProc("/proc/self/uid_map", "0 " + std::to_string(uid) + " 1")
+            || !writeProc("/proc/self/setgroups", "deny")
+            || !writeProc("/proc/self/gid_map", "0 " + std::to_string(gid) + " 1"))
+            ::_exit(77);
+
+        if (::mount("none", dir.filePath("mount").c_str(), "tmpfs", 0, "casefold") != 0)
+            ::_exit(77);
+
+        const std::string folder = dir.filePath("mount/folder");
+        if (::mkdir(folder.c_str(), 0700) != 0)
+            ::_exit(2);
+
+        const int fd = ::open(folder.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        int flags = 0;
+        if (fd < 0 || ::ioctl(fd, FS_IOC_GETFLAGS, &flags) != 0)
+            ::_exit(77);
+        flags |= FS_CASEFOLD_FL;
+        if (::ioctl(fd, FS_IOC_SETFLAGS, &flags) != 0)
+            ::_exit(77);
+        ::close(fd);
+
+        try {
+            writeFile(folder + "/photo.JPG", "photo");
+            if (::mkdir((folder + "/album").c_str(), 0700) != 0)
+                ::_exit(2);
+
+            OperationContext ctx;
+            const bool file = LocalFileSystem::move(folder + "/photo.JPG", folder + "/photo.jpg", ConflictPolicy::Ask, ctx)
+                == folder + "/photo.jpg";
+            const bool directory =
+                LocalFileSystem::move(folder + "/album", folder + "/Album", ConflictPolicy::Ask, ctx) == folder + "/Album";
+            auto names = entries(folder);
+            std::sort(names.begin(), names.end());
+            ::_exit(file && directory && names == std::vector<std::string>{"Album", "photo.jpg"}
+                            && readFile(folder + "/photo.jpg") == "photo"
+                        ? 0
+                        : 1);
+        } catch (...) {
+            ::_exit(3);
+        }
+    }
+
+    int status = 0;
+    ASSERT_EQ(::waitpid(pid, &status, 0), pid);
+    ASSERT_TRUE(WIFEXITED(status));
+    if (WEXITSTATUS(status) == 77)
+        GTEST_SKIP() << "No filesystem that ignores case can be mounted here";
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+}
+
+TEST_F(FilesTest, MovingAHardLinkOntoItsTwinIsRefused)
+{
+    TemporaryDirectory dir;
+    writeFile(dir.filePath("a"), "data");
+    ASSERT_EQ(::link(dir.filePath("a").c_str(), dir.filePath("b").c_str()), 0);
+
+    OperationContext ctx;
+    EXPECT_EQ(errorCode([&] {
+                  LocalFileSystem::move(dir.filePath("a"), dir.filePath("b"), ConflictPolicy::Replace, ctx);
+              }),
+              EINVAL);
+    EXPECT_TRUE(exists(dir.filePath("a")));
+    EXPECT_TRUE(exists(dir.filePath("b")));
 }
 
 TEST_F(FilesTest, PermissionErrors)

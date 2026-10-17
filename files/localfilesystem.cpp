@@ -503,9 +503,45 @@ std::string LocalFileSystem::link(const std::string& source, const std::string& 
     }
 }
 
+// Where names ignore case, the new case of a name finds the item itself. A hard link
+// in the same folder is the same inode too, but only under another name.
+static bool isNewCase(const std::string& source, const std::string& destination)
+{
+    const std::string sourceParent = canonicalPath(absolutePathOf(source));
+    if (fileNameOf(source) == fileNameOf(destination) || sourceParent.empty()
+        || sourceParent != canonicalPath(absolutePathOf(destination)))
+        return false;
+
+    struct stat a, b;
+    return ::lstat(native(source).c_str(), &a) == 0 && ::lstat(native(destination).c_str(), &b) == 0
+        && a.st_dev == b.st_dev && a.st_ino == b.st_ino && (S_ISDIR(a.st_mode) || a.st_nlink == 1);
+}
+
 std::string LocalFileSystem::move(const std::string& source, const std::string& destination, ConflictPolicy policy,
                                   OperationContext& ctx)
 {
+    if (isNewCase(source, destination)) {
+        ctx.checkpoint(source);
+        Parent input(source), output(destination);
+
+        // Renaming an item to itself does nothing, so it goes by way of another name.
+        const std::string temporary = temporaryName(".cutefish-rename-");
+        if (::syscall(SYS_renameat2, input.fd.value, input.name.c_str(), input.fd.value, temporary.c_str(),
+                      RENAME_NOREPLACE)
+            != 0)
+            throw Failure(errno, source);
+
+        if (::syscall(SYS_renameat2, input.fd.value, temporary.c_str(), output.fd.value, output.name.c_str(),
+                      RENAME_NOREPLACE)
+            != 0) {
+            const int code = errno;
+            ::renameat(input.fd.value, temporary.c_str(), input.fd.value, input.name.c_str());
+            throw Failure(code, destination);
+        }
+
+        return destination;
+    }
+
     validateDestination(source, destination);
     ctx.checkpoint(source);
     Parent input(source), output(destination);
