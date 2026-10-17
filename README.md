@@ -9,8 +9,6 @@ library:
   library each, in the `CutefishClients` package.
 - `files/`: file listing, MIME types, operations, trash, volumes and
   thumbnails, in the `CutefishFiles` package.
-- `protocols/`: client bindings for the compositor's private Wayland
-  protocols, in the `CutefishFramework` package.
 
 ## Dependencies
 
@@ -18,7 +16,7 @@ library:
 
 ```shell
 sudo apt install cmake pkg-config build-essential \
-    libwayland-dev wayland-protocols libicu-dev libpng-dev \
+    libicu-dev libpng-dev \
     libpipewire-0.3-dev libspa-0.2-dev libgtest-dev
 ```
 
@@ -26,7 +24,7 @@ sudo apt install cmake pkg-config build-essential \
 
 ```shell
 sudo pacman -S --needed base-devel cmake pkgconf \
-    wayland wayland-protocols icu libpng pipewire gtest
+    icu libpng pipewire gtest
 ```
 
 and [cutefish-toolkit](https://github.com/cutefishos/cutefish-toolkit).
