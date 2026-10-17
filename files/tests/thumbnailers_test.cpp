@@ -165,6 +165,21 @@ TEST_F(ThumbnailersTest, CachedThumbnailsAreReadWithoutGenerating)
     EXPECT_FALSE(ThumbnailCache::self()->hasCachedThumbnail(id, {96, 96}));
 }
 
+TEST_F(ThumbnailersTest, TruncatedCacheEntryIsNotServed)
+{
+    const std::string image = s_files->filePath("truncated.png");
+    savePng(image, 40, 20, 0xff00ff00);
+    ASSERT_FALSE(ThumbnailCache::self()->requestThumbnail(localUrl(image), {96, 96}).image.isNull());
+
+    // Cut inside the pixel data, so decoding fails while the rows are read.
+    const std::string entry = s_cache + "/normal/" + Internal::md5Hex(localUrl(image)) + ".png";
+    const size_t data = readFile(entry).find("IDAT");
+    ASSERT_NE(data, std::string::npos);
+    ASSERT_EQ(::truncate(entry.c_str(), off_t(data + 8)), 0);
+
+    EXPECT_TRUE(ThumbnailCache::self()->cachedThumbnail(localUrl(image), {96, 96}).image.isNull());
+}
+
 TEST_F(ThumbnailersTest, FailureIsRemembered)
 {
     EXPECT_TRUE(ThumbnailCache::self()->canThumbnail("text/csv"));

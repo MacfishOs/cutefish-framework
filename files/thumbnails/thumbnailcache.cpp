@@ -119,7 +119,9 @@ static bool ensurePrivateDirectory(const std::string& path)
     return Internal::makePath(path) && ::chmod(path.c_str(), 0700) == 0;
 }
 
-static void readRows(png_structp png, png_infop info, PngFile* file)
+// The buffers belong to the caller, whose frame a decoding error longjmps back to.
+static void readRows(png_structp png, png_infop info, std::vector<uint8_t>& rgba, std::vector<png_bytep>& rows,
+                     PngFile* file)
 {
     png_set_expand(png);
     png_set_strip_16(png);
@@ -130,8 +132,8 @@ static void readRows(png_structp png, png_infop info, PngFile* file)
 
     const png_uint_32 width = png_get_image_width(png, info);
     const png_uint_32 height = png_get_image_height(png, info);
-    std::vector<uint8_t> rgba(size_t(width) * height * 4);
-    std::vector<png_bytep> rows(height);
+    rgba.resize(size_t(width) * height * 4);
+    rows.resize(height);
     for (png_uint_32 y = 0; y < height; ++y)
         rows[y] = rgba.data() + size_t(y) * width * 4;
     png_read_image(png, rows.data());
@@ -189,6 +191,8 @@ static std::optional<PngFile> readPng(const std::string& path)
     }
 
     PngFile file;
+    std::vector<uint8_t> rgba;
+    std::vector<png_bytep> rows;
     if (setjmp(png_jmpbuf(png))) {
         png_destroy_read_struct(&png, &info, &endInfo);
         std::fclose(stream);
@@ -200,7 +204,7 @@ static std::optional<PngFile> readPng(const std::string& path)
     png_set_user_limits(png, 0x10000, 0x10000);
     png_read_info(png, info);
     collectText(png, info, &file.text);
-    readRows(png, info, &file);
+    readRows(png, info, rgba, rows, &file);
     png_read_end(png, endInfo);
     collectText(png, endInfo, &file.text);
 
