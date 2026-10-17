@@ -10,6 +10,7 @@
 #include <linux/capability.h>
 #include <map>
 #include <sched.h>
+#include <sys/inotify.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -929,6 +930,46 @@ TEST_F(FilesTest, TrashMonitorSeesVolumes)
 
     writeFile(userTrash(volume) + "/files/again");
     EXPECT_TRUE(waitFor(loop, [&] { return !monitor.isEmpty(); }));
+}
+
+// A trash folder that cannot be watched is looked for again less and less often;
+// each look reads the mount table.
+TEST_F(FilesTest, TrashMonitorBacksOffFailingWatch)
+{
+    TemporaryDirectory dir;
+    writeFile(dir.filePath("local"));
+    OperationContext ctx;
+    LocalFileSystem::trash(local(dir.filePath("local")), ctx);
+
+    const auto files = FileSystemUrl::trashRoot() + "/files";
+    ASSERT_EQ(::chmod(files.c_str(), 0), 0);
+    struct Restore
+    {
+        std::string path;
+        ~Restore() { ::chmod(path.c_str(), 0700); }
+    } restore{files};
+
+    const int inotify = ::inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    ASSERT_GE(inotify, 0);
+    ASSERT_GE(::inotify_add_watch(inotify, mountTable().c_str(), IN_OPEN), 0);
+
+    // Repeated reads of the table merge into one event until the queue is read.
+    int looks = 0;
+    {
+        TrashMonitor monitor;
+        for (int i = 0; i < 95; ++i) {
+            wait(loop, 100ms);
+
+            inotify_event events[64];
+            if (::read(inotify, events, sizeof(events)) > 0)
+                ++looks;
+        }
+    }
+    ::close(inotify);
+
+    // At the start, after two seconds and after four more.
+    EXPECT_GE(looks, 2);
+    EXPECT_LE(looks, 3);
 }
 
 // A tmpfs in a private user and mount namespace stands in for a second drive.

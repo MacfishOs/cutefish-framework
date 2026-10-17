@@ -3,6 +3,7 @@
 
 #include "files/trashmonitor.h"
 
+#include <algorithm>
 #include <chrono>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -12,6 +13,9 @@
 namespace cutefish::files {
 
 using namespace std::chrono_literals;
+
+static constexpr std::chrono::milliseconds FirstRetry = 2000ms;
+static constexpr std::chrono::milliseconds LastRetry = 60000ms;
 
 static bool hasEntries(const std::string& path)
 {
@@ -35,7 +39,8 @@ TrashMonitor::TrashMonitor()
 {
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(40ms);
-    m_retry.setInterval(2000ms);
+    m_retry.setSingleShot(true);
+    m_retry.setInterval(FirstRetry);
 
     m_watchChanged = m_watch.changed.connect([this] {
         m_debounce.start();
@@ -82,10 +87,14 @@ void TrashMonitor::refresh()
                     paths.push_back(path);
             }
 
-            if (m_watch.watch(paths, state.entries, true))
+            // A watch that keeps failing, past the inotify limit say, is tried less often.
+            if (m_watch.watch(paths, state.entries, true)) {
                 m_retry.stop();
-            else
+                m_retry.setInterval(FirstRetry);
+            } else {
                 m_retry.start();
+                m_retry.setInterval(std::min<std::chrono::nanoseconds>(m_retry.interval() * 2, LastRetry));
+            }
 
             if (state.empty != m_empty) {
                 m_empty = state.empty;
