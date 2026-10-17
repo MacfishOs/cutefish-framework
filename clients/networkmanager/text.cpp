@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "networkmanager/text.h"
+#include "cutefish/networkmanager/text.h"
 
 #include <algorithm>
 #include <cctype>

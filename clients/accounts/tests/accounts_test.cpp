@@ -9,9 +9,9 @@
 #include <memory>
 #include <thread>
 
-#include "accounts/accountsmanager.h"
-#include "accounts/useraccount.h"
 #include "base/event_loop.h"
+#include "cutefish/accounts/accounts_manager.h"
+#include "cutefish/accounts/user_account.h"
 
 using namespace cutefish;
 using namespace cutefish::accounts;

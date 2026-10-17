@@ -1,6 +1,6 @@
 cutefish_add_client(accounts TARGET AccountsClient
-    SOURCES accountsmanager.cpp useraccount.cpp
-    HEADERS accountsmanager.h useraccount.h
+    SOURCES accounts_manager.cpp user_account.cpp
+    HEADERS accounts_manager.h user_account.h
 )
 
 if(BUILD_TESTING)

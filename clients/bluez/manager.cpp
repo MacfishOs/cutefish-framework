@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "bluez/manager.h"
+#include "cutefish/bluez/manager.h"
 
 #include <algorithm>
 #include <cctype>

@@ -13,9 +13,9 @@
 #include <pipewire/extensions/metadata.h>
 #include <pipewire/pipewire.h>
 
-#include "audio/audioobject.h"
 #include "base/signal.h"
 #include "base/timer.h"
+#include "cutefish/audio/audio_object.h"
 
 namespace cutefish::base {
 class EventLoop;

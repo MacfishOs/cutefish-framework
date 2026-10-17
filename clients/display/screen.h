@@ -9,8 +9,8 @@
 
 #include "base/signal.h"
 #include "base/timer.h"
-#include "display/displayclient.h"
-#include "display/outputmodel.h"
+#include "cutefish/display/display_client.h"
+#include "cutefish/display/output_model.h"
 
 namespace cutefish::display {
 

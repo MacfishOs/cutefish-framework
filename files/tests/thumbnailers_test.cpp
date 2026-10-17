@@ -10,10 +10,10 @@
 
 #include "base/elapsed_timer.h"
 #include "base/strings.h"
-#include "files/mimesniffer_p.h"
-#include "files/thumbnails/md5_p.h"
-#include "files/thumbnails/thumbnailcache.h"
-#include "files/url.h"
+#include "cutefish/files/mime_sniffer_p.h"
+#include "cutefish/files/thumbnails/md5_p.h"
+#include "cutefish/files/thumbnails/thumbnail_cache.h"
+#include "cutefish/files/url.h"
 #include "testing.h"
 
 using namespace cutefish;
@@ -44,8 +44,8 @@ protected:
         s_thumbnailers = s_data->filePath("thumbnailers");
         s_cache = s_data->filePath("cache/thumbnails");
         ASSERT_TRUE(makePath(s_thumbnailers));
-        Internal::setUserDataDirectory(s_data->path());
-        Internal::setThumbnailCacheRoot(s_cache);
+        internal::setUserDataDirectory(s_data->path());
+        internal::setThumbnailCacheRoot(s_cache);
 
         savePng(s_tools->filePath("source.png"), 300, 150, 0xffff0000);
 
@@ -66,8 +66,8 @@ protected:
 
     static void TearDownTestSuite()
     {
-        Internal::setUserDataDirectory({});
-        Internal::setThumbnailCacheRoot({});
+        internal::setUserDataDirectory({});
+        internal::setThumbnailCacheRoot({});
         delete s_tools;
         delete s_files;
         delete s_data;
@@ -172,7 +172,7 @@ TEST_F(ThumbnailersTest, TruncatedCacheEntryIsNotServed)
     ASSERT_FALSE(ThumbnailCache::self()->requestThumbnail(localUrl(image), {96, 96}).image.isNull());
 
     // Cut inside the pixel data, so decoding fails while the rows are read.
-    const std::string entry = s_cache + "/normal/" + Internal::md5Hex(localUrl(image)) + ".png";
+    const std::string entry = s_cache + "/normal/" + internal::md5Hex(localUrl(image)) + ".png";
     const size_t data = readFile(entry).find("IDAT");
     ASSERT_NE(data, std::string::npos);
     ASSERT_EQ(::truncate(entry.c_str(), off_t(data + 8)), 0);
@@ -189,7 +189,7 @@ TEST_F(ThumbnailersTest, FailureIsRemembered)
     const Thumbnail thumbnail = ThumbnailCache::self()->requestThumbnail(localUrl(table), {64, 64});
     EXPECT_TRUE(thumbnail.image.isNull());
 
-    const std::string name = Internal::md5Hex(localUrl(table));
+    const std::string name = internal::md5Hex(localUrl(table));
     EXPECT_TRUE(exists(s_cache + "/fail/cutefish/" + name + ".png"));
 }
 

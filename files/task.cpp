@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "files/task.h"
+#include "cutefish/files/task.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -12,8 +12,8 @@
 
 #include "base/elapsed_timer.h"
 #include "base/locale.h"
-#include "files/fileitem.h"
-#include "pathutils_p.h"
+#include "cutefish/files/file_item.h"
+#include "path_utils_p.h"
 #include "posix_p.h"
 
 namespace cutefish::files {
@@ -23,8 +23,8 @@ using namespace cutefish::base;
 // A copy within a filesystem that shares extents may take no space at all, so it is not counted.
 static bool takesSpace(const std::string& source, const std::string& directory, bool move)
 {
-    const std::string& sourcePath = Internal::native(source);
-    const std::string& directoryPath = Internal::native(directory);
+    const std::string& sourcePath = internal::native(source);
+    const std::string& directoryPath = internal::native(directory);
 
     struct stat from, to;
     struct statfs fromFs, toFs;
@@ -149,7 +149,7 @@ static TaskResult execute(const TaskRequest& request, OperationContext& ctx,
             // run out, but one that cannot fit fails before it writes anything.
             const auto destination = FileSystemUrl(request.destination).localPath();
             struct statvfs fs;
-            if (::statvfs(Internal::native(destination).c_str(), &fs) == 0
+            if (::statvfs(internal::native(destination).c_str(), &fs) == 0
                 && required > uint64_t(fs.f_bavail) * fs.f_frsize)
                 throw Failure(ENOSPC, destination);
         }
@@ -190,7 +190,7 @@ static TaskResult execute(const TaskRequest& request, OperationContext& ctx,
                     } else {
                         const auto destination = FileSystemUrl(request.destination).localPath();
                         target = request.operation == Operation::Rename ? destination
-                                                                        : Internal::joined(destination, url.fileName());
+                                                                        : internal::joined(destination, url.fileName());
                     }
 
                     const auto path = request.operation == Operation::Link

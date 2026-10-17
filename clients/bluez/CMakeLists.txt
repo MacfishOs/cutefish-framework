@@ -1,11 +1,11 @@
 cutefish_add_client(bluez TARGET BluezClient
     SOURCES
-        bluetoothobject.cpp
-        devicesmodel.cpp
+        bluetooth_object.cpp
+        devices_model.cpp
         manager.cpp
     HEADERS
-        bluetoothobject.h
-        devicesmodel.h
+        bluetooth_object.h
+        devices_model.h
         manager.h
 )
 

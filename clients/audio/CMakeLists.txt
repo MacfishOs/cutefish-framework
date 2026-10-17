@@ -4,15 +4,15 @@ pkg_check_modules(SPA REQUIRED libspa-0.2)
 
 cutefish_add_client(audio TARGET AudioClient
     SOURCES
-        audiomodel.cpp
-        audioobject.cpp
+        audio_model.cpp
+        audio_object.cpp
         backend.cpp
-        volumemonitor.cpp
+        volume_monitor.cpp
     HEADERS
-        audiomodel.h
-        audioobject.h
+        audio_model.h
+        audio_object.h
         backend.h
-        volumemonitor.h
+        volume_monitor.h
 )
 # By path and name rather than as imported targets, which the installed package would have to recreate.
 target_include_directories(cutefish-audio-client PUBLIC ${PIPEWIRE_INCLUDE_DIRS} ${SPA_INCLUDE_DIRS})

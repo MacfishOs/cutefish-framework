@@ -10,9 +10,9 @@
 #include <optional>
 
 #include "base/timer.h"
-#include "bluez/devicesmodel.h"
-#include "bluez/manager.h"
-#include "fakebluez.h"
+#include "cutefish/bluez/devices_model.h"
+#include "cutefish/bluez/manager.h"
+#include "fake_bluez.h"
 
 using namespace cutefish::base;
 using namespace cutefish::bluez;

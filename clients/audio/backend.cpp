@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "audio/backend.h"
+#include "cutefish/audio/backend.h"
 
 #include <algorithm>
 #include <cerrno>

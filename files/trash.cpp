@@ -11,13 +11,13 @@
 #include "base/strings.h"
 #include "base/url.h"
 #include "base/uuid.h"
-#include "files/localfilesystem.h"
+#include "cutefish/files/local_file_system.h"
 #include "posix_p.h"
-#include "trashdirectory_p.h"
+#include "trash_directory_p.h"
 
 namespace cutefish::files {
 
-using namespace Internal;
+using namespace internal;
 
 static void ensureHomeTrash()
 {

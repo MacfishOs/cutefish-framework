@@ -24,13 +24,13 @@
 #include <spa/param/route.h>
 #include <spa/pod/builder.h>
 
-#include "audio/audiomodel.h"
-#include "audio/backend.h"
-#include "audio/volumemonitor.h"
 #include "base/event_loop.h"
 #include "base/timer.h"
-#include "fakeaudiodevice.h"
-#include "teststream.h"
+#include "cutefish/audio/audio_model.h"
+#include "cutefish/audio/backend.h"
+#include "cutefish/audio/volume_monitor.h"
+#include "fake_audio_device.h"
+#include "test_stream.h"
 
 extern char** environ;
 

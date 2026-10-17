@@ -5,7 +5,7 @@
 
 #include <deque>
 
-namespace cutefish::files::Internal {
+namespace cutefish::files::internal {
 
 namespace {
 
@@ -64,4 +64,4 @@ bool tryStartHelper(std::function<void()> work)
     return true;
 }
 
-} // namespace cutefish::files::Internal
+} // namespace cutefish::files::internal

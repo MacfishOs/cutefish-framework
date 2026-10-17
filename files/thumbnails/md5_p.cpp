@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <cstring>
 
-namespace cutefish::files::Internal {
+namespace cutefish::files::internal {
 
 static constexpr uint32_t kShifts[64] = {
     7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
@@ -105,4 +105,4 @@ std::string md5Hex(std::string_view data)
     return hex;
 }
 
-} // namespace cutefish::files::Internal
+} // namespace cutefish::files::internal

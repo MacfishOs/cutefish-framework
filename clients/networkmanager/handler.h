@@ -14,10 +14,10 @@
 #include "base/dbus.h"
 #include "base/signal.h"
 #include "base/timer.h"
-#include "networkmanager/iputils.h"
-#include "networkmanager/types.h"
-#include "networkmanager/vpnschema.h"
-#include "networkmanager/vpnutils.h"
+#include "cutefish/networkmanager/ip_utils.h"
+#include "cutefish/networkmanager/types.h"
+#include "cutefish/networkmanager/vpn_schema.h"
+#include "cutefish/networkmanager/vpn_utils.h"
 
 namespace cutefish::base {
 class Process;

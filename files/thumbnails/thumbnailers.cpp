@@ -20,14 +20,14 @@
 #include "base/file.h"
 #include "base/paths.h"
 #include "base/strings.h"
-#include "files/mimetypes.h"
-#include "files/url.h"
-#include "../mimesniffer_p.h"
-#include "../pathutils_p.h"
+#include "cutefish/files/mime_types.h"
+#include "cutefish/files/url.h"
+#include "../mime_sniffer_p.h"
+#include "../path_utils_p.h"
 
 extern char** environ;
 
-namespace cutefish::files::Internal {
+namespace cutefish::files::internal {
 
 using namespace cutefish::base;
 
@@ -378,4 +378,4 @@ ui::Bitmap Thumbnailers::generate(const std::string& path, const std::string& mi
     return image;
 }
 
-} // namespace cutefish::files::Internal
+} // namespace cutefish::files::internal

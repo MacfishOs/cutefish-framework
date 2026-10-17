@@ -26,18 +26,18 @@
 #include "base/locale.h"
 #include "base/paths.h"
 #include "base/strings.h"
-#include "files/directorylister.h"
-#include "files/directorymodel.h"
-#include "files/fileenumerator.h"
-#include "files/filepath.h"
-#include "files/filewatcher.h"
-#include "files/localfilesystem.h"
-#include "files/mimesniffer_p.h"
-#include "files/mimetypes.h"
-#include "files/pathutils_p.h"
-#include "files/task.h"
-#include "files/trashdirectory_p.h"
-#include "files/trashmonitor.h"
+#include "cutefish/files/directory_lister.h"
+#include "cutefish/files/directory_model.h"
+#include "cutefish/files/file_enumerator.h"
+#include "cutefish/files/file_path.h"
+#include "cutefish/files/file_watcher.h"
+#include "cutefish/files/local_file_system.h"
+#include "cutefish/files/mime_sniffer_p.h"
+#include "cutefish/files/mime_types.h"
+#include "cutefish/files/path_utils_p.h"
+#include "cutefish/files/task.h"
+#include "cutefish/files/trash_directory_p.h"
+#include "cutefish/files/trash_monitor.h"
 #include "testing.h"
 
 using namespace cutefish;
@@ -112,12 +112,12 @@ public:
     void SetUp() override
     {
         ASSERT_TRUE(data.isValid());
-        Internal::setHomeTrashRoot(data.path() + "/Trash");
+        internal::setHomeTrashRoot(data.path() + "/Trash");
         ASSERT_EQ(FileSystemUrl::trashRoot(), data.path() + "/Trash");
 
         mountTable = data.filePath("mountinfo");
         writeFile(mountTable, {});
-        Internal::setMountTable(mountTable);
+        internal::setMountTable(mountTable);
     }
 
     TemporaryDirectory data;
@@ -1139,12 +1139,12 @@ TEST_F(FilesTest, TrashWatchesOnlyVolumesThatCanHoldOne)
     } emptyTable{mountTable()};
 
     std::vector<std::string> points;
-    Internal::trashDirectories(&points);
+    internal::trashDirectories(&points);
     EXPECT_EQ(sorted(points), sorted({"/", stick, data}));
 
     std::vector<std::string> paths;
-    Internal::WatchEntries watched;
-    Internal::trashWatches(&paths, &watched);
+    internal::WatchEntries watched;
+    internal::trashWatches(&paths, &watched);
     EXPECT_FALSE(watched.contains("/"));
     EXPECT_FALSE(watched.contains("/proc"));
     EXPECT_FALSE(watched.contains(memory));
@@ -1153,9 +1153,9 @@ TEST_F(FilesTest, TrashWatchesOnlyVolumesThatCanHoldOne)
     EXPECT_TRUE(watched.contains(stick));
     EXPECT_TRUE(watched.contains(data));
 
-    EXPECT_FALSE(Internal::volumeTakesTrash(memory));
-    EXPECT_FALSE(Internal::volumeTakesTrash(runtime));
-    EXPECT_TRUE(Internal::volumeTakesTrash(stick));
+    EXPECT_FALSE(internal::volumeTakesTrash(memory));
+    EXPECT_FALSE(internal::volumeTakesTrash(runtime));
+    EXPECT_TRUE(internal::volumeTakesTrash(stick));
 }
 
 // A trash folder that cannot be watched is looked for again less and less often;
@@ -1228,7 +1228,7 @@ TEST_F(FilesTest, TrashOnAnotherFilesystem)
         if (::syscall(SYS_capset, &header, capabilities) != 0)
             ::_exit(76);
 
-        Internal::setMountTable(table);
+        internal::setMountTable(table);
 
         // Exits with the number of the first check that fails.
         int step = 0;
@@ -1547,7 +1547,7 @@ TEST_F(FilesTest, SniffsTypesByNameAndContents)
     for (const auto& [name, data, type] : files) {
         const std::string path = dir.filePath(name);
         writeFile(path, data);
-        EXPECT_EQ(name + ' ' + Internal::MimeSniffer::self()->mimeTypeForFile(path), name + ' ' + type);
+        EXPECT_EQ(name + ' ' + internal::MimeSniffer::self()->mimeTypeForFile(path), name + ' ' + type);
     }
 }
 
@@ -2251,7 +2251,7 @@ TEST_F(FilesTest, CopyThatCannotFitFailsBeforeWriting)
     if (allocated != 0)
         GTEST_SKIP() << "The build tree has no room for a source larger than the target";
 
-    Task copy({Operation::Copy, {local(Internal::absoluteFilePath(source.filePath("full")))}, local(target.path())});
+    Task copy({Operation::Copy, {local(internal::absoluteFilePath(source.filePath("full")))}, local(target.path())});
     Spy failed(copy.result);
     copy.start();
     EXPECT_TRUE(waitFor(loop, [&] { return failed.count() == 1; }, 30000ms));
@@ -2267,7 +2267,7 @@ TEST_F(FilesTest, CopyThatCannotFitFailsBeforeWriting)
         ::close(fd);
     }
 
-    Task fits({Operation::Copy, {local(Internal::absoluteFilePath(sparse))}, local(target.path())});
+    Task fits({Operation::Copy, {local(internal::absoluteFilePath(sparse))}, local(target.path())});
     Spy done(fits.result);
     fits.start();
     EXPECT_TRUE(waitFor(loop, [&] { return done.count() == 1; }, 30000ms));

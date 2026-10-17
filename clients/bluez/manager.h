@@ -16,7 +16,7 @@
 #include "base/dbus.h"
 #include "base/signal.h"
 #include "base/timer.h"
-#include "bluez/bluetoothobject.h"
+#include "cutefish/bluez/bluetooth_object.h"
 
 namespace cutefish::bluez {
 

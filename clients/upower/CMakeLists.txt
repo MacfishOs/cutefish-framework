@@ -1,6 +1,6 @@
 cutefish_add_client(upower TARGET UPowerClient
-    SOURCES batterystatus.cpp device.cpp
-    HEADERS batterystatus.h device.h
+    SOURCES battery_status.cpp device.cpp
+    HEADERS battery_status.h device.h
 )
 
 if(BUILD_TESTING)

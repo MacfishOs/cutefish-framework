@@ -4,13 +4,13 @@
 // Derived from plasma-nm's Handler (LGPL-2.1-or-later, Copyright 2013-2014
 // Jan Grulich <jgrulich@redhat.com>).
 
-#include "networkmanager/handler.h"
-#include "networkmanager/client.h"
-#include "networkmanager/hotspot.h"
-#include "networkmanager/secretreader.h"
-#include "networkmanager/text.h"
-#include "networkmanager/variants.h"
-#include "networkmanager/wifiutils.h"
+#include "cutefish/networkmanager/handler.h"
+#include "cutefish/networkmanager/client.h"
+#include "cutefish/networkmanager/hotspot.h"
+#include "cutefish/networkmanager/secret_reader.h"
+#include "cutefish/networkmanager/text.h"
+#include "cutefish/networkmanager/variants.h"
+#include "cutefish/networkmanager/wifi_utils.h"
 
 #include <algorithm>
 #include <cstdio>

@@ -21,134 +21,78 @@ pkg_check_modules(FilesIcu REQUIRED IMPORTED_TARGET icu-uc)
 # Reads and writes the thumbnail cache's PNG text chunks.
 pkg_check_modules(FilesPng REQUIRED IMPORTED_TARGET libpng)
 
-set(CUTEFISH_FILES_CMAKEDIR ${CMAKE_INSTALL_LIBDIR}/cmake/CutefishFiles)
-
 set(FILES_PUBLIC_HEADERS
-    backgroundrelease.h
-    directorylister.h
-    directorymodel.h
+    background_release.h
+    directory_lister.h
+    directory_model.h
     error.h
-    fileenumerator.h
-    fileitem.h
-    filepath.h
-    filesystemurl.h
-    filewatcher.h
-    localfilesystem.h
-    mimetypes.h
-    operationcontext.h
+    file_enumerator.h
+    file_item.h
+    file_path.h
+    file_system_url.h
+    file_watcher.h
+    local_file_system.h
+    mime_types.h
+    operation_context.h
     task.h
-    trashmonitor.h
+    trash_monitor.h
     url.h
-    volumemanager.h
+    volume_manager.h
 )
 
-add_library(cutefish-files SHARED
-    ${FILES_PUBLIC_HEADERS}
-    async_p.cpp
-    async_p.h
-    directorylister.cpp
-    directorymodel.cpp
-    error.cpp
-    fileenumerator.cpp
-    fileitem.cpp
-    filepath.cpp
-    filesystemurl.cpp
-    filewatcher.cpp
-    localfilesystem.cpp
-    mimesniffer.cpp
-    mimesniffer_p.h
-    mimetypes.cpp
-    operationcontext.cpp
-    posix_p.h
-    task.cpp
-    trash.cpp
-    trashdirectory.cpp
-    trashdirectory_p.h
-    trashmonitor.cpp
-    url.cpp
-    volumemanager.cpp
-)
-add_library(Cutefish::Files ALIAS cutefish-files)
-
-set_target_properties(cutefish-files PROPERTIES
-    EXPORT_NAME Files
-    VERSION 1.0.0
-    SOVERSION 1
-    CXX_STANDARD 20
-    CXX_STANDARD_REQUIRED ON
-    AUTOMOC OFF
-    AUTORCC OFF
+cutefish_framework_add_library(cutefish-files
+    TARGET Files
+    MODULE files
+    EXPORT CutefishFilesTargets
+    SOURCES
+        async_p.cpp
+        async_p.h
+        directory_lister.cpp
+        directory_model.cpp
+        error.cpp
+        file_enumerator.cpp
+        file_item.cpp
+        file_path.cpp
+        file_system_url.cpp
+        file_watcher.cpp
+        local_file_system.cpp
+        mime_sniffer.cpp
+        mime_sniffer_p.h
+        mime_types.cpp
+        operation_context.cpp
+        path_utils_p.h
+        posix_p.h
+        task.cpp
+        trash.cpp
+        trash_directory.cpp
+        trash_directory_p.h
+        trash_monitor.cpp
+        url.cpp
+        volume_manager.cpp
+    HEADERS ${FILES_PUBLIC_HEADERS}
+    PUBLIC_LIBRARIES Cutefish::ToolkitBase Threads::Threads
+    PRIVATE_LIBRARIES PkgConfig::FilesIcu
 )
 target_compile_definitions(cutefish-files PRIVATE _FILE_OFFSET_BITS=64)
-target_include_directories(cutefish-files PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/cutefish-files>
-)
-target_link_libraries(cutefish-files
-    PUBLIC Cutefish::ToolkitBase Threads::Threads
-    PRIVATE PkgConfig::FilesIcu
-)
 
-set(FILES_THUMBNAILS_PUBLIC_HEADERS
-    thumbnails/thumbnailcache.h
-)
-
-add_library(cutefish-files-thumbnails SHARED
-    ${FILES_THUMBNAILS_PUBLIC_HEADERS}
-    thumbnails/md5_p.cpp
-    thumbnails/md5_p.h
-    thumbnails/thumbnailcache.cpp
-    thumbnails/thumbnailers.cpp
-    thumbnails/thumbnailers_p.h
-)
-add_library(Cutefish::FilesThumbnails ALIAS cutefish-files-thumbnails)
-
-set_target_properties(cutefish-files-thumbnails PROPERTIES
-    EXPORT_NAME FilesThumbnails
-    VERSION 1.0.0
-    SOVERSION 1
-    CXX_STANDARD 20
-    CXX_STANDARD_REQUIRED ON
-    AUTOMOC OFF
-    AUTORCC OFF
-)
-target_link_libraries(cutefish-files-thumbnails
-    PUBLIC Cutefish::Files Cutefish::Toolkit
-    PRIVATE PkgConfig::FilesPng
+cutefish_framework_add_library(cutefish-files-thumbnails
+    TARGET FilesThumbnails
+    MODULE files
+    EXPORT CutefishFilesTargets
+    SOURCES
+        thumbnails/md5_p.cpp
+        thumbnails/md5_p.h
+        thumbnails/thumbnail_cache.cpp
+        thumbnails/thumbnailers.cpp
+        thumbnails/thumbnailers_p.h
+    HEADERS thumbnails/thumbnail_cache.h
+    PUBLIC_LIBRARIES Cutefish::Files Cutefish::Toolkit
+    PRIVATE_LIBRARIES PkgConfig::FilesPng
 )
 
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
 
-install(TARGETS cutefish-files cutefish-files-thumbnails EXPORT CutefishFilesTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-install(FILES ${FILES_PUBLIC_HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cutefish-files/files)
-install(FILES ${FILES_THUMBNAILS_PUBLIC_HEADERS}
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cutefish-files/files/thumbnails)
-install(EXPORT CutefishFilesTargets
-    NAMESPACE Cutefish::
-    DESTINATION ${CUTEFISH_FILES_CMAKEDIR}
-)
-
-configure_package_config_file(CutefishFilesConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/CutefishFilesConfig.cmake
-    INSTALL_DESTINATION ${CUTEFISH_FILES_CMAKEDIR}
-)
-write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/CutefishFilesConfigVersion.cmake
-    VERSION 1.0.0
-    COMPATIBILITY SameMajorVersion
-)
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/CutefishFilesConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/CutefishFilesConfigVersion.cmake
-    DESTINATION ${CUTEFISH_FILES_CMAKEDIR}
-)
-
-# The build tree as a package too, for projects built against it before the
-# framework is installed: CutefishFiles_DIR=<build>/files.
-export(EXPORT CutefishFilesTargets
-    NAMESPACE Cutefish::
-    FILE ${CMAKE_CURRENT_BINARY_DIR}/CutefishFilesTargets.cmake
-)
+cutefish_framework_export(CutefishFiles CutefishFilesTargets)
+cutefish_framework_add_package(CutefishFiles)

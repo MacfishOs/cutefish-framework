@@ -12,7 +12,7 @@
 #include <mutex>
 #include <thread>
 
-namespace cutefish::files::Internal {
+namespace cutefish::files::internal {
 
 // Folders from this size on spread even a refresh over threads.
 constexpr ptrdiff_t LargeFolder = 20000;
@@ -79,4 +79,4 @@ void runOnFreeThreads(ptrdiff_t helpers, Body body)
         std::rethrow_exception(failure);
 }
 
-} // namespace cutefish::files::Internal
+} // namespace cutefish::files::internal

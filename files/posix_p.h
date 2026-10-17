@@ -12,10 +12,10 @@
 #include <type_traits>
 #include <unistd.h>
 
-#include "files/operationcontext.h"
-#include "pathutils_p.h"
+#include "cutefish/files/operation_context.h"
+#include "path_utils_p.h"
 
-namespace cutefish::files::Internal {
+namespace cutefish::files::internal {
 
 struct Fd
 {
@@ -111,4 +111,4 @@ void children(int fd, const std::string& path, Visitor visitor)
 void eraseAt(int parent, const std::string& name, const std::string& path, OperationContext& ctx,
              bool cleanup = false);
 
-} // namespace cutefish::files::Internal
+} // namespace cutefish::files::internal

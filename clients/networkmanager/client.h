@@ -15,7 +15,7 @@
 #include "base/dbus.h"
 #include "base/signal.h"
 #include "base/timer.h"
-#include "networkmanager/types.h"
+#include "cutefish/networkmanager/types.h"
 
 namespace cutefish::networkmanager {
 

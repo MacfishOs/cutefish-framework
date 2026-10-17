@@ -16,13 +16,13 @@
 
 #include "base/event_loop.h"
 #include "base/timer.h"
-#include "fakenetworkmanager.h"
-#include "networkmanager/client.h"
-#include "networkmanager/connections.h"
-#include "networkmanager/handler.h"
-#include "networkmanager/hotspot.h"
-#include "networkmanager/networkmodel.h"
-#include "networkmanager/vpnutils.h"
+#include "cutefish/networkmanager/client.h"
+#include "cutefish/networkmanager/connections.h"
+#include "cutefish/networkmanager/handler.h"
+#include "cutefish/networkmanager/hotspot.h"
+#include "cutefish/networkmanager/network_model.h"
+#include "cutefish/networkmanager/vpn_utils.h"
+#include "fake_network_manager.h"
 
 using namespace std::chrono_literals;
 using namespace cutefish::networkmanager;

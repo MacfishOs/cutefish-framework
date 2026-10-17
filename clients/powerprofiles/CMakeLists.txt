@@ -1,6 +1,6 @@
 cutefish_add_client(powerprofiles TARGET PowerProfilesClient
-    SOURCES powerprofiles.cpp
-    HEADERS powerprofiles.h
+    SOURCES power_profiles.cpp
+    HEADERS power_profiles.h
 )
 
 if(BUILD_TESTING)

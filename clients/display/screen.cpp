@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "display/screen.h"
+#include "cutefish/display/screen.h"
 
 #include <algorithm>
 #include <chrono>

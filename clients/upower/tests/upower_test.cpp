@@ -10,8 +10,8 @@
 #include <tuple>
 
 #include "base/event_loop.h"
-#include "upower/batterystatus.h"
-#include "upower/device.h"
+#include "cutefish/upower/battery_status.h"
+#include "cutefish/upower/device.h"
 
 using namespace cutefish;
 using namespace cutefish::base;

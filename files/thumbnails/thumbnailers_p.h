@@ -13,7 +13,7 @@
 #include "base/geometry.h"
 #include "ui/bitmap.h"
 
-namespace cutefish::files::Internal {
+namespace cutefish::files::internal {
 
 /**
  * The external thumbnailers installed as `thumbnailers/*.thumbnailer` in the
@@ -40,4 +40,4 @@ private:
     std::map<std::string, std::vector<std::string>> m_commands;
 };
 
-} // namespace cutefish::files::Internal
+} // namespace cutefish::files::internal

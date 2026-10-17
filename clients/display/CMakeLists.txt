@@ -1,14 +1,14 @@
 cutefish_add_client(display TARGET DisplayClient
     SOURCES
-        displayclient.cpp
-        nightlight.cpp
-        outputmodel.cpp
+        display_client.cpp
+        night_light.cpp
+        output_model.cpp
         screen.cpp
     HEADERS
-        displayclient.h
-        displaytypes.h
-        nightlight.h
-        outputmodel.h
+        display_client.h
+        display_types.h
+        night_light.h
+        output_model.h
         screen.h
 )
 
