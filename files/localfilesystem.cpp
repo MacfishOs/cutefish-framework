@@ -321,6 +321,21 @@ static void validateDestination(const std::string& source, const std::string& de
         throw Failure(EINVAL, destination);
 }
 
+// A folder that holds the source cannot be replaced: merging into it would write the
+// source's copy into the source itself, and a move would then delete both.
+static void validateReplacement(const std::string& source, const std::string& destination)
+{
+    const std::string sourceParent = canonicalPath(absolutePathOf(source));
+    const std::string destinationParent = canonicalPath(absolutePathOf(destination));
+    if (sourceParent.empty() || destinationParent.empty())
+        return;
+
+    const std::string src = joined(sourceParent, fileNameOf(source));
+    const std::string dst = joined(destinationParent, fileNameOf(destination));
+    if (src.starts_with(dst + '/'))
+        throw Failure(EINVAL, destination);
+}
+
 static void mergeStaged(int source, int target, const std::string& path, OperationContext& ctx)
 {
     children(source, path, [&](const std::string& name, const std::string& childPath) {
@@ -395,6 +410,8 @@ static std::string publish(int parent, const std::string& temporary, const std::
             throw Failure(EEXIST, destination);
 
         if (policy == ConflictPolicy::Replace) {
+            validateReplacement(source, destination);
+
             // Copies are not synced one by one; the replacement must be on disk before the
             // original goes.
             check(::syncfs(parent), destination);
@@ -517,6 +534,7 @@ std::string LocalFileSystem::move(const std::string& source, const std::string& 
     }
 
     if (code == EEXIST && policy == ConflictPolicy::Replace) {
+        validateReplacement(source, destination);
         if (::renameat(input.fd.value, input.name.c_str(), output.fd.value, output.name.c_str()) == 0)
             return destination;
         if (errno != EXDEV && errno != ENOTEMPTY && errno != EEXIST)

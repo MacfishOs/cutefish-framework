@@ -389,6 +389,38 @@ TEST_F(FilesTest, SelfAndDescendantProtection)
     EXPECT_EQ(errorCode([&] { LocalFileSystem::remove("/", ctx); }), EINVAL);
 }
 
+TEST_F(FilesTest, ReplacingAFolderThatHoldsTheSourceIsRefused)
+{
+    TemporaryDirectory dir;
+    ASSERT_TRUE(makePath(dir.filePath("b/b/b")));
+    writeFile(dir.filePath("b/b/b/inner"), "inner");
+    writeFile(dir.filePath("b/b/file"), "file");
+    writeFile(dir.filePath("b/keep"), "keep");
+
+    OperationContext ctx;
+    EXPECT_EQ(errorCode([&] {
+                  LocalFileSystem::copy(dir.filePath("b/b"), dir.filePath("b"), ConflictPolicy::Replace, ctx);
+              }),
+              EINVAL);
+
+    EXPECT_EQ(errorCode([&] {
+                  LocalFileSystem::move(dir.filePath("b/b"), dir.filePath("b"), ConflictPolicy::Replace, ctx);
+              }),
+              EINVAL);
+
+    EXPECT_EQ(readFile(dir.filePath("b/b/b/inner")), "inner");
+    EXPECT_EQ(readFile(dir.filePath("b/b/file")), "file");
+    EXPECT_EQ(readFile(dir.filePath("b/keep")), "keep");
+    EXPECT_FALSE(exists(dir.filePath("b/file")));
+
+    EXPECT_EQ(LocalFileSystem::move(dir.filePath("b/b"), dir.filePath("b"), ConflictPolicy::KeepBoth, ctx),
+              dir.filePath("b (1)"));
+    EXPECT_EQ(readFile(dir.filePath("b (1)/b/inner")), "inner");
+
+    for (const std::string& name : entries(dir.path()))
+        EXPECT_FALSE(name.starts_with(".cutefish-")) << name;
+}
+
 TEST_F(FilesTest, DestinationSymlinkIsNotFollowed)
 {
     TemporaryDirectory dir;
