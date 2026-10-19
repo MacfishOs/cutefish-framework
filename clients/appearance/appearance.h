@@ -78,7 +78,6 @@ public:
     // "#RRGGBB".
     std::string backgroundColor() const;
     void setBackgroundColor(const std::string& color);
-    bool backgroundVisible() const;
 
     // After any value changed, or the service came or went.
     base::Signal<> changed;

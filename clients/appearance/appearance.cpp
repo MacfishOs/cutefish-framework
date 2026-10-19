@@ -26,7 +26,7 @@ Appearance::Appearance()
     }
     for (const char* member : {"darkModeChanged", "darkModeScheduleChanged", "wallpaperChanged",
                                "userWallpapersChanged", "wallpaperFoldersChanged", "continuousCornersChanged",
-                               "backgroundVisibleChanged", "accentColorChanged", "backgroundTypeChanged",
+                               "accentColorChanged", "backgroundTypeChanged",
                                "backgroundColorChanged", "cursorThemeChanged", "cursorSizeChanged",
                                "iconThemeChanged", "systemFontPointSizeChanged", "systemFontChanged"}) {
         m_matches.push_back(m_service.onSignal(member, [this](const dbus::Message&) { reload(); }));
@@ -254,11 +254,6 @@ std::string Appearance::backgroundColor() const
 void Appearance::setBackgroundColor(const std::string& color)
 {
     m_service.send("setBackgroundColor", color);
-}
-
-bool Appearance::backgroundVisible() const
-{
-    return value<bool>("backgroundVisible", true);
 }
 
 } // namespace cutefish::appearance
