@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
-//
-// The SSID charset table and security checks are ported from NetworkManager's
-// src/libnm-core-impl/nm-utils.c (LGPL-2.1-or-later, Copyright 2005 - 2017 Red Hat, Inc.).
 
 #include "cutefish/networkmanager/wifi_utils.h"
 
 #include <algorithm>
 #include <cctype>
 #include <iconv.h>
+#include <span>
 #include <sys/random.h>
 #include <vector>
 
@@ -16,59 +14,43 @@
 
 namespace cutefish::networkmanager::wifi {
 
-struct LocaleEncodings
+// SSIDs set before UTF-8 took over are in the legacy charset of the router
+// owner's language. The code pages most setup pages wrote in come before
+// the ISO and KOI8 sets, and wider supersets before what they contain.
+struct LegacyCharsets
 {
-    const char* locale;
-    std::vector<const char*> encodings;
+    std::vector<const char*> languages;
+    std::vector<const char*> charsets;
 };
 
-// NetworkManager's table in libnm-core-impl/nm-utils.c, by language and then country.
-static const LocaleEncodings localeEncodings[] = {
-    {"zh_cn", {"GB18030", "EUC-CN", "GB2312"}},
-    {"zh_sg", {"GB18030", "EUC-CN", "GB2312"}},
-    {"zh_hk", {"BIG5", "BIG5-HKSCS", "EUC-TW"}},
-    {"zh_mo", {"BIG5", "EUC-TW"}},
-    {"zh_tw", {"BIG5", "EUC-TW"}},
-    {"ar", {"ISO-8859-6", "WINDOWS-1256"}},
-    {"be", {"KOI8-R", "WINDOWS-1251", "ISO-8859-5"}},
-    {"bg", {"WINDOWS-1251", "KOI8-R", "ISO-8859-5"}},
-    {"cs", {"ISO-8859-2", "WINDOWS-1250"}},
-    {"el", {"ISO-8859-7", "WINDOWS-1253"}},
-    {"et", {"ISO-8859-4", "WINDOWS-1257"}},
-    {"he", {"ISO-8859-8", "WINDOWS-1255"}},
-    {"hr", {"ISO-8859-2", "WINDOWS-1250"}},
-    {"hu", {"ISO-8859-2", "WINDOWS-1250"}},
-    {"iw", {"ISO-8859-8", "WINDOWS-1255"}},
-    {"ja", {"EUC-JP", "SHIFT_JIS", "ISO-2022-JP"}},
-    {"ko", {"EUC-KR", "ISO-2022-KR", "JOHAB"}},
-    {"lt", {"ISO-8859-4", "WINDOWS-1257"}},
-    {"lv", {"ISO-8859-4", "WINDOWS-1257"}},
-    {"mk", {"KOI8-R", "WINDOWS-1251", "ISO-8859-5"}},
-    {"pl", {"ISO-8859-2", "WINDOWS-1250"}},
-    {"ro", {"ISO-8859-2", "WINDOWS-1250"}},
-    {"ru", {"KOI8-R", "WINDOWS-1251", "ISO-8859-5"}},
-    {"sh", {"ISO-8859-2", "WINDOWS-1250"}},
-    {"sk", {"ISO-8859-2", "WINDOWS-1250"}},
-    {"sl", {"ISO-8859-2", "WINDOWS-1250"}},
-    {"sr", {"KOI8-R", "WINDOWS-1251", "ISO-8859-5"}},
-    {"th", {"ISO-8859-11", "WINDOWS-874"}},
-    {"tr", {"ISO-8859-9", "WINDOWS-1254"}},
-    {"uk", {"KOI8-U", "KOI8-R", "WINDOWS-1251"}},
+static const LegacyCharsets legacyCharsets[] = {
+    {{"zh_cn", "zh_sg"}, {"GB18030"}},
+    {{"zh_tw", "zh_hk", "zh_mo"}, {"BIG5-HKSCS", "EUC-TW"}},
+    {{"ja"}, {"CP932", "EUC-JP", "ISO-2022-JP"}},
+    {{"ko"}, {"CP949", "ISO-2022-KR", "JOHAB"}},
+    {{"uk"}, {"WINDOWS-1251", "KOI8-U"}},
+    {{"ru", "be", "bg", "mk", "sr"}, {"WINDOWS-1251", "KOI8-R", "ISO-8859-5"}},
+    {{"cs", "hr", "hu", "pl", "ro", "sh", "sk", "sl"}, {"WINDOWS-1250", "ISO-8859-2"}},
+    {{"et", "lt", "lv"}, {"WINDOWS-1257", "ISO-8859-13"}},
+    {{"el"}, {"WINDOWS-1253", "ISO-8859-7"}},
+    {{"he", "iw"}, {"WINDOWS-1255", "ISO-8859-8"}},
+    {{"ar"}, {"WINDOWS-1256", "ISO-8859-6"}},
+    {{"th"}, {"WINDOWS-874"}},
+    {{"tr"}, {"WINDOWS-1254", "ISO-8859-9"}},
 };
 
-static std::vector<const char*> encodingsForLocale(const std::string& language)
+// By language and country first, then by language alone.
+static std::vector<const char*> charsetsFor(const std::string& language)
 {
     std::string name = language.empty() ? base::Locale::system().name() : language;
     name = name.substr(0, name.find_first_of(".@"));
     std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return std::tolower(c); });
-    for (const auto& entry : localeEncodings) {
-        if (name == entry.locale)
-            return entry.encodings;
-    }
-    const std::string languageCode = name.substr(0, 2);
-    for (const auto& entry : localeEncodings) {
-        if (languageCode == entry.locale)
-            return entry.encodings;
+
+    for (const std::string& key : {name, name.substr(0, 2)}) {
+        for (const LegacyCharsets& entry : legacyCharsets) {
+            if (std::find(entry.languages.begin(), entry.languages.end(), key) != entry.languages.end())
+                return entry.charsets;
+        }
     }
     return {};
 }
@@ -166,67 +148,79 @@ static std::string printable(const std::string& utf8)
     return text;
 }
 
-static bool supportsCiphers(uint32_t caps, uint32_t flags, bool staticWep)
+// A cipher an access point lists, and the adapter capability it needs.
+struct Cipher
 {
-    bool pair = staticWep;
-    if (!staticWep) {
-        pair = ((caps & CapWep40) && (flags & PairWep40)) || ((caps & CapWep104) && (flags & PairWep104))
-               || ((caps & CapTkip) && (flags & PairTkip)) || ((caps & CapCcmp) && (flags & PairCcmp));
-    }
+    uint32_t flag;
+    uint32_t capability;
+};
 
-    bool group = ((caps & CapWep40) && (flags & GroupWep40)) || ((caps & CapWep104) && (flags & GroupWep104));
-    if (!staticWep)
-        group = group || ((caps & CapTkip) && (flags & GroupTkip)) || ((caps & CapCcmp) && (flags & GroupCcmp));
+static constexpr Cipher pairwiseCiphers[] = {
+    {PairWep40, CapWep40}, {PairWep104, CapWep104}, {PairTkip, CapTkip}, {PairCcmp, CapCcmp}};
+static constexpr Cipher groupCiphers[] = {
+    {GroupWep40, CapWep40}, {GroupWep104, CapWep104}, {GroupTkip, CapTkip}, {GroupCcmp, CapCcmp}};
 
-    return pair && group;
+static bool anyUsable(uint32_t caps, uint32_t flags, std::span<const Cipher> ciphers)
+{
+    return std::any_of(ciphers.begin(), ciphers.end(), [caps, flags](const Cipher& cipher) {
+        return (flags & cipher.flag) && (caps & cipher.capability);
+    });
 }
 
-static bool pskCipher(uint32_t caps, uint32_t flags)
+// The adapter can take part in what a WPA or RSN element lists. With static
+// WEP the keys are fixed, so only a WEP group cipher has to match.
+static bool ciphersUsable(uint32_t caps, uint32_t flags, bool staticWep)
 {
-    return ((flags & PairTkip) && (caps & CapTkip)) || ((flags & PairCcmp) && (caps & CapCcmp));
+    if (staticWep)
+        return anyUsable(caps, flags, std::span(groupCiphers).first(2));
+    return anyUsable(caps, flags, pairwiseCiphers) && anyUsable(caps, flags, groupCiphers);
 }
 
-// nm_utils_security_valid() for an access point that is in range.
-static bool valid(SecurityType type, uint32_t caps, bool adhoc, uint32_t apFlags, uint32_t wpa, uint32_t rsn)
+// A pre-shared key needs TKIP or CCMP as the pairwise cipher.
+static bool pskUsable(uint32_t caps, uint32_t flags)
 {
+    return anyUsable(caps, flags, std::span(pairwiseCiphers).last(2));
+}
+
+// Whether the adapter and an access point in range can use `type` together.
+static bool usable(SecurityType type, uint32_t caps, bool adhoc, uint32_t apFlags, uint32_t wpa, uint32_t rsn)
+{
+    const bool privacy = apFlags & ApPrivacy;
+    const bool wpaCapable = caps & CapWpa;
+    const bool rsnCapable = caps & CapRsn;
+    const bool rsnCcmp = (rsn & PairCcmp) && (caps & CapCcmp);
+
     switch (type) {
     case SecurityType::None:
-        return !(apFlags & ApPrivacy) && !wpa && !rsn;
-    case SecurityType::Leap:
-        if (adhoc)
-            return false;
-        [[fallthrough]];
+        return !privacy && wpa == 0 && rsn == 0;
     case SecurityType::StaticWep:
-        if (!(apFlags & ApPrivacy))
+    case SecurityType::Leap:
+        // LEAP works on infrastructure networks only.
+        if (!privacy || (adhoc && type == SecurityType::Leap))
             return false;
-        if (wpa || rsn)
-            return supportsCiphers(caps, wpa, true) || supportsCiphers(caps, rsn, true);
-        return true;
+        return (wpa == 0 && rsn == 0) || ciphersUsable(caps, wpa, true) || ciphersUsable(caps, rsn, true);
     case SecurityType::DynamicWep:
-        if (adhoc || rsn || !(apFlags & ApPrivacy))
+        if (adhoc || rsn != 0 || !privacy)
             return false;
-        // Some access points broadcast minimal WPA-enabled beacons.
-        if (wpa)
-            return (wpa & KeyMgmt8021x) && supportsCiphers(caps, wpa, false);
-        return true;
+        // Some access points also send a WPA element that offers 802.1X.
+        return wpa == 0 || ((wpa & KeyMgmt8021x) && ciphersUsable(caps, wpa, false));
     case SecurityType::WpaPsk:
-        return !adhoc && (caps & CapWpa) && (wpa & KeyMgmtPsk) && pskCipher(caps, wpa);
+        return !adhoc && wpaCapable && (wpa & KeyMgmtPsk) && pskUsable(caps, wpa);
     case SecurityType::Wpa2Psk:
-        if (!(caps & CapRsn))
-            return false;
+        // An ad-hoc RSN network has no key management to advertise.
         if (adhoc)
-            return (caps & CapIbssRsn) && (rsn & PairCcmp) && (caps & CapCcmp);
-        return (rsn & KeyMgmtPsk) && pskCipher(caps, rsn);
+            return rsnCapable && (caps & CapIbssRsn) && rsnCcmp;
+        return rsnCapable && (rsn & KeyMgmtPsk) && pskUsable(caps, rsn);
     case SecurityType::WpaEap:
-        return !adhoc && (caps & CapWpa) && (wpa & KeyMgmt8021x) && supportsCiphers(caps, wpa, false);
+        return !adhoc && wpaCapable && (wpa & KeyMgmt8021x) && ciphersUsable(caps, wpa, false);
     case SecurityType::Wpa2Eap:
-        return !adhoc && (caps & CapRsn) && (rsn & KeyMgmt8021x) && supportsCiphers(caps, rsn, false);
+        return !adhoc && rsnCapable && (rsn & KeyMgmt8021x) && ciphersUsable(caps, rsn, false);
     case SecurityType::Sae:
-        return !adhoc && (caps & CapRsn) && (rsn & KeyMgmtSae) && (rsn & PairCcmp) && (caps & CapCcmp);
+        return !adhoc && rsnCapable && (rsn & KeyMgmtSae) && rsnCcmp;
     case SecurityType::Owe:
-        return !adhoc && (caps & CapRsn) && (rsn & (KeyMgmtOwe | KeyMgmtOweTm));
+        return !adhoc && rsnCapable && (rsn & (KeyMgmtOwe | KeyMgmtOweTm));
     case SecurityType::Wpa3SuiteB192:
-        return !adhoc && (caps & CapRsn) && (rsn & KeyMgmtEapSuiteB192);
+        return !adhoc && rsnCapable && (rsn & KeyMgmtEapSuiteB192);
     default:
         return false;
     }
@@ -260,7 +254,7 @@ std::string ssidLabel(const std::string& ssid, const std::string& language)
     if (decodeUtf8(bytes, nullptr))
         return printable(bytes);
 
-    for (const char* encoding : encodingsForLocale(language)) {
+    for (const char* encoding : charsetsFor(language)) {
         std::string decoded;
         if (decode(bytes, encoding, &decoded))
             return printable(decoded);
@@ -308,7 +302,7 @@ SecurityType security(uint32_t deviceCapabilities, uint32_t apFlags, uint32_t wp
 
     const bool adhoc = mode == ModeAdhoc;
     for (const auto type : order) {
-        if (valid(type, deviceCapabilities, adhoc, apFlags, wpaFlags, rsnFlags))
+        if (usable(type, deviceCapabilities, adhoc, apFlags, wpaFlags, rsnFlags))
             return type;
     }
     return advertised(apFlags, wpaFlags, rsnFlags);

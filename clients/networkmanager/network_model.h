@@ -18,21 +18,15 @@ class Client;
 // One row of the network lists.
 struct NetworkItem
 {
-    enum class Kind {
-        UnavailableConnection = 0,
-        AvailableConnection,
-        AvailableAccessPoint,
-    };
-
     // Stays the same while the row's access points come and go.
     std::string key;
     ConnectionType type = ConnectionType::Unknown;
-    Kind kind = Kind::UnavailableConnection;
     std::string name;
     // The name with its device added when two rows share it.
     std::string uniqueName;
     std::string ssid;
     std::string uuid;
+    // The saved profile; empty for a Wi-Fi network never joined.
     std::string connectionPath;
     std::string devicePath;
     std::string deviceName;

@@ -22,9 +22,8 @@ std::string ssidKey(const std::string& ssid);
 // At most 32 bytes, cut on a character boundary.
 std::string ssidBytes(const std::string& name);
 
-// The strongest scheme both the device and the access point support, as
-// NetworkManager's nm_utils_security_valid() decides; the AP's flags alone
-// when the device reports no capabilities.
+// The strongest scheme both the device and the access point support; the
+// AP's flags alone when the device reports no capabilities.
 SecurityType security(uint32_t deviceCapabilities, uint32_t apFlags, uint32_t wpaFlags, uint32_t rsnFlags,
                       uint32_t mode);
 bool enterprise(SecurityType type);

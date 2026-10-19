@@ -323,7 +323,7 @@ TEST_F(ClientTest, ListsNetworksByName)
     // Both of its access points make one network, shown by the stronger one.
     const auto home = row(model, "Home");
     ASSERT_TRUE(home);
-    EXPECT_EQ(home->kind, NetworkItem::Kind::AvailableConnection);
+    EXPECT_FALSE(home->connectionPath.empty());
     EXPECT_EQ(home->connectionPath, homeProfile);
     EXPECT_EQ(home->specificPath, homeStrong);
     EXPECT_EQ(home->signal, 70);
@@ -331,7 +331,7 @@ TEST_F(ClientTest, ListsNetworksByName)
 
     const auto cafeRow = row(model, "Cafe");
     ASSERT_TRUE(cafeRow);
-    EXPECT_EQ(cafeRow->kind, NetworkItem::Kind::AvailableAccessPoint);
+    EXPECT_TRUE(cafeRow->connectionPath.empty());
     EXPECT_EQ(cafeRow->securityType, SecurityType::None);
     EXPECT_EQ(row(model, "Library")->securityType, SecurityType::Wpa2Eap);
 

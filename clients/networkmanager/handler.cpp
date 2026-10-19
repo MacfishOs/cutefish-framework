@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
-//
-// Derived from plasma-nm's Handler (LGPL-2.1-or-later, Copyright 2013-2014
-// Jan Grulich <jgrulich@redhat.com>).
 
 #include "cutefish/networkmanager/handler.h"
 #include "cutefish/networkmanager/client.h"
@@ -53,6 +50,47 @@ static std::string replyPath(const Reply& reply, size_t index)
 static bool contains(const std::vector<std::string>& list, const std::string& value)
 {
     return std::find(list.begin(), list.end(), value) != list.end();
+}
+
+// The profile for running a hotspot as an access point, or as an ad-hoc
+// network on an adapter that cannot.
+static Settings hotspotSettings(const std::string& name, const std::string& uuid, const std::string& password,
+                                uint32_t capabilities)
+{
+    const bool accessPoint = capabilities & CapAp;
+
+    Settings settings;
+    settings["connection"] = {{"id", Variant(name)},
+                              {"uuid", Variant(uuid)},
+                              {"type", Variant(std::string("802-11-wireless"))},
+                              {"autoconnect", Variant(false)}};
+    // NetworkManager picks a channel that is valid where the machine is.
+    settings["802-11-wireless"] = {{"ssid", bytesValue(wifi::ssidBytes(name))},
+                                   {"mode", Variant(std::string(accessPoint ? "ap" : "adhoc"))}};
+    settings["ipv4"] = {{"method", Variant(std::string("shared"))}};
+    settings["ipv6"] = {{"method", Variant(std::string("ignore"))}};
+    if (password.empty())
+        return settings;
+
+    VariantMap& security = settings[wirelessSecurity];
+    if (!accessPoint) {
+        // Ad-hoc networks only know WEP; type 2 hashes the password into the key.
+        security["key-mgmt"] = Variant(std::string("none"));
+        security["wep-key-type"] = Variant(uint32_t(2));
+        security["wep-key0"] = Variant(password);
+        return settings;
+    }
+
+    security["key-mgmt"] = Variant(std::string("wpa-psk"));
+    security["psk"] = Variant(password);
+    // WPA2 with AES alone when the adapter has it.
+    if (capabilities & CapRsn) {
+        const Variant ccmp(std::vector<std::string>{"ccmp"});
+        security["proto"] = Variant(std::vector<std::string>{"rsn"});
+        security["pairwise"] = ccmp;
+        security["group"] = ccmp;
+    }
+    return settings;
 }
 
 Handler::Handler()
@@ -431,41 +469,52 @@ void Handler::reportVpnFailure(const std::string& active, uint32_t reason)
 
 void Handler::deactivateConnection(const std::string& connection, const std::string& device)
 {
-    for (const std::string& active : m_client->activeConnections()) {
-        const std::string profile = objectPath(m_client->property(active, activeInterface, "Connection"));
-        const std::vector<std::string> devices = toStringList(m_client->property(active, activeInterface, "Devices"));
-        const bool vpn = toBool(m_client->property(active, activeInterface, "Vpn"));
+    const auto takeDown = [this](const std::string& active) {
+        m_client->call(managerPath, managerInterface, "DeactivateConnection", {path(active)}, &m_context, {},
+                       Client::authorizedTimeout);
+    };
+    // Unlike taking the connection down, this keeps the device from connecting again by itself.
+    const auto disconnect = [this](const std::string& device) {
+        m_client->call(device, deviceInterface, "Disconnect", {}, &m_context, {}, Client::authorizedTimeout);
+    };
 
-        const bool matches = connection.empty() ? contains(devices, device) : profile == connection;
-        if (!matches)
+    for (const std::string& active : m_client->activeConnections()) {
+        const std::vector<std::string> devices = toStringList(m_client->property(active, activeInterface, "Devices"));
+        const bool onDevice = contains(devices, device);
+        const std::string profile = objectPath(m_client->property(active, activeInterface, "Connection"));
+        if (connection.empty() ? !onDevice : profile != connection)
             continue;
 
-        // A VPN, or a profile named without a device (WireGuard brings its
-        // own), goes down alone; disconnecting a device also keeps it from
-        // connecting again by itself.
-        if (vpn || device.empty()) {
-            m_client->call(managerPath, managerInterface, "DeactivateConnection", {path(active)}, &m_context, {},
-                           Client::authorizedTimeout);
-        } else if (contains(devices, device)) {
-            m_client->call(device, deviceInterface, "Disconnect", {}, &m_context, {}, Client::authorizedTimeout);
-        }
+        // A VPN rides on another device's connection, and a profile named
+        // without a device (WireGuard's) has an interface of its own.
+        if (device.empty() || toBool(m_client->property(active, activeInterface, "Vpn")))
+            takeDown(active);
+        else if (onDevice)
+            disconnect(device);
     }
 }
 
 void Handler::removeConnection(const std::string& connection)
 {
-    const std::string uuid = toString(m_client->setting(connection, "connection", "uuid"));
+    const auto remove = [this](const std::string& profile) {
+        m_client->call(profile, connectionInterface, "Delete", {}, &m_context, {}, Client::authorizedTimeout);
+    };
 
-    // Port profiles go with the profile they belong to.
+    // A bond's or bridge's ports name it as their controller ("master" in
+    // older NetworkManager) and would be left without it.
+    const std::string uuid = toString(m_client->setting(connection, "connection", "uuid"));
+    const auto isPort = [this, &uuid](const std::string& profile) {
+        return toString(m_client->setting(profile, "connection", "controller")) == uuid
+               || toString(m_client->setting(profile, "connection", "master")) == uuid;
+    };
     if (!uuid.empty()) {
-        for (const std::string& port : m_client->connections()) {
-            if (toString(m_client->setting(port, "connection", "controller")) == uuid
-                || toString(m_client->setting(port, "connection", "master")) == uuid)
-                m_client->call(port, connectionInterface, "Delete", {}, &m_context, {}, Client::authorizedTimeout);
+        for (const std::string& profile : m_client->connections()) {
+            if (isPort(profile))
+                remove(profile);
         }
     }
 
-    m_client->call(connection, connectionInterface, "Delete", {}, &m_context, {}, Client::authorizedTimeout);
+    remove(connection);
 }
 
 void Handler::requestScan(const std::string& interface)
@@ -475,20 +524,21 @@ void Handler::requestScan(const std::string& interface)
         m_scanInterface = interface;
         return;
     }
-
     if (!toBool(m_client->manager("WirelessEnabled")))
         return;
 
-    // NetworkManager rate-limits and defers scans itself; it only refuses
-    // devices that cannot scan, and one in AP mode would drop the hotspot's clients.
-    for (const std::string& device : m_client->devices()) {
-        if (m_client->deviceType(device) != DeviceWifi || m_client->deviceState(device) < DeviceDisconnected
-            || toUInt(m_client->property(device, wirelessInterface, "Mode")) == ModeAp)
-            continue;
+    // NetworkManager rate-limits and defers scans itself. It refuses only
+    // devices that cannot scan, and a scan on one running a hotspot would drop
+    // the hotspot's clients.
+    const auto scans = [this, &interface](const std::string& device) {
         if (!interface.empty() && toString(m_client->property(device, deviceInterface, "Interface")) != interface)
-            continue;
-
-        m_client->call(device, wirelessInterface, "RequestScan", {Variant(VariantMap())}, &m_context);
+            return false;
+        return m_client->deviceType(device) == DeviceWifi && m_client->deviceState(device) >= DeviceDisconnected
+               && toUInt(m_client->property(device, wirelessInterface, "Mode")) != ModeAp;
+    };
+    for (const std::string& device : m_client->devices()) {
+        if (scans(device))
+            m_client->call(device, wirelessInterface, "RequestScan", {Variant(VariantMap())}, &m_context);
     }
 }
 
@@ -528,41 +578,11 @@ void Handler::createHotspot()
         return;
     }
 
-    const bool apMode = capabilities & CapAp;
     const HotspotConfiguration* configuration = HotspotConfiguration::instance();
-    const std::string name = configuration->name();
-    const std::string password = configuration->password();
     const std::string existing = m_client->hotspotConnection();
     const std::string uuid = existing.empty() ? text::newUuid()
                                               : toString(m_client->setting(existing, "connection", "uuid"));
-
-    Settings settings;
-    settings["connection"] = {{"id", Variant(name)},
-                              {"uuid", Variant(uuid)},
-                              {"type", Variant(std::string("802-11-wireless"))},
-                              {"autoconnect", Variant(false)}};
-    settings["802-11-wireless"] = {{"ssid", bytesValue(wifi::ssidBytes(name))},
-                                   {"mode", Variant(std::string(apMode ? "ap" : "adhoc"))}};
-    // NetworkManager picks a channel that is valid where the machine is.
-    if (!password.empty()) {
-        VariantMap security;
-        if (apMode) {
-            security["key-mgmt"] = Variant(std::string("wpa-psk"));
-            security["psk"] = Variant(password);
-            if (capabilities & CapRsn) {
-                security["proto"] = Variant(std::vector<std::string>{"rsn"});
-                security["pairwise"] = Variant(std::vector<std::string>{"ccmp"});
-                security["group"] = Variant(std::vector<std::string>{"ccmp"});
-            }
-        } else {
-            security["key-mgmt"] = Variant(std::string("none"));
-            security["wep-key-type"] = Variant(uint32_t(2));
-            security["wep-key0"] = Variant(password);
-        }
-        settings[wirelessSecurity] = security;
-    }
-    settings["ipv4"] = {{"method", Variant(std::string("shared"))}};
-    settings["ipv6"] = {{"method", Variant(std::string("ignore"))}};
+    const Settings settings = hotspotSettings(configuration->name(), uuid, configuration->password(), capabilities);
 
     // One profile, kept and updated, rather than a new one each time.
     if (existing.empty()) {

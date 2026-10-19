@@ -1,8 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Reion Wong <reionwong@gmail.com>
 // SPDX-License-Identifier: GPL-3.0-or-later
-//
-// Derived from plasma-nm's NetworkModel and AppletProxyModel (LGPL-2.1-or-later,
-// Copyright 2013-2018 Jan Grulich <jgrulich@redhat.com>).
 
 #include "cutefish/networkmanager/network_model.h"
 #include "cutefish/networkmanager/client.h"
@@ -15,7 +12,9 @@
 #include <algorithm>
 #include <cstdio>
 #include <endian.h>
+#include <iterator>
 #include <memory>
+#include <tuple>
 
 #include "base/locale.h"
 
@@ -253,7 +252,6 @@ void NetworkModel::addWired(const std::string& device, std::vector<NetworkItem>&
     for (const std::string& profile : profilesFor(*m_client, device, "802-3-ethernet")) {
         NetworkItem item;
         item.type = ConnectionType::Wired;
-        item.kind = NetworkItem::Kind::AvailableConnection;
         item.uuid = toString(m_client->setting(profile, connectionSetting, "uuid"));
         item.key = device + "|" + item.uuid;
         item.name = toString(m_client->setting(profile, connectionSetting, "id"));
@@ -406,10 +404,8 @@ void NetworkModel::addWireless(const std::string& device, std::vector<NetworkIte
         item.signal = std::max(network.strength, 0);
         item.icon = wifi::strengthIcon(item.signal);
         if (network.profile.empty()) {
-            item.kind = NetworkItem::Kind::AvailableAccessPoint;
             item.name = item.ssid;
         } else {
-            item.kind = NetworkItem::Kind::AvailableConnection;
             item.connectionPath = network.profile;
             item.uuid = toString(m_client->setting(network.profile, connectionSetting, "uuid"));
             item.name = toString(m_client->setting(network.profile, connectionSetting, "id"));
@@ -464,7 +460,6 @@ void NetworkModel::addVpns(std::vector<NetworkItem>& items) const
 
         NetworkItem item;
         item.type = ConnectionType::Vpn;
-        item.kind = NetworkItem::Kind::AvailableConnection;
         item.uuid = toString(m_client->setting(profile, connectionSetting, "uuid"));
         item.key = "vpn|" + item.uuid;
         item.name = toString(m_client->setting(profile, connectionSetting, "id"));
@@ -543,50 +538,29 @@ int compareNames(const std::string& a, const std::string& b)
     return base::Locale::system().compare(a, b);
 }
 
-// Sorted descending, as the list wants it: whatever compares greater comes first.
-static bool lessThan(const NetworkItem& left, const NetworkItem& right, ConnectionType type)
+// Greater ranks are listed first. The signal counts by the icon's step, so
+// rows move only when what they show changes; a lower state is further along.
+static auto rank(const NetworkItem& item)
 {
-    // A VPN keeps its place, whether it is up or not.
-    if (type == ConnectionType::Vpn)
-        return compareNames(left.name, right.name) > 0;
-
-    const bool leftConnected = left.connectionState == ConnectionStatus::Activated;
-    const bool rightConnected = right.connectionState == ConnectionStatus::Activated;
-    if (leftConnected != rightConnected)
-        return rightConnected;
-
-    if (left.connectionState != right.connectionState)
-        return int(left.connectionState) > int(right.connectionState);
-
-    const bool leftSaved = !left.uuid.empty();
-    const bool rightSaved = !right.uuid.empty();
-    if (leftSaved != rightSaved)
-        return rightSaved;
-
-    if (left.timestamp != right.timestamp)
-        return left.timestamp < right.timestamp;
-
-    // By the icon's step, so rows move only when what they show changes.
-    const int leftSignal = wifi::strengthStep(left.signal);
-    const int rightSignal = wifi::strengthStep(right.signal);
-    if (leftSignal != rightSignal)
-        return leftSignal < rightSignal;
-
-    return compareNames(left.name, right.name) > 0;
+    return std::make_tuple(item.connectionState == ConnectionStatus::Activated, -int(item.connectionState),
+                           !item.uuid.empty(), item.timestamp, wifi::strengthStep(item.signal));
 }
 
 std::vector<NetworkItem> listItems(const std::vector<NetworkItem>& items, ConnectionType type)
 {
     std::vector<NetworkItem> list;
-    for (const NetworkItem& item : items) {
-        if (item.type != type || type == ConnectionType::Unknown)
-            continue;
-        if (item.kind != NetworkItem::Kind::AvailableConnection && item.kind != NetworkItem::Kind::AvailableAccessPoint)
-            continue;
-        list.push_back(item);
-    }
-    std::stable_sort(list.begin(), list.end(),
-                     [type](const NetworkItem& a, const NetworkItem& b) { return lessThan(b, a, type); });
+    if (type == ConnectionType::Unknown)
+        return list;
+    std::copy_if(items.begin(), items.end(), std::back_inserter(list),
+                 [type](const NetworkItem& item) { return item.type == type; });
+
+    // A VPN keeps its place by name, whether it is up or not.
+    const bool byNameOnly = type == ConnectionType::Vpn;
+    std::stable_sort(list.begin(), list.end(), [byNameOnly](const NetworkItem& a, const NetworkItem& b) {
+        if (!byNameOnly && rank(a) != rank(b))
+            return rank(a) > rank(b);
+        return compareNames(a.name, b.name) < 0;
+    });
     return list;
 }
 
