@@ -13,6 +13,10 @@
 
 #include "cutefish/files/url.h"
 
+namespace cutefish::base {
+class Locale;
+}
+
 namespace cutefish::files {
 
 // A file or folder with what was read about it. Copies share their data until
@@ -137,6 +141,8 @@ private:
         std::string displayName;
         std::string iconName;
         std::string typeDescription;
+        // The Locale::system() the description was read for.
+        const base::Locale* descriptionLocale = nullptr;
         Url targetUrl;
         std::string originalPath;
         std::optional<int64_t> deletionTime;

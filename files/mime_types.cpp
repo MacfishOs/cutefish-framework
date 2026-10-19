@@ -163,11 +163,14 @@ static std::map<std::string, std::string> comments(const std::string& type)
 
 std::string description(const std::string& type)
 {
+    // By the Locale::system() of the time, which a language change replaces.
     static std::mutex mutex;
-    static std::unordered_map<std::string, std::string> cache;
+    static std::unordered_map<const Locale*, std::unordered_map<std::string, std::string>> caches;
 
+    const Locale* locale = &Locale::system();
     {
         const std::lock_guard lock(mutex);
+        const auto& cache = caches[locale];
         if (const auto found = cache.find(type); found != cache.cend())
             return found->second;
     }
@@ -176,7 +179,7 @@ std::string description(const std::string& type)
 
     // The session's messages locale, then its language alone, then the
     // untranslated description; "C" reads as en_US.
-    std::string name = Locale::system().name();
+    std::string name = locale->name();
     if (name == "C")
         name = "en_US";
 
@@ -194,7 +197,7 @@ std::string description(const std::string& type)
     }
 
     const std::lock_guard lock(mutex);
-    cache.emplace(type, text);
+    caches[locale].emplace(type, text);
     return text;
 }
 

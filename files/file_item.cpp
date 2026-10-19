@@ -253,6 +253,7 @@ bool FileItem::prepareMetadata(const FileItem& previous, TypeDetails* details)
     if (previous.d && data.stamp.kind && data.stamp == previous.d->stamp && data.url == previous.d->url) {
         data.mimeType = previous.d->mimeType;
         data.typeDescription = previous.d->typeDescription;
+        data.descriptionLocale = previous.d->descriptionLocale;
         data.iconName = previous.d->iconName;
         data.displayName = previous.d->displayName;
         data.targetUrl = previous.d->targetUrl;
@@ -289,6 +290,7 @@ void FileItem::detectType(TypeDetails* details)
     std::string typeIcon;
     const auto known = details ? details->find(data.mimeType) : TypeDetails::iterator();
 
+    data.descriptionLocale = &Locale::system();
     if (details && known != details->end()) {
         data.typeDescription = known->second.first;
         typeIcon = known->second.second;
@@ -317,7 +319,12 @@ std::string FileItem::mimetype() const
 
 std::string FileItem::typeDescription() const
 {
-    return d ? d->typeDescription : std::string();
+    if (!d)
+        return {};
+    // Read again in the new language after the session's changed.
+    if (d->descriptionLocale != &Locale::system())
+        return mime::description(d->mimeType);
+    return d->typeDescription;
 }
 
 std::string FileItem::iconName() const

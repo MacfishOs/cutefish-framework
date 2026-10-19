@@ -22,7 +22,7 @@ bool inherits(const std::string& type, const std::string& ancestor);
 
 // The description in the session's language (its
 // LC_MESSAGES), else the untranslated one, else the type itself. Looked up
-// once per type.
+// once per type and language.
 std::string description(const std::string& type);
 // The icon the type names, else the type with '/' replaced by '-'.
 std::string iconName(const std::string& type);
