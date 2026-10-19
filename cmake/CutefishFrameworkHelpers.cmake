@@ -31,9 +31,12 @@ function(cutefish_framework_add_library library)
         file(CREATE_LINK ${CMAKE_CURRENT_SOURCE_DIR} ${link} SYMBOLIC)
     endif()
 
-    target_include_directories(${library} PUBLIC
-        $<BUILD_INTERFACE:${CUTEFISH_FRAMEWORK_INCLUDE_DIR}>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    target_include_directories(${library}
+        PUBLIC
+            $<BUILD_INTERFACE:${CUTEFISH_FRAMEWORK_INCLUDE_DIR}>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        PRIVATE
+            ${PROJECT_SOURCE_DIR}/common
     )
     target_link_libraries(${library}
         PUBLIC ${arg_PUBLIC_LIBRARIES}

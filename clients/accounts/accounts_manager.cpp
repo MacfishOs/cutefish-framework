@@ -7,7 +7,10 @@
 #include <chrono>
 #include <cstdio>
 
+#include "framework_i18n.h"
+
 using namespace cutefish::base;
+using cutefish::framework::tr;
 
 namespace cutefish::accounts {
 
@@ -164,7 +167,7 @@ void AccountsManager::createUser(const std::string& userName, const std::string&
 {
     if (!m_bus) {
         if (done)
-            done({}, "The accounts service cannot be reached");
+            done({}, tr("The accounts service cannot be reached"));
         return;
     }
     dbus::Message message = m_bus->newMethodCall(kService, kPath, kInterface, "CreateUser");
@@ -181,7 +184,7 @@ void AccountsManager::createUser(const std::string& userName, const std::string&
             if (done)
                 done(user, {});
         } else if (done) {
-            done({}, "Created user was removed");
+            done({}, tr("Created user was removed"));
         }
         endCall(id);
     }, kTimeout);

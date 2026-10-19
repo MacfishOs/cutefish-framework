@@ -8,6 +8,7 @@
 
 #include "base/event_loop.h"
 #include "base/locale.h"
+#include "framework_i18n.h"
 #include "path_utils_p.h"
 
 namespace cutefish::files {
@@ -15,6 +16,8 @@ namespace cutefish::files {
 using namespace cutefish::base;
 using namespace cutefish::base::dbus;
 using namespace std::chrono_literals;
+using cutefish::framework::tr;
+using cutefish::i18n::format;
 
 static const std::string service = "org.freedesktop.UDisks2";
 static const std::string root = "/org/freedesktop/UDisks2";
@@ -209,8 +212,9 @@ void VolumeManager::rebuild()
         if (v.name.empty())
             v.name = value<std::string>(block, "IdLabel");
         if (v.name.empty())
-            v.name = v.size ? Locale::system().formattedDataSize(int64_t(v.size))
-                            + (v.encrypted ? " Encrypted Volume" : " Volume")
+            // TRANSLATORS: a disk without a label, named by its size, such as "16 GB Volume".
+            v.name = v.size ? format(v.encrypted ? tr("{size} Encrypted Volume") : tr("{size} Volume"),
+                                     {{"size", Locale::system().formattedDataSize(int64_t(v.size))}})
                             : internal::fileNameOf(v.device);
 
         v.icon = value<std::string>(block, "HintIconName");
@@ -257,7 +261,7 @@ void VolumeManager::mount(const std::string& id)
 {
     const auto v = volume(id);
     if (v.locked()) {
-        operationFailed.emit(id, "mount", "The device is locked.");
+        operationFailed.emit(id, "mount", tr("The device is locked."));
         return;
     }
     start(id, "mount", {{filesystemPath(v), filesystemInterface, "Mount", {}}});
@@ -315,7 +319,7 @@ void VolumeManager::start(const std::string& id, const std::string& operation, s
         supported = supported && v.encrypted;
 
     if (!supported) {
-        operationFailed.emit(id, operation, "The device does not support this operation.");
+        operationFailed.emit(id, operation, tr("The device does not support this operation."));
         return;
     }
 
@@ -324,7 +328,7 @@ void VolumeManager::start(const std::string& id, const std::string& operation, s
         busy = busy || (v.drive != "/" && !v.drive.empty() && volume(pending).drive == v.drive);
 
     if (busy) {
-        operationFailed.emit(id, operation, "A device operation is already in progress.");
+        operationFailed.emit(id, operation, tr("A device operation is already in progress."));
         return;
     }
 
@@ -349,7 +353,7 @@ void VolumeManager::perform(const std::string& id, const std::string& operation,
 
         if (generation != m_generation || (operation != "eject" && !m_volumes.contains(id))) {
             m_pending.erase(id);
-            operationFailed.emit(id, operation, "The device is no longer available.");
+            operationFailed.emit(id, operation, tr("The device is no longer available."));
             return;
         }
 

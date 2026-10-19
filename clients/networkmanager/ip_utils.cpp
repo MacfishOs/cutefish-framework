@@ -7,6 +7,7 @@
 #include "cutefish/networkmanager/text.h"
 #include "cutefish/networkmanager/variants.h"
 #include "cutefish/networkmanager/vpn_utils.h"
+#include "framework_i18n.h"
 
 #include <algorithm>
 #include <bit>
@@ -20,6 +21,8 @@ namespace cutefish::networkmanager::ip {
 using base::dbus::Variant;
 using base::dbus::VariantMap;
 using namespace variants;
+using cutefish::framework::tr;
+using cutefish::i18n::format;
 
 static const std::string ipv4Setting = "ipv4";
 static const std::string ipv6Setting = "ipv6";
@@ -41,19 +44,19 @@ static std::string methodOf(const Settings& settings, const std::string& family)
 static std::string methodLabel(const std::string& method, bool v4)
 {
     if (method == "auto")
-        return v4 ? "Automatic (DHCP)" : "Automatic";
+        return v4 ? tr("Automatic (DHCP)") : tr("Automatic");
     if (method == "manual")
-        return "Manual";
+        return tr("Manual");
     if (method == "disabled")
-        return "Off";
+        return tr("Off");
     if (method == "dhcp")
-        return "DHCP Only";
+        return tr("DHCP Only");
     if (method == "link-local")
-        return "Link-Local Only";
+        return tr("Link-Local Only");
     if (method == "shared")
-        return "Shared to Other Computers";
+        return tr("Shared to Other Computers");
     if (method == "ignore")
-        return "Left to the System";
+        return tr("Left to the System");
     return method;
 }
 
@@ -257,15 +260,16 @@ Check check(const Form& form)
         if (address.empty())
             complete = false;
         else if (!hostAddress(address, v4))
-            fail(text::arg(v4 ? "%1 isn't an IPv4 address." : "%1 isn't an IPv6 address.", {address}));
+            fail(format(v4 ? tr("{address} isn't an IPv4 address.") : tr("{address} isn't an IPv6 address."),
+                        {{"address", address}}));
         // IPv6 has a usual prefix length; an IPv4 network has none to assume.
         if (length.empty() && v4)
             complete = false;
         else if (!length.empty() && parsePrefix(length, v4) < 0)
-            fail(v4 ? text::arg("%1 isn't a subnet mask.", {length})
-                    : std::string("The prefix length must be a number from 1 to 128."));
+            fail(v4 ? format(tr("{mask} isn't a subnet mask."), {{"mask", length}})
+                    : std::string(tr("The prefix length must be a number from 1 to 128.")));
         if (!gateway.empty() && !hostAddress(gateway, v4))
-            fail(text::arg("%1 isn't a router address.", {gateway}));
+            fail(format(tr("{address} isn't a router address."), {{"address", gateway}}));
     }
 
     const bool ipv4Dns = configurable(text::trimmed(form.ipv4Method));
@@ -274,12 +278,12 @@ Check check(const Form& form)
         const std::string address = dnsAddress(word);
         if (hostAddress(address, true)) {
             if (!ipv4Dns)
-                fail("IPv4 name servers need IPv4 set to automatic or manual.");
+                fail(tr("IPv4 name servers need IPv4 set to automatic or manual."));
         } else if (hostAddress(address, false)) {
             if (!ipv6Dns)
-                fail("IPv6 name servers need IPv6 set to automatic or manual.");
+                fail(tr("IPv6 name servers need IPv6 set to automatic or manual."));
         } else {
-            fail(text::arg("%1 isn't a name server address.", {word}));
+            fail(format(tr("{address} isn't a name server address."), {{"address", word}}));
         }
     }
 
@@ -291,7 +295,7 @@ std::optional<Settings> settings(const Form& form, const Settings& existing, boo
     const Check result = check(form);
     if (!result.complete) {
         if (error)
-            *error = result.message.empty() ? std::string("Fill in the address and subnet mask.") : result.message;
+            *error = result.message.empty() ? std::string(tr("Fill in the address and subnet mask.")) : result.message;
         return std::nullopt;
     }
 

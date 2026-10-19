@@ -17,12 +17,15 @@
 #include <tuple>
 
 #include "base/locale.h"
+#include "framework_i18n.h"
 
 namespace cutefish::networkmanager {
 
 using base::dbus::Variant;
 using base::dbus::VariantMap;
 using namespace variants;
+using cutefish::framework::tr;
+using cutefish::i18n::format;
 
 static const std::string connectionSetting = "connection";
 static const std::string wirelessSetting = "802-11-wireless";
@@ -216,7 +219,8 @@ void NetworkModel::rebuild()
         ++names[item.name];
     for (NetworkItem& item : items) {
         item.uniqueName = names[item.name] > 1 && !item.deviceName.empty()
-                              ? item.name + " (" + item.deviceName + ")"
+                              // TRANSLATORS: a network and the adapter it is on, such as "Home (wlan0)".
+                              ? format(tr("{name} ({device})"), {{"name", item.name}, {"device", item.deviceName}})
                               : item.name;
         item.securityTypeString = wifi::securityLabel(item.securityType);
         fillDetails(item);
@@ -481,10 +485,10 @@ void NetworkModel::addVpns(std::vector<NetworkItem>& items) const
         item.vpnUserName = userName == data.end() ? std::string() : userName->second;
         if (!installed) {
             item.canActivate = false;
-            item.statusMessage = "Install " + vpn::package(kind) + " to use this VPN.";
+            item.statusMessage = format(tr("Install {package} to use this VPN."), {{"package", vpn::package(kind)}});
         } else if (kind == "openconnect") {
             item.canActivate = false;
-            item.statusMessage = "Signing in to OpenConnect VPNs isn't supported yet.";
+            item.statusMessage = tr("Signing in to OpenConnect VPNs isn't supported yet.");
         } else {
             const auto failure = m_vpnFailures.find(profile);
             item.statusMessage = failure == m_vpnFailures.end() ? std::string() : failure->second;

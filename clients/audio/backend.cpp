@@ -19,8 +19,12 @@
 #include <spa/utils/json.h>
 
 #include "base/event_loop.h"
+#include "framework_i18n.h"
 
 using namespace std::chrono_literals;
+using cutefish::framework::tr;
+using cutefish::i18n::format;
+using cutefish::i18n::trNoop;
 
 namespace cutefish::audio {
 
@@ -587,7 +591,9 @@ void Backend::updateLinks()
 void Backend::checkResult(int result, const char* operation)
 {
     if (result < 0)
-        operationFailed.emit(std::string(operation) + ": " + std::strerror(-result));
+        operationFailed.emit(
+            // TRANSLATORS: a sound setting that failed, then why, such as "Set device volume: Permission denied".
+            format(tr("{operation}: {error}"), {{"operation", tr(operation)}, {"error", std::strerror(-result)}}));
 }
 
 void Backend::updateRouteVolume(AudioObject* node)
@@ -613,7 +619,7 @@ void Backend::setNodeParam(AudioObject* node, const spa_pod* param)
         const auto route = card->object->m_activeRoutes.find(device);
         if (card->object->m_routeProperties.contains(device) && route != card->object->m_activeRoutes.end()) {
             if (!(card->permissions & PW_PERM_W)) {
-                checkResult(-EACCES, "Set device volume");
+                checkResult(-EACCES, trNoop("Set device volume"));
                 return;
             }
             uint8_t buffer[2048];
@@ -623,12 +629,12 @@ void Backend::setNodeParam(AudioObject* node, const spa_pod* param)
                 SPA_POD_Int(route->second), SPA_PARAM_ROUTE_device, SPA_POD_Int(device), SPA_PARAM_ROUTE_props,
                 SPA_POD_Pod(param), SPA_PARAM_ROUTE_save, SPA_POD_Bool(true)));
             checkResult(pw_device_set_param(reinterpret_cast<pw_device*>(card->proxy), SPA_PARAM_Route, 0, routeParam),
-                        "Set device volume");
+                        trNoop("Set device volume"));
             return;
         }
     }
     checkResult(pw_node_set_param(reinterpret_cast<pw_node*>(found->second->proxy), SPA_PARAM_Props, 0, param),
-                "Set audio properties");
+                trNoop("Set audio properties"));
 }
 
 void Backend::setVolume(AudioObject* node, const std::vector<float>& volumes)
@@ -668,7 +674,7 @@ void Backend::setDefault(AudioObject* node, bool enable)
     if (enable || node->isDefault())
         checkResult(pw_metadata_set_property(m_metadata, PW_ID_CORE, key, "Spa:String:JSON",
                                              enable ? value.c_str() : nullptr),
-                    "Set default device");
+                    trNoop("Set default device"));
 }
 
 void Backend::setProfile(AudioObject* card, int profile)
@@ -682,7 +688,7 @@ void Backend::setProfile(AudioObject* card, int profile)
         &builder, SPA_TYPE_OBJECT_ParamProfile, SPA_PARAM_Profile, SPA_PARAM_PROFILE_index, SPA_POD_Int(profile),
         SPA_PARAM_PROFILE_save, SPA_POD_Bool(true)));
     checkResult(pw_device_set_param(reinterpret_cast<pw_device*>(found->second->proxy), SPA_PARAM_Profile, 0, param),
-                "Set device profile");
+                trNoop("Set device profile"));
 }
 
 void Backend::setRoute(AudioObject* node, int route)
@@ -697,7 +703,7 @@ void Backend::setRoute(AudioObject* node, int route)
         &builder, SPA_TYPE_OBJECT_ParamRoute, SPA_PARAM_Route, SPA_PARAM_ROUTE_index, SPA_POD_Int(route),
         SPA_PARAM_ROUTE_device, SPA_POD_Int(node->profileDevice()), SPA_PARAM_ROUTE_save, SPA_POD_Bool(true)));
     checkResult(pw_device_set_param(reinterpret_cast<pw_device*>(found->second->proxy), SPA_PARAM_Route, 0, param),
-                "Set device route");
+                trNoop("Set device route"));
 }
 
 void Backend::moveStream(AudioObject* stream, uint32_t target)
@@ -710,7 +716,7 @@ void Backend::moveStream(AudioObject* stream, uint32_t target)
     const std::string serial = node->property(PW_KEY_OBJECT_SERIAL);
     if (!serial.empty())
         checkResult(pw_metadata_set_property(m_metadata, stream->index(), "target.object", "Spa:Id", serial.c_str()),
-                    "Move audio stream");
+                    trNoop("Move audio stream"));
 }
 
 } // namespace cutefish::audio

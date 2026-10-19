@@ -7,6 +7,7 @@
 #include "cutefish/networkmanager/text.h"
 #include "cutefish/networkmanager/variants.h"
 #include "cutefish/networkmanager/vpn_schema.h"
+#include "framework_i18n.h"
 
 #include <algorithm>
 #include <cctype>
@@ -21,6 +22,8 @@ namespace cutefish::networkmanager::vpn {
 using base::dbus::Variant;
 using base::dbus::VariantMap;
 using namespace variants;
+using cutefish::framework::tr;
+using cutefish::i18n::format;
 
 static const std::string servicePrefix = "org.freedesktop.NetworkManager.";
 
@@ -366,21 +369,21 @@ std::string failureMessage(uint32_t reason)
     case 11:
         return {};
     case 3:
-        return "The network connection was interrupted.";
+        return tr("The network connection was interrupted.");
     case 4:
-        return "The VPN service stopped unexpectedly.";
+        return tr("The VPN service stopped unexpectedly.");
     case 5:
-        return "The VPN service returned invalid configuration.";
+        return tr("The VPN service returned invalid configuration.");
     case 6:
-        return "The connection attempt timed out.";
+        return tr("The connection attempt timed out.");
     case 7:
-        return "The VPN service did not start in time.";
+        return tr("The VPN service did not start in time.");
     case 8:
-        return "The VPN service failed to start.";
+        return tr("The VPN service failed to start.");
     case 10:
-        return "Sign-in failed. Check the user name and password.";
+        return tr("Sign-in failed. Check the user name and password.");
     default:
-        return "The VPN service reported an error.";
+        return tr("The VPN service reported an error.");
     }
 }
 
@@ -422,7 +425,7 @@ std::vector<Kind> manualKinds()
         else if (kind == "ssh")
             label = "SSH";
         else if (kind == "iodine")
-            label = "DNS tunnel (iodine)";
+            label = tr("DNS tunnel (iodine)");
         kinds.push_back({kind, label, pluginInstalled(servicePrefix + kind), package(kind)});
     }
     return kinds;
@@ -486,7 +489,9 @@ std::optional<Settings> wireGuardProfile(const std::string& content, const std::
         const std::string field = line.substr(0, equals);
         const std::string value = equals == std::string::npos ? std::string() : line.substr(equals + 1);
         const std::vector<std::string> words = text::split(value, ',');
-        const std::string invalid = text::arg("Line %1 has an invalid %2.", {std::to_string(number), field});
+        const std::string invalid
+            // TRANSLATORS: {key} is a WireGuard setting as written in the file, such as "PrivateKey".
+            = format(tr("Line {line} has an invalid {key}."), {{"line", std::to_string(number)}, {"key", field}});
         const auto is = [&field](const char* name) { return text::equalsIgnoringCase(field, name); };
         bool ok = true;
 
@@ -537,17 +542,18 @@ std::optional<Settings> wireGuardProfile(const std::string& content, const std::
             ok = ok && seconds <= 0xffff;
             peers.back()["persistent-keepalive"] = Variant(seconds);
         } else {
-            return fail(text::arg("Line %1 isn't part of a WireGuard configuration.", {std::to_string(number)}));
+            return fail(format(tr("Line {line} isn't part of a WireGuard configuration."),
+                               {{"line", std::to_string(number)}}));
         }
         if (!ok)
             return fail(invalid);
     }
 
     if (privateKey.empty())
-        return fail("The configuration has no private key.");
+        return fail(tr("The configuration has no private key."));
     for (const VariantMap& peer : peers) {
         if (!variants::contains(peer, "public-key"))
-            return fail("A peer has no public key.");
+            return fail(tr("A peer has no public key."));
     }
 
     Settings profile;
@@ -650,20 +656,20 @@ std::optional<Settings> wireGuardSettings(const WireGuardForm& form, const Setti
     const VariantMap& stored = group(existing, "wireguard");
     const std::string privateKey = text::trimmed(form.privateKey);
     if (privateKey.empty() && !variants::contains(stored, "private-key-flags"))
-        return fail("Enter the private key.");
+        return fail(tr("Enter the private key."));
     if (!privateKey.empty() && !isWireGuardKey(privateKey))
-        return fail("The private key isn't a WireGuard key.");
+        return fail(tr("The private key isn't a WireGuard key."));
 
     std::vector<VariantMap> addresses[2];
     for (const std::string& word : trimmedWords(form.addresses)) {
         bool v4 = false;
         VariantMap address;
         if (!parseWireGuardAddress(word, address, v4))
-            return fail(text::arg("%1 isn't an address with a prefix, like 10.0.0.2/24.", {word}));
+            return fail(format(tr("{address} isn't an address with a prefix, like 10.0.0.2/24."), {{"address", word}}));
         addresses[v4 ? 0 : 1].push_back(address);
     }
     if (addresses[0].empty() && addresses[1].empty())
-        return fail("Enter the address.");
+        return fail(tr("Enter the address."));
 
     std::vector<uint32_t> dns4;
     std::vector<std::vector<uint8_t>> dns6;
@@ -672,22 +678,22 @@ std::optional<Settings> wireGuardSettings(const WireGuardForm& form, const Setti
 
     uint32_t listenPort = 0;
     if (!form.listenPort.empty() && (!parseUInt(form.listenPort, &listenPort) || listenPort > 0xffff))
-        return fail("The listen port must be a number up to 65535.");
+        return fail(tr("The listen port must be a number up to 65535."));
     uint32_t fwmark = 0;
     if (!form.fwmark.empty() && !parseUInt(form.fwmark, &fwmark, 0))
-        return fail("The firewall mark must be a number.");
+        return fail(tr("The firewall mark must be a number."));
     uint32_t mtu = 0;
     if (!form.mtu.empty() && !parseUInt(form.mtu, &mtu))
-        return fail("The MTU must be a number.");
+        return fail(tr("The MTU must be a number."));
 
     const std::vector<VariantMap> storedPeers = toMapList(value(stored, "peers"));
     std::vector<VariantMap> peers;
     if (form.peers.empty())
-        return fail("Add the server as a peer.");
+        return fail(tr("Add the server as a peer."));
     for (const WireGuardPeer& formPeer : form.peers) {
         const std::string publicKey = text::trimmed(formPeer.publicKey);
         if (!isWireGuardKey(publicKey))
-            return fail("A peer's public key isn't a WireGuard key.");
+            return fail(tr("A peer's public key isn't a WireGuard key."));
         VariantMap peer{{"public-key", Variant(publicKey)}};
 
         const std::string presharedKey = text::trimmed(formPeer.presharedKey);
@@ -697,7 +703,7 @@ std::optional<Settings> wireGuardSettings(const WireGuardForm& form, const Setti
                                 && variants::contains(storedPeer, "preshared-key-flags");
         if (!presharedKey.empty()) {
             if (!isWireGuardKey(presharedKey))
-                return fail("A peer's preshared key isn't a WireGuard key.");
+                return fail(tr("A peer's preshared key isn't a WireGuard key."));
             peer["preshared-key"] = Variant(presharedKey);
             peer["preshared-key-flags"] = Variant(uint32_t(SecretSystemOwned));
         } else if (keepPresharedKey && formPeer.hasPresharedKey) {
@@ -712,12 +718,12 @@ std::optional<Settings> wireGuardSettings(const WireGuardForm& form, const Setti
             bool v4 = false;
             VariantMap address;
             if (!parseWireGuardAddress(word, address, v4))
-                return fail(text::arg("%1 isn't a network, like 10.0.0.0/24.", {word}));
+                return fail(format(tr("{address} isn't a network, like 10.0.0.0/24."), {{"address", word}}));
         }
         peer["allowed-ips"] = Variant(allowed.empty() ? std::vector<std::string>{"0.0.0.0/0", "::/0"} : allowed);
         uint32_t seconds = 0;
         if (!formPeer.keepalive.empty() && (!parseUInt(formPeer.keepalive, &seconds) || seconds > 0xffff))
-            return fail("The keepalive must be a number of seconds up to 65535.");
+            return fail(tr("The keepalive must be a number of seconds up to 65535."));
         peer["persistent-keepalive"] = Variant(seconds);
         peers.push_back(std::move(peer));
     }

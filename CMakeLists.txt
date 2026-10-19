@@ -16,3 +16,5 @@ include(CutefishFrameworkHelpers)
 
 add_subdirectory(clients)
 add_subdirectory(files)
+
+cutefish_add_translations(cutefish-framework SOURCES clients common files)

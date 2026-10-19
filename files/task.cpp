@@ -13,12 +13,15 @@
 #include "base/elapsed_timer.h"
 #include "base/locale.h"
 #include "cutefish/files/file_item.h"
+#include "framework_i18n.h"
 #include "path_utils_p.h"
 #include "posix_p.h"
 
 namespace cutefish::files {
 
 using namespace cutefish::base;
+using cutefish::framework::tr;
+using cutefish::i18n::format;
 
 // A copy within a filesystem that shares extents may take no space at all, so it is not counted.
 static bool takesSpace(const std::string& source, const std::string& directory, bool move)
@@ -445,7 +448,10 @@ std::string Task::destinationName() const
 
 std::string Task::errorString() const
 {
-    return m_result.error.path.empty() ? m_result.error.message : m_result.error.path + ": " + m_result.error.message;
+    if (m_result.error.path.empty())
+        return m_result.error.message;
+    // TRANSLATORS: the file an operation failed on, then why, such as "/tmp/a.txt: Permission denied".
+    return format(tr("{path}: {error}"), {{"path", m_result.error.path}, {"error", m_result.error.message}});
 }
 
 TaskController::TaskController() = default;

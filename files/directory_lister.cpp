@@ -12,6 +12,7 @@
 #include "base/strings.h"
 #include "cutefish/files/file_enumerator.h"
 #include "cutefish/files/file_system_url.h"
+#include "framework_i18n.h"
 #include "mime_sniffer_p.h"
 #include "path_utils_p.h"
 #include "trash_directory_p.h"
@@ -20,6 +21,8 @@ namespace cutefish::files {
 
 using namespace std::chrono_literals;
 using namespace cutefish::base;
+using cutefish::framework::tr;
+using cutefish::i18n::format;
 
 namespace {
 
@@ -432,7 +435,8 @@ void DirectoryLister::refresh()
             return;
 
         if (listing.error) {
-            reportError(listing.error.message + ": " + listing.error.path);
+            // TRANSLATORS: why a folder can't be listed, then the folder, such as "Permission denied: /root".
+            reportError(format(tr("{error}: {path}"), {{"error", listing.error.message}, {"path", listing.error.path}}));
             if (generation == m_generation)
                 canceled.emit();
         } else {

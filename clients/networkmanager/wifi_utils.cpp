@@ -11,6 +11,9 @@
 #include <vector>
 
 #include "base/locale.h"
+#include "framework_i18n.h"
+
+using cutefish::framework::tr;
 
 namespace cutefish::networkmanager::wifi {
 
@@ -324,13 +327,14 @@ std::string securityLabel(SecurityType type)
 {
     switch (type) {
     case SecurityType::None:
-        return "Insecure";
+        // TRANSLATORS: a Wi-Fi network's security type.
+        return tr("Insecure");
     case SecurityType::StaticWep:
         return "WEP";
     case SecurityType::Leap:
         return "LEAP";
     case SecurityType::DynamicWep:
-        return "Dynamic WEP";
+        return tr("Dynamic WEP");
     case SecurityType::WpaPsk:
         return "WPA-PSK";
     case SecurityType::WpaEap:
@@ -346,7 +350,8 @@ std::string securityLabel(SecurityType type)
     case SecurityType::Owe:
         return "OWE";
     default:
-        return "Unknown";
+        // TRANSLATORS: a Wi-Fi network's security type.
+        return tr("Unknown");
     }
 }
 

@@ -15,9 +15,12 @@
 #include <utility>
 
 #include "base/event_loop.h"
+#include "framework_i18n.h"
 
 using namespace cutefish::base;
 using namespace std::chrono_literals;
+using cutefish::framework::tr;
+using cutefish::i18n::format;
 
 namespace cutefish::bluez {
 
@@ -27,14 +30,6 @@ static constexpr const char* kObjectManagerInterface = "org.freedesktop.DBus.Obj
 static constexpr const char* kGattCharacteristicInterface = "org.bluez.GattCharacteristic1";
 static constexpr const char* kAgentManagerPath = "/org/bluez";
 static constexpr const char* kAgentManagerInterface = "org.bluez.AgentManager1";
-
-static std::string replaceArgument(std::string text, const std::string& argument)
-{
-    const size_t at = text.find("%1");
-    if (at != std::string::npos)
-        text.replace(at, 2, argument);
-    return text;
-}
 
 // The Bluetooth rfkill switches, from /dev/rfkill.
 class Rfkill
@@ -83,7 +78,7 @@ public:
         if (fd >= 0)
             ::close(fd);
         if (!ok)
-            m_manager->fail(std::string("Cannot unblock Bluetooth: ") + std::strerror(error));
+            m_manager->fail(format(tr("Cannot unblock Bluetooth: {error}"), {{"error", std::strerror(error)}}));
         return ok;
     }
 
@@ -137,7 +132,7 @@ Manager::Manager(dbus::Connection* bus, bool monitorRfkill)
     m_promptTimer.onTimeout = [this] {
         const std::string device = m_pairingDevice;
         cancelPairing();
-        deviceFailure("Pair", device, "The device didn't finish pairing in time. Try again.");
+        deviceFailure("Pair", device, tr("The device didn't finish pairing in time. Try again."));
     };
     m_retryTimer.setSingleShot(true);
     m_retryTimer.setInterval(2s);
@@ -150,7 +145,7 @@ Manager::Manager(dbus::Connection* bus, bool monitorRfkill)
     if (monitorRfkill)
         m_rfkill = std::make_unique<Rfkill>(this);
     if (!m_bus) {
-        fail("The system D-Bus connection is unavailable.");
+        fail(tr("The system D-Bus connection is unavailable."));
         setReady();
         return;
     }
@@ -501,11 +496,11 @@ void Manager::setEnabled(bool enabled)
     if (enabled && m_rfkill && !m_rfkill->unblock())
         return;
     if (enabled && hardwareBlocked())
-        fail("Bluetooth is blocked by a hardware switch.");
+        fail(tr("Bluetooth is blocked by a hardware switch."));
     if (!enabled)
         setDiscoveryRequested(false);
     if (!m_operational) {
-        fail("The Bluetooth service is unavailable.");
+        fail(tr("The Bluetooth service is unavailable."));
         return;
     }
     for (const auto& adapter : adapters())
@@ -517,7 +512,7 @@ void Manager::call(const std::string& path, const std::string& interface, const 
                    std::chrono::milliseconds timeout)
 {
     if (m_owner.empty()) {
-        const dbus::Reply error({}, {"org.bluez.Error.NotReady", "The Bluetooth service is unavailable."});
+        const dbus::Reply error({}, {"org.bluez.Error.NotReady", tr("The Bluetooth service is unavailable.")});
         if (errors == Errors::Report)
             fail(error.error().message);
         if (completion)
@@ -539,7 +534,7 @@ void Manager::call(const std::string& path, const std::string& interface, const 
                 std::fprintf(stderr, "cutefish.bluez: %s failed: %s %s\n", method.c_str(), reply.error().name.c_str(),
                              reply.error().message.c_str());
                 const std::string reason = describe(reply.error());
-                fail(reason.empty() ? "Bluetooth couldn't complete the request." : reason);
+                fail(reason.empty() ? tr("Bluetooth couldn't complete the request.") : reason);
             }
             if (completion)
                 completion(reply);
@@ -560,19 +555,19 @@ void Manager::setObjectProperty(BluetoothObject* entry, const std::string& prope
 void Manager::operate(BluetoothObject* entry, const std::string& method, const std::string& argument)
 {
     if (!isCurrent(entry) || !entry->isDevice()) {
-        deviceFailure(method, entry ? entry->name() : std::string(), "This device is no longer available.");
+        deviceFailure(method, entry ? entry->name() : std::string(), tr("This device is no longer available."));
         return;
     }
     const bool cancel = method == "CancelPairing";
     const bool pair = method == "Pair";
     if (entry->busy() && !cancel) {
-        deviceFailure(method, entry->name(), "The device is busy. Try again in a moment.");
+        deviceFailure(method, entry->name(), tr("The device is busy. Try again in a moment."));
         return;
     }
     // Without an agent of its own the caller pairs through BlueZ's default one,
     // which the shell keeps registered.
     if (pair && m_agentEnabled && !m_agentReady) {
-        deviceFailure(method, entry->name(), "Bluetooth isn't ready yet. Try again in a moment.");
+        deviceFailure(method, entry->name(), tr("Bluetooth isn't ready yet. Try again in a moment."));
         return;
     }
     clearError();
@@ -701,7 +696,7 @@ void Manager::mediaCommand(BluetoothObject* device, const std::string& command)
             return;
         }
     }
-    fail("This device has no media player.");
+    fail(tr("This device has no media player."));
 }
 
 static std::string lower(std::string text)
@@ -761,7 +756,7 @@ void Manager::setAgentEnabled(bool enabled)
         return;
     if (enabled) {
         if (!m_bus) {
-            fail("Cannot export the Bluetooth pairing agent: no system bus.");
+            fail(tr("Cannot export the Bluetooth pairing agent: no system bus."));
             return;
         }
         m_agent = std::make_unique<dbus::Object>(m_bus, kAgentPath, "org.bluez.Agent1");
@@ -776,7 +771,7 @@ void Manager::setAgentEnabled(bool enabled)
         }
         if (!m_agent->publish()) {
             m_agent.reset();
-            fail("Cannot export the Bluetooth pairing agent.");
+            fail(tr("Cannot export the Bluetooth pairing agent."));
             return;
         }
     }
@@ -884,7 +879,7 @@ void Manager::respondPairing(bool accept, const std::string& code)
     }
     if (m_pairingKind == "RequestPinCode") {
         if (code.empty() || code.size() > 16) {
-            fail("Enter a PIN containing 1–16 bytes.");
+            fail(tr("Enter a PIN containing 1–16 bytes."));
             return;
         }
         m_request->reply(code);
@@ -892,7 +887,7 @@ void Manager::respondPairing(bool accept, const std::string& code)
         const bool digits = !code.empty() && code.size() <= 6
                             && std::all_of(code.begin(), code.end(), [](char c) { return c >= '0' && c <= '9'; });
         if (!digits) {
-            fail("Enter a passkey containing 1–6 digits.");
+            fail(tr("Enter a passkey containing 1–6 digits."));
             return;
         }
         m_request->reply(uint32_t(std::stoul(code)));
@@ -935,19 +930,24 @@ void Manager::fail(const std::string& message)
 
 void Manager::deviceFailure(const std::string& method, const std::string& device, const std::string& body)
 {
+    const bool named = !device.empty();
     std::string summary;
     if (method == "Connect" || method == "ConnectProfile")
-        summary = "Couldn't connect to %1";
+        summary = named ? format(tr("Couldn't connect to {device}"), {{"device", device}})
+                        : tr("Couldn't connect to the device");
     else if (method == "Disconnect" || method == "DisconnectProfile")
-        summary = "Couldn't disconnect %1";
+        summary = named ? format(tr("Couldn't disconnect {device}"), {{"device", device}})
+                        : tr("Couldn't disconnect the device");
     else if (method == "Pair")
-        summary = "Couldn't pair with %1";
+        summary = named ? format(tr("Couldn't pair with {device}"), {{"device", device}})
+                        : tr("Couldn't pair with the device");
     else if (method == "RemoveDevice")
-        summary = "Couldn't forget %1";
+        summary = named ? format(tr("Couldn't forget {device}"), {{"device", device}})
+                        : tr("Couldn't forget the device");
     else
         return;
-    deviceFailed.emit(replaceArgument(summary, device.empty() ? "the device" : device),
-                      body.empty() ? "Try again. If it keeps failing, turn the device off and on again." : body);
+    deviceFailed.emit(summary,
+                      body.empty() ? tr("Try again. If it keeps failing, turn the device off and on again.") : body);
 }
 
 // BlueZ reports most connection failures as org.bluez.Error.Failed with a
@@ -964,36 +964,36 @@ std::string Manager::describe(const dbus::Error& error) const
 
     if (name == "NoReply" || name == "AuthenticationTimeout" || reason == "timeout"
         || reason == "Connection timed out")
-        return "The device didn't respond in time. Make sure it is turned on and nearby.";
+        return tr("The device didn't respond in time. Make sure it is turned on and nearby.");
     if (name == "ConnectionAttemptFailed" || reason == "page-timeout" || reason == "Host is down")
-        return "The device didn't respond. Make sure it is turned on, nearby, and not connected to another device.";
+        return tr("The device didn't respond. Make sure it is turned on, nearby, and not connected to another device.");
     if (reason == "key-missing")
-        return "The device no longer recognizes this computer. Forget the device and pair it again.";
+        return tr("The device no longer recognizes this computer. Forget the device and pair it again.");
     if (name == "AuthenticationFailed")
-        return "Pairing failed. Make sure the code matches on both devices and try again.";
+        return tr("Pairing failed. Make sure the code matches on both devices and try again.");
     if (name == "AuthenticationRejected")
-        return "The device declined the request.";
+        return tr("The device declined the request.");
     if (reason == "refused" || reason == "Connection refused")
-        return "The device refused the connection.";
+        return tr("The device refused the connection.");
     if (name == "NotSupported" || reason == "profile-unavailable" || reason == "not-supported"
         || reason == "sdp-search" || reason == "Protocol not available")
-        return "The device has no features this computer can use.";
+        return tr("The device has no features this computer can use.");
     if (reason == "adapter-not-powered")
-        return "Bluetooth is turned off.";
+        return tr("Bluetooth is turned off.");
     if (name == "Blocked" && hardwareBlocked())
-        return "Bluetooth is blocked by a hardware switch.";
+        return tr("Bluetooth is blocked by a hardware switch.");
     if (name == "NotReady")
-        return "Bluetooth isn't ready yet. Try again in a moment.";
+        return tr("Bluetooth isn't ready yet. Try again in a moment.");
     if (name == "InProgress" || reason == "busy" || reason == "Operation already in progress")
-        return "The device is busy. Try again in a moment.";
+        return tr("The device is busy. Try again in a moment.");
     if (reason == "concurrent-connection-limit")
-        return "Too many devices are connected. Disconnect one and try again.";
+        return tr("Too many devices are connected. Disconnect one and try again.");
     if (reason == "aborted-by-remote")
-        return "The device ended the connection.";
+        return tr("The device ended the connection.");
     if (reason == "aborted-by-local" || reason == "canceled")
-        return "The connection was interrupted. Try again.";
+        return tr("The connection was interrupted. Try again.");
     if (name == "DoesNotExist" || name == "UnknownObject")
-        return "This device is no longer available.";
+        return tr("This device is no longer available.");
     return {};
 }
 

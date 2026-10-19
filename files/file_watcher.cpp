@@ -10,11 +10,14 @@
 
 #include "base/event_loop.h"
 #include "base/strings.h"
+#include "framework_i18n.h"
 #include "path_utils_p.h"
 
 namespace cutefish::files {
 
 using namespace cutefish::base;
+using cutefish::framework::tr;
+using cutefish::i18n::format;
 
 FileWatcher::FileWatcher(EventLoop* loop)
     : m_loop(loop ? loop : EventLoop::current())
@@ -118,7 +121,7 @@ bool FileWatcher::watch(const std::vector<std::string>& paths, const Entries& en
     }
 
     if (!unwatched.empty())
-        error.emit("Cannot watch " + strings::join(unwatched, ", ") + "; polling for changes");
+        error.emit(format(tr("Cannot watch {paths}; polling for changes"), {{"paths", strings::join(unwatched, ", ")}}));
 
     return m_valid;
 }

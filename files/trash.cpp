@@ -12,12 +12,14 @@
 #include "base/url.h"
 #include "base/uuid.h"
 #include "cutefish/files/local_file_system.h"
+#include "framework_i18n.h"
 #include "posix_p.h"
 #include "trash_directory_p.h"
 
 namespace cutefish::files {
 
 using namespace internal;
+using cutefish::framework::tr;
 
 static void ensureHomeTrash()
 {
@@ -347,12 +349,12 @@ Url LocalFileSystem::restore(const Url& url, ConflictPolicy policy, OperationCon
         throw Failure(existsOrLinks(info) ? EACCES : ENOENT, info);
 
     if (details.path.empty())
-        throw Failure(EINVAL, name, "The original location is not known");
+        throw Failure(EINVAL, name, tr("The original location is not known"));
 
     // A folder deleted since the item was trashed is made again.
     const std::string parent = absolutePathOf(details.path);
     if (!trash.topdir.empty() && !staysOnVolume(trash, parent))
-        throw Failure(EXDEV, name, "The original location is outside the volume it was deleted on");
+        throw Failure(EXDEV, name, tr("The original location is outside the volume it was deleted on"));
 
     errno = 0;
     if (!makePath(parent))

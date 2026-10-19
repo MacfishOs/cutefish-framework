@@ -14,8 +14,11 @@
 #include <chrono>
 #include <utility>
 
+#include "framework_i18n.h"
+
 using namespace cutefish::base;
 using namespace std::chrono_literals;
+using cutefish::framework::tr;
 
 namespace cutefish::display {
 
@@ -29,7 +32,7 @@ DisplayClient::DisplayClient(std::string serviceName)
     m_operationTimeout.setSingleShot(true);
     m_operationTimeout.setInterval(15s);
     m_operationTimeout.onTimeout = [this] {
-        finishOperation(m_operationToken, {false, false, 1, "The display operation timed out.", {}});
+        finishOperation(m_operationToken, {false, false, 1, tr("The display operation timed out."), {}});
         refresh();
     };
     dbus::Connection* bus = m_proxy.connection();
@@ -76,7 +79,7 @@ void DisplayClient::serviceChanged()
     m_loaded = false;
     stateChanged.emit();
     if (operationPending())
-        finishOperation(m_operationToken, {false, false, 1, "The display service restarted.", {}});
+        finishOperation(m_operationToken, {false, false, 1, tr("The display service restarted."), {}});
     // Last, so a completion that asks again reaches the new owner.
     failRequests();
 }
@@ -124,7 +127,7 @@ void DisplayClient::refresh()
             stateChanged.emit();
             availabilityChanged.emit();
             if (operationPending()) {
-                const std::string message = reply.isError() ? reply.error().message : "Unexpected display state.";
+                const std::string message = reply.isError() ? reply.error().message : tr("Unexpected display state.");
                 finishOperation(m_operationToken, {false, false, 1, message, {}});
             }
             return;

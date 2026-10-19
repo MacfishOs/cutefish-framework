@@ -17,6 +17,7 @@
 
 #include "base/file.h"
 #include "base/process.h"
+#include "framework_i18n.h"
 
 namespace cutefish::networkmanager {
 
@@ -25,6 +26,7 @@ using base::dbus::Reply;
 using base::dbus::Variant;
 using base::dbus::VariantMap;
 using namespace variants;
+using cutefish::framework::tr;
 
 // The shell's secret agent, which asks for a new network's password up front.
 static const std::string promptService = "org.cutefish.SecretAgent";
@@ -434,8 +436,8 @@ void Handler::activeStateChanged(const std::string& active, uint32_t state)
     if (!m_hotspotActivation.empty() && active == m_hotspotActivation) {
         if (state == ActiveDeactivated) {
             m_hotspotActivation.clear();
-            hotspotFailed.emit("The hotspot could not be started. The Wi-Fi adapter may not support it on this "
-                               "channel or with this password.");
+            hotspotFailed.emit(tr("The hotspot could not be started. The Wi-Fi adapter may not support it on this "
+                                  "channel or with this password."));
         } else if (state == ActiveActivated) {
             m_hotspotActivation.clear();
         }
@@ -574,7 +576,7 @@ void Handler::createHotspot()
     uint32_t capabilities = 0;
     const std::string device = hotspotDevice(&capabilities);
     if (device.empty()) {
-        hotspotFailed.emit("No Wi-Fi adapter can run a hotspot.");
+        hotspotFailed.emit(tr("No Wi-Fi adapter can run a hotspot."));
         return;
     }
 
@@ -690,8 +692,8 @@ void Handler::importVpn(const std::string& file)
     }
 
     if (plugins.empty()) {
-        vpnAddFailed.emit("No VPN plugin can read this file. Install the one for your VPN, for example "
-                          "network-manager-openvpn for OpenVPN.");
+        vpnAddFailed.emit(tr("No VPN plugin can read this file. Install the one for your VPN, for example "
+                             "network-manager-openvpn for OpenVPN."));
         return;
     }
     importVpnAs(file, plugins, {});
@@ -700,7 +702,7 @@ void Handler::importVpn(const std::string& file)
 void Handler::importVpnAs(const std::string& file, std::vector<std::string> types, const std::string& error)
 {
     if (types.empty()) {
-        vpnAddFailed.emit(error.empty() ? std::string("This file isn't a VPN configuration this system can read.")
+        vpnAddFailed.emit(error.empty() ? std::string(tr("This file isn't a VPN configuration this system can read."))
                                         : error);
         return;
     }
@@ -713,7 +715,7 @@ void Handler::importVpnAs(const std::string& file, std::vector<std::string> type
              [this, file, types, error](bool started, bool succeeded, const std::string& output,
                                         const std::string& errorOutput) {
                  if (!started) {
-                     vpnAddFailed.emit("nmcli, which reads VPN files, is not installed.");
+                     vpnAddFailed.emit(tr("nmcli, which reads VPN files, is not installed."));
                      return;
                  }
                  const std::string message = text::trimmed(errorOutput);
@@ -917,7 +919,7 @@ void Handler::exportVpn(const std::string& connection, const std::string& file)
             Settings settings = m_client->settings(connection);
             const auto wireguard = secrets.find("wireguard");
             if (wireguard == secrets.end() || !variants::contains(wireguard->second, "private-key")) {
-                vpnExportFailed.emit("The private key can't be read, so the file would be incomplete.");
+                vpnExportFailed.emit(tr("The private key can't be read, so the file would be incomplete."));
                 return;
             }
             settings["wireguard"]["private-key"] = value(wireguard->second, "private-key");
@@ -927,7 +929,7 @@ void Handler::exportVpn(const std::string& connection, const std::string& file)
 
             // The file holds the private key.
             if (!base::file::writeAtomically(file, vpn::wireGuardConfig(settings))) {
-                vpnExportFailed.emit("The file can't be written.");
+                vpnExportFailed.emit(tr("The file can't be written."));
                 return;
             }
             chmod(file.c_str(), S_IRUSR | S_IWUSR);
@@ -941,14 +943,14 @@ void Handler::exportVpn(const std::string& connection, const std::string& file)
     runNmcli({"connection", "export", "uuid", uuid, file},
              [this, file](bool started, bool succeeded, const std::string&, const std::string& errorOutput) {
                  if (!started) {
-                     vpnExportFailed.emit("nmcli, which writes VPN files, is not installed.");
+                     vpnExportFailed.emit(tr("nmcli, which writes VPN files, is not installed."));
                      return;
                  }
                  const std::string message = text::trimmed(errorOutput);
                  if (succeeded)
                      vpnExported.emit(file);
                  else
-                     vpnExportFailed.emit(message.empty() ? std::string("The VPN couldn't be written to a file.")
+                     vpnExportFailed.emit(message.empty() ? std::string(tr("The VPN couldn't be written to a file."))
                                                           : message);
              });
 }

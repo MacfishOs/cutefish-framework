@@ -6,7 +6,10 @@
 #include <algorithm>
 #include <chrono>
 
+#include "framework_i18n.h"
+
 using namespace std::chrono_literals;
+using cutefish::framework::tr;
 
 namespace cutefish::display {
 
@@ -54,7 +57,7 @@ void Screen::updateState()
     const DisplayClient::State& state = m_client.state();
     if (m_client.loaded() && !m_client.available()) {
         m_busy = false;
-        m_error = "The display service is unavailable.";
+        m_error = tr("The display service is unavailable.");
     }
     const bool topologyChanged = !m_instanceId.empty()
                                  && (m_instanceId != state.instanceId
@@ -62,7 +65,7 @@ void Screen::updateState()
     if (!m_outputModel.dirty() || topologyChanged || m_busy || pendingConfirmation())
         m_outputModel.setState(state);
     if (topologyChanged)
-        m_error = "Displays changed. The previous draft was discarded.";
+        m_error = tr("Displays changed. The previous draft was discarded.");
     m_instanceId = state.instanceId;
     m_topologyGeneration = state.topologyGeneration;
     if (pendingConfirmation()) {
@@ -84,7 +87,7 @@ void Screen::apply()
     if (!m_client.apply(m_outputModel.requests(), m_outputModel.primary(), m_outputModel.placements(),
                         m_outputModel.mirrorGroups(), m_outputModel.needsConfirmation())) {
         m_busy = false;
-        m_error = "The display service is unavailable.";
+        m_error = tr("The display service is unavailable.");
         stateChanged.emit();
     }
 }

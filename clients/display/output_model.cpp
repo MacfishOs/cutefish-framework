@@ -18,6 +18,11 @@
 #include <map>
 #include <set>
 
+#include "framework_i18n.h"
+
+using cutefish::framework::tr;
+using cutefish::i18n::format;
+
 namespace cutefish::display {
 
 namespace {
@@ -60,7 +65,7 @@ std::string OutputModel::name(const Entry& entry) const
 {
     const auto plainName = [](const Entry& candidate) -> std::string {
         if (candidate.physical.connectionType == 1)
-            return "Built-in Display";
+            return tr("Built-in Display");
         // The compositor falls back to the connector when the EDID has no name.
         return candidate.physical.model.empty() ? candidate.physical.connectorName : candidate.physical.model;
     };
@@ -69,7 +74,8 @@ std::string OutputModel::name(const Entry& entry) const
         // Two of the same monitor are told apart by where they are plugged in.
         if (other.physical.sessionId != entry.physical.sessionId && plainName(other) == plain
             && !entry.physical.connectorName.empty() && plain != entry.physical.connectorName)
-            return plain + " (" + entry.physical.connectorName + ")";
+            // TRANSLATORS: a monitor and the port it is plugged into, such as "DELL U2720Q (DP-1)".
+            return format(tr("{name} ({connector})"), {{"name", plain}, {"connector", entry.physical.connectorName}});
     }
     return plain;
 }
@@ -169,7 +175,9 @@ std::vector<std::string> OutputModel::resolutions(int row) const
     const Entry& entry = m_entries[row];
     for (int index : resolutionModes(entry)) {
         const Mode& mode = entry.physical.modes[index];
-        result.push_back(std::to_string(mode.width) + " × " + std::to_string(mode.height));
+        // TRANSLATORS: a screen resolution in pixels, such as "1920 × 1080".
+        result.push_back(format(tr("{width} × {height}"),
+                                {{"width", std::to_string(mode.width)}, {"height", std::to_string(mode.height)}}));
     }
     return result;
 }
@@ -221,7 +229,8 @@ std::vector<std::string> OutputModel::refreshRates(int row) const
         char text[32];
         const auto end = std::to_chars(text, text + sizeof(text), entry.physical.modes[index].refreshMilliHz / 1000.0,
                                        std::chars_format::fixed, 2);
-        result.push_back(std::string(text, end.ptr) + " Hz");
+        // TRANSLATORS: a refresh rate, such as "60.00 Hz".
+        result.push_back(format(tr("{rate} Hz"), {{"rate", std::string(text, end.ptr)}}));
     }
     return result;
 }
@@ -237,7 +246,8 @@ int OutputModel::refreshRateIndex(int row) const
 
 std::vector<std::string> OutputModel::replicationSources(int row) const
 {
-    std::vector<std::string> result{"Extend"};
+    // TRANSLATORS: the choice that shows other content on this display instead of mirroring another one.
+    std::vector<std::string> result{tr("Extend")};
     if (!isRow(row))
         return result;
     for (const Entry& other : m_entries) {
