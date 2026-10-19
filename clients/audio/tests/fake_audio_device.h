@@ -149,30 +149,32 @@ private:
     pw_proxy *m_proxy = nullptr;
     pw_core *m_core = nullptr;
 
-    inline static const spa_device_methods methods = [] {
-        spa_device_methods methods {};
-        methods.version = SPA_VERSION_DEVICE_METHODS;
-        methods.add_listener = [](void *object, spa_hook *listener, const spa_device_events *events, void *data) {
-            auto *self = static_cast<FakeAudioDevice *>(object);
-            spa_hook_list_append(&self->m_hooks, listener, events, data);
-            const spa_device_info info {SPA_VERSION_DEVICE_INFO, SPA_DEVICE_CHANGE_MASK_PARAMS,
-                                       0, nullptr, self->m_params, 4};
-            if (events->info)
-                events->info(data, &info);
-            return 0;
-        };
-        methods.sync = [](void *object, int seq) {
-            auto *self = static_cast<FakeAudioDevice *>(object);
-            spa_device_emit_result(&self->m_hooks, seq, 0, 0, nullptr);
-            return 0;
-        };
-        methods.enum_params = [](void *object, int seq, uint32_t id, uint32_t start, uint32_t count, const spa_pod *) {
-            return static_cast<FakeAudioDevice *>(object)->enumerate(seq, id, start, count);
-        };
-        methods.set_param = [](void *object, uint32_t id, uint32_t, const spa_pod *param) {
-            return static_cast<FakeAudioDevice *>(object)->setParam(id, param);
-        };
-        return methods;
-    }();
+    static const spa_device_methods methods;
 
 };
+
+inline const spa_device_methods FakeAudioDevice::methods = [] {
+    spa_device_methods methods {};
+    methods.version = SPA_VERSION_DEVICE_METHODS;
+    methods.add_listener = [](void *object, spa_hook *listener, const spa_device_events *events, void *data) {
+        auto *self = static_cast<FakeAudioDevice *>(object);
+        spa_hook_list_append(&self->m_hooks, listener, events, data);
+        const spa_device_info info {SPA_VERSION_DEVICE_INFO, SPA_DEVICE_CHANGE_MASK_PARAMS,
+                                   0, nullptr, self->m_params, 4};
+        if (events->info)
+            events->info(data, &info);
+        return 0;
+    };
+    methods.sync = [](void *object, int seq) {
+        auto *self = static_cast<FakeAudioDevice *>(object);
+        spa_device_emit_result(&self->m_hooks, seq, 0, 0, nullptr);
+        return 0;
+    };
+    methods.enum_params = [](void *object, int seq, uint32_t id, uint32_t start, uint32_t count, const spa_pod *) {
+        return static_cast<FakeAudioDevice *>(object)->enumerate(seq, id, start, count);
+    };
+    methods.set_param = [](void *object, uint32_t id, uint32_t, const spa_pod *param) {
+        return static_cast<FakeAudioDevice *>(object)->setParam(id, param);
+    };
+    return methods;
+}();

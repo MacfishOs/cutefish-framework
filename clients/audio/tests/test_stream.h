@@ -64,32 +64,34 @@ private:
     bool m_capture;
     float m_level;
 
-    inline static const pw_stream_events events = [] {
-        pw_stream_events events {};
-        events.version = PW_VERSION_STREAM_EVENTS;
-        events.state_changed = [](void *data, pw_stream_state, pw_stream_state state, const char *) {
-            static_cast<TestStream *>(data)->streaming = state == PW_STREAM_STATE_STREAMING;
-        };
-        events.process = [](void *data) {
-            auto *self = static_cast<TestStream *>(data);
-            pw_buffer *buffer = pw_stream_dequeue_buffer(self->m_stream);
-            if (!buffer)
-                return;
-            if (!self->m_capture && buffer->buffer->n_datas > 0) {
-                spa_data &data = buffer->buffer->datas[0];
-                if (data.data && data.chunk) {
-                    constexpr uint32_t stride = 2 * sizeof(float);
-                    const uint32_t frames = buffer->requested
-                        ? std::min<uint64_t>(buffer->requested, data.maxsize / stride) : data.maxsize / stride;
-                    std::fill_n(static_cast<float *>(data.data), frames * 2, self->m_level);
-                    data.chunk->offset = 0;
-                    data.chunk->size = frames * stride;
-                    data.chunk->stride = stride;
-                    buffer->size = frames;
-                }
-            }
-            pw_stream_queue_buffer(self->m_stream, buffer);
-        };
-        return events;
-    }();
+    static const pw_stream_events events;
 };
+
+inline const pw_stream_events TestStream::events = [] {
+    pw_stream_events events {};
+    events.version = PW_VERSION_STREAM_EVENTS;
+    events.state_changed = [](void *data, pw_stream_state, pw_stream_state state, const char *) {
+        static_cast<TestStream *>(data)->streaming = state == PW_STREAM_STATE_STREAMING;
+    };
+    events.process = [](void *data) {
+        auto *self = static_cast<TestStream *>(data);
+        pw_buffer *buffer = pw_stream_dequeue_buffer(self->m_stream);
+        if (!buffer)
+            return;
+        if (!self->m_capture && buffer->buffer->n_datas > 0) {
+            spa_data &data = buffer->buffer->datas[0];
+            if (data.data && data.chunk) {
+                constexpr uint32_t stride = 2 * sizeof(float);
+                const uint32_t frames = buffer->requested
+                    ? std::min<uint64_t>(buffer->requested, data.maxsize / stride) : data.maxsize / stride;
+                std::fill_n(static_cast<float *>(data.data), frames * 2, self->m_level);
+                data.chunk->offset = 0;
+                data.chunk->size = frames * stride;
+                data.chunk->stride = stride;
+                buffer->size = frames;
+            }
+        }
+        pw_stream_queue_buffer(self->m_stream, buffer);
+    };
+    return events;
+}();
