@@ -10,6 +10,7 @@
 #include <spa/param/props.h>
 #include <spa/param/route.h>
 #include <spa/pod/parser.h>
+#include <spa/pod/iter.h>
 
 class FakeAudioDevice
 {
