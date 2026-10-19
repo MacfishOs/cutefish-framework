@@ -199,6 +199,10 @@ static int64_t bootTimeMs()
     return int64_t(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
 }
 
+// A scan old enough for the client to age access points out, which is past a
+// minute; scan times count from boot, so a machine just started has none.
+static constexpr int64_t kOldScanMs = 61 * 1000;
+
 static std::optional<NetworkItem> row(const NetworkModel& model, const std::string& name)
 {
     for (const NetworkItem& item : model.items()) {
@@ -368,9 +372,11 @@ TEST_F(ClientTest, RowStaysWhileItsAccessPointsChange)
 
 TEST_F(ClientTest, AgedOutNetworkStaysUntilScansMissIt)
 {
+    if (bootTimeMs() < kOldScanMs)
+        GTEST_SKIP() << "booted less than a minute ago";
     NetworkModel model;
     ASSERT_TRUE(waitFor([&] { return model.items().size() == 5; }));
-    scannedAgo(300 * 1000);
+    scannedAgo(kOldScanMs);
 
     dropAccessPoint(cafe);
     ASSERT_TRUE(waitFor([] { return Client::instance()->remembers(cafe); }));
@@ -390,8 +396,10 @@ TEST_F(ClientTest, AgedOutNetworkStaysUntilScansMissIt)
 
 TEST_F(ClientTest, RememberedNetworkIsJoinedOnceScanned)
 {
+    if (bootTimeMs() < kOldScanMs)
+        GTEST_SKIP() << "booted less than a minute ago";
     Handler handler;
-    scannedAgo(300 * 1000);
+    scannedAgo(kOldScanMs);
     const fakenm::Interfaces cafeAgain = {{fakenm::accessPoint, nm->objects[cafe][fakenm::accessPoint]}};
     dropAccessPoint(cafe);
     ASSERT_TRUE(waitFor([] { return Client::instance()->remembers(cafe); }));
