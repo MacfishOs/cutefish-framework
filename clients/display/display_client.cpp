@@ -19,8 +19,8 @@ using namespace std::chrono_literals;
 
 namespace cutefish::display {
 
-static constexpr const char* kPath = "/com/cutefish/DisplayConfig1";
-static constexpr const char* kInterface = "com.cutefish.DisplayConfig1";
+static constexpr const char* kPath = "/org/cutefish/DisplayConfig1";
+static constexpr const char* kInterface = "org.cutefish.DisplayConfig1";
 
 DisplayClient::DisplayClient(std::string serviceName)
     : m_serviceName(std::move(serviceName))

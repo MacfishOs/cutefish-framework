@@ -20,7 +20,7 @@ class Screen
 {
 public:
     // Tests name a display service of their own.
-    explicit Screen(std::string serviceName = "com.cutefish.DisplayConfig");
+    explicit Screen(std::string serviceName = "org.cutefish.DisplayConfig");
     ~Screen();
 
     Screen(const Screen&) = delete;

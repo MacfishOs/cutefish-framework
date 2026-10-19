@@ -20,9 +20,9 @@ using namespace cutefish::base;
 using namespace cutefish::display;
 using namespace std::chrono_literals;
 
-static constexpr const char* kService = "com.cutefish.DisplayConfig.ClientTest";
-static constexpr const char* kPath = "/com/cutefish/DisplayConfig1";
-static constexpr const char* kInterface = "com.cutefish.DisplayConfig1";
+static constexpr const char* kService = "org.cutefish.DisplayConfig.ClientTest";
+static constexpr const char* kPath = "/org/cutefish/DisplayConfig1";
+static constexpr const char* kInterface = "org.cutefish.DisplayConfig1";
 
 // Runs the loop until the condition holds or the time is up.
 static bool waitFor(EventLoop& loop, const std::function<bool()>& condition, std::chrono::milliseconds timeout = 5s)

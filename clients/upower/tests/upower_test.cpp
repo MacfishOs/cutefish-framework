@@ -82,7 +82,7 @@ private:
         m_loop = &loop;
         m_handle = loop.handle();
         std::unique_ptr<Connection> connection = Connection::open(Connection::Bus::Session, &loop);
-        if (!connection || !connection->requestName("com.cutefish.Services")
+        if (!connection || !connection->requestName("org.cutefish.Services")
             || !connection->requestName("org.freedesktop.UPower")) {
             ready.set_value(false);
             return;
@@ -90,8 +90,8 @@ private:
 
         bool published = true;
         if (m_battery) {
-            batteryObject = std::make_unique<Object>(connection.get(), "/com/cutefish/Services/Battery",
-                                                     "com.cutefish.Services.Battery");
+            batteryObject = std::make_unique<Object>(connection.get(), "/org/cutefish/Services/Battery",
+                                                     "org.cutefish.Services.Battery");
             Object& battery = *batteryObject;
             battery.addProperty("chargeState", [] { return int32_t(2); });
             battery.addProperty("chargePercent", [this] { return chargePercent; });

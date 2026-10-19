@@ -13,9 +13,9 @@ using namespace cutefish::base::dbus;
 
 namespace cutefish::upower {
 
-static constexpr const char* kService = "com.cutefish.Services";
-static constexpr const char* kPath = "/com/cutefish/Services/Battery";
-static constexpr const char* kInterface = "com.cutefish.Services.Battery";
+static constexpr const char* kService = "org.cutefish.Services";
+static constexpr const char* kPath = "/org/cutefish/Services/Battery";
+static constexpr const char* kInterface = "org.cutefish.Services.Battery";
 
 static constexpr const char* kUPowerService = "org.freedesktop.UPower";
 static constexpr const char* kUPowerPath = "/org/freedesktop/UPower";

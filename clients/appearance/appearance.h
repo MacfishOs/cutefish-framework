@@ -11,7 +11,7 @@
 
 namespace cutefish::appearance {
 
-// The session's look, as com.cutefish.Services.Appearance keeps it: dark
+// The session's look, as org.cutefish.Services.Appearance keeps it: dark
 // mode, accent colour, fonts, icon and cursor themes and the wallpaper. The
 // values are read when the service appears and kept up to date from its
 // signals; changes go to the service, which owns them, and show here once it

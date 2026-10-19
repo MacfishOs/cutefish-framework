@@ -10,9 +10,9 @@ using namespace cutefish::base;
 
 namespace cutefish::display {
 
-static constexpr const char* kService = "com.cutefish.Services";
-static constexpr const char* kPath = "/com/cutefish/Services/NightLight";
-static constexpr const char* kInterface = "com.cutefish.Services.NightLight";
+static constexpr const char* kService = "org.cutefish.Services";
+static constexpr const char* kPath = "/org/cutefish/Services/NightLight";
+static constexpr const char* kInterface = "org.cutefish.Services.NightLight";
 
 template<typename T>
 void NightLight::update(T& member, T value)

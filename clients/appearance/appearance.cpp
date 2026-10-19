@@ -9,9 +9,9 @@ using namespace cutefish::base;
 
 namespace cutefish::appearance {
 
-static constexpr const char* kService = "com.cutefish.Services";
-static constexpr const char* kPath = "/com/cutefish/Services/Appearance";
-static constexpr const char* kInterface = "com.cutefish.Services.Appearance";
+static constexpr const char* kService = "org.cutefish.Services";
+static constexpr const char* kPath = "/org/cutefish/Services/Appearance";
+static constexpr const char* kInterface = "org.cutefish.Services.Appearance";
 
 Appearance::Appearance()
     : m_service(dbus::Connection::session(), kService, kPath, kInterface)

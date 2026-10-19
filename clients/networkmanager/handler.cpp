@@ -27,9 +27,9 @@ using base::dbus::VariantMap;
 using namespace variants;
 
 // The shell's secret agent, which asks for a new network's password up front.
-static const std::string promptService = "com.cutefish.SecretAgent";
+static const std::string promptService = "org.cutefish.SecretAgent";
 static const std::string promptPath = "/SecretAgent";
-static const std::string promptInterface = "com.cutefish.SecretAgent";
+static const std::string promptInterface = "org.cutefish.SecretAgent";
 
 static const std::string wirelessSecurity = "802-11-wireless-security";
 

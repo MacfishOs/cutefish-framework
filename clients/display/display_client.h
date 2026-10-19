@@ -54,7 +54,7 @@ public:
     using Completion = std::function<void(bool succeeded, ErrorCode error)>;
 
     // Tests name a service of their own.
-    explicit DisplayClient(std::string serviceName = "com.cutefish.DisplayConfig");
+    explicit DisplayClient(std::string serviceName = "org.cutefish.DisplayConfig");
     ~DisplayClient();
 
     DisplayClient(const DisplayClient&) = delete;
