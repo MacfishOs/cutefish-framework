@@ -120,7 +120,7 @@ public:
     void removeConnection(const std::string& connection);
     void requestScan(const std::string& interface = {});
 
-    void enableWireless(bool enable);
+    void enableWireless(bool enable, std::function<void(const base::dbus::Reply&)> completion = {});
     // Connects or disconnects every managed Ethernet device and keeps it that
     // way, as NetworkManager has no global switch for wired networking.
     void enableWired(bool enable);

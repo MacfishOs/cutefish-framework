@@ -544,9 +544,10 @@ void Handler::requestScan(const std::string& interface)
     }
 }
 
-void Handler::enableWireless(bool enable)
+void Handler::enableWireless(bool enable, std::function<void(const base::dbus::Reply&)> completion)
 {
-    m_client->setProperty(managerPath, managerInterface, "WirelessEnabled", Variant(enable), &m_context);
+    m_client->setProperty(managerPath, managerInterface, "WirelessEnabled", Variant(enable), &m_context,
+                          std::move(completion));
 }
 
 void Handler::enableWired(bool enable)
