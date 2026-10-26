@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <fcntl.h>
+#include <filesystem>
 #include <linux/capability.h>
 #include <linux/fs.h>
 #include <map>
@@ -365,6 +366,24 @@ TEST_F(FilesTest, DirectoryConflictPreservesDestination)
 
     EXPECT_TRUE(exists(dir.filePath("target/sub/new")));
     EXPECT_TRUE(exists(dir.filePath("target/sub/keep")));
+}
+
+TEST_F(FilesTest, ApplicationBundleConflictReplacesItWhole)
+{
+    TemporaryDirectory dir;
+    ASSERT_TRUE(makePath(dir.filePath("source/Editor.app/Contents")));
+    ASSERT_TRUE(makePath(dir.filePath("target/Editor.app/Contents")));
+    writeFile(dir.filePath("source/Editor.app/Contents/new"));
+    writeFile(dir.filePath("target/Editor.app/Contents/old"));
+    OperationContext ctx;
+
+    LocalFileSystem::copy(dir.filePath("source/Editor.app"), dir.filePath("target/Editor.app"),
+                          ConflictPolicy::Replace, ctx);
+
+    EXPECT_TRUE(exists(dir.filePath("target/Editor.app/Contents/new")));
+    EXPECT_FALSE(exists(dir.filePath("target/Editor.app/Contents/old")));
+    for (const auto& entry : std::filesystem::directory_iterator(dir.filePath("target")))
+        EXPECT_EQ(entry.path().filename(), "Editor.app");
 }
 
 TEST_F(FilesTest, SelfAndDescendantProtection)

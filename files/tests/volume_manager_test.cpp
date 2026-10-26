@@ -444,11 +444,11 @@ TEST(VolumeManagerTest, SystemMountPointsAreLeftOut)
 
     using files::testing::waitFor;
 
-    ASSERT_TRUE(waitFor(loop, [&] { return manager.volumes().size() == 4; }));
+    ASSERT_TRUE(waitFor(loop, [&] { return manager.volumes().size() == 5; }));
     std::vector<std::string> names;
     for (const Volume& volume : manager.volumes())
         names.push_back(volume.name);
-    EXPECT_EQ(names, (std::vector<std::string>{"data", "USB", "stick", "windows"}));
+    EXPECT_EQ(names, (std::vector<std::string>{"data", "root", "USB", "stick", "windows"}));
     // A Windows partition stays: it takes an administrator to mount, nothing more.
     EXPECT_TRUE(manager.volume(root + "/block_devices/windows").system);
     EXPECT_FALSE(manager.volume(root + "/block_devices/stick").system);

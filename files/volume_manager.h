@@ -45,9 +45,9 @@ struct Volume
 };
 
 // UDisks2's block devices, kept up to date from its signals, and mounting,
-// unmounting and ejecting them. Calls never block. Blocks mounted outside
-// /media, /run/media and /mnt (the root, home and boot filesystems) are left
-// out, and an unlocked encrypted volume stands for its cleartext block.
+// unmounting and ejecting them. Calls never block. Blocks mounted outside /,
+// /media, /run/media and /mnt (the home and boot filesystems) are left out,
+// and an unlocked encrypted volume stands for its cleartext block.
 class VolumeManager
 {
 public:

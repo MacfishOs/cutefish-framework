@@ -99,6 +99,14 @@ void FileItem::setIconName(const std::string& icon)
     detach().iconName = icon;
 }
 
+void FileItem::setMimeType(const std::string& type)
+{
+    Data& data = detach();
+    data.mimeType = type;
+    data.typeDescription = mime::description(type);
+    data.descriptionLocale = &Locale::system();
+}
+
 Url FileItem::targetUrl() const
 {
     return d ? d->targetUrl : Url();

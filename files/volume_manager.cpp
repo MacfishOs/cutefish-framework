@@ -42,6 +42,8 @@ static bool isSet(const ObjectPath& path)
 
 static bool isSystemMountPoint(const std::string& path)
 {
+    if (path == "/")
+        return false;
     for (const std::string prefix : {"/media/", "/run/media/", "/mnt/"}) {
         if (path.starts_with(prefix))
             return false;

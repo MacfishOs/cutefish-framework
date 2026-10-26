@@ -9,6 +9,7 @@
 #include <spa/param/profile.h>
 #include <spa/param/props.h>
 #include <spa/param/route.h>
+#include <spa/pod/iter.h>
 #include <spa/pod/parser.h>
 #include <spa/pod/iter.h>
 
