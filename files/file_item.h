@@ -47,6 +47,9 @@ public:
 
     void setDisplayName(const std::string& name);
     void setIconName(const std::string& icon);
+    // A type known from more than the name and contents, such as a folder
+    // that is an application bundle; its description comes with it.
+    void setMimeType(const std::string& type);
 
     Url targetUrl() const;
     void setTargetUrl(const Url& url);

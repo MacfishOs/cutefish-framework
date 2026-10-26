@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 
+#include "base/application_bundle.h"
 #include "base/strings.h"
 #include "base/uuid.h"
 #include "cutefish/files/file_enumerator.h"
@@ -426,7 +427,15 @@ static std::string publish(int parent, const std::string& temporary, const std::
             check(::fstatat(parent, temporary.c_str(), &from, AT_SYMLINK_NOFOLLOW), destination);
             check(::fstatat(parent, name.c_str(), &to, AT_SYMLINK_NOFOLLOW), destination);
 
-            if (S_ISDIR(from.st_mode) && S_ISDIR(to.st_mode)) {
+            if (S_ISDIR(from.st_mode) && S_ISDIR(to.st_mode)
+                && !base::bundle::bundlePath(destination).empty()) {
+                // An application bundle is replaced whole: none of the old
+                // one's files belong to the new one.
+                if (::syscall(SYS_renameat2, parent, temporary.c_str(), parent, name.c_str(), RENAME_EXCHANGE) != 0)
+                    throw Failure(errno, destination);
+                OperationContext removal;
+                internal::eraseAt(parent, temporary, destination, removal);
+            } else if (S_ISDIR(from.st_mode) && S_ISDIR(to.st_mode)) {
                 Fd input(::openat(parent, temporary.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
                 Fd output(::openat(parent, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
                 check(input.value, destination);
